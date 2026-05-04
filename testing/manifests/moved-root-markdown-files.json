@@ -1,0 +1,134 @@
+﻿[
+    {
+        "from":  ".copilot-development-policy.md",
+        "to":  "testing/docs/root-markdown/.copilot-development-policy.md"
+    },
+    {
+        "from":  "ACCOUNTING_SYSTEM_COMPLETE.md",
+        "to":  "testing/docs/root-markdown/ACCOUNTING_SYSTEM_COMPLETE.md"
+    },
+    {
+        "from":  "AGENT_CODEBASE_SUMMARY.md",
+        "to":  "testing/docs/root-markdown/AGENT_CODEBASE_SUMMARY.md"
+    },
+    {
+        "from":  "APRIL_17_RECOVERY_COMPLETE.md",
+        "to":  "testing/docs/root-markdown/APRIL_17_RECOVERY_COMPLETE.md"
+    },
+    {
+        "from":  "BATCH_MANAGEMENT_COMPLETE.md",
+        "to":  "testing/docs/root-markdown/BATCH_MANAGEMENT_COMPLETE.md"
+    },
+    {
+        "from":  "CODE_TREE.md",
+        "to":  "testing/docs/root-markdown/CODE_TREE.md"
+    },
+    {
+        "from":  "CORELYNK_LAW_TO_FOLLOW.MD",
+        "to":  "testing/docs/root-markdown/CORELYNK_LAW_TO_FOLLOW.MD"
+    },
+    {
+        "from":  "CORELYNK_RENAME_GUIDE.md",
+        "to":  "testing/docs/root-markdown/CORELYNK_RENAME_GUIDE.md"
+    },
+    {
+        "from":  "CRITICAL_FIX_OVER_SHIPMENT.md",
+        "to":  "testing/docs/root-markdown/CRITICAL_FIX_OVER_SHIPMENT.md"
+    },
+    {
+        "from":  "DELIVERY_ORDERS_IMPLEMENTATION.md",
+        "to":  "testing/docs/root-markdown/DELIVERY_ORDERS_IMPLEMENTATION.md"
+    },
+    {
+        "from":  "ERP_PROCUREMENT_AUDIT.md",
+        "to":  "testing/docs/root-markdown/ERP_PROCUREMENT_AUDIT.md"
+    },
+    {
+        "from":  "FINAL_FIX_SUMMARY.md",
+        "to":  "testing/docs/root-markdown/FINAL_FIX_SUMMARY.md"
+    },
+    {
+        "from":  "GRN_DATA_LOSS_TROUBLESHOOTING.md",
+        "to":  "testing/docs/root-markdown/GRN_DATA_LOSS_TROUBLESHOOTING.md"
+    },
+    {
+        "from":  "GRN_PARTIAL_RECEIVING_DESIGN.md",
+        "to":  "testing/docs/root-markdown/GRN_PARTIAL_RECEIVING_DESIGN.md"
+    },
+    {
+        "from":  "GRN_PARTIAL_RECEIVING_IMPLEMENTATION.md",
+        "to":  "testing/docs/root-markdown/GRN_PARTIAL_RECEIVING_IMPLEMENTATION.md"
+    },
+    {
+        "from":  "HIERARCHICAL_PRODUCTION_IMPLEMENTATION.md",
+        "to":  "testing/docs/root-markdown/HIERARCHICAL_PRODUCTION_IMPLEMENTATION.md"
+    },
+    {
+        "from":  "IMPLEMENTATION_COMPLETE.md",
+        "to":  "testing/docs/root-markdown/IMPLEMENTATION_COMPLETE.md"
+    },
+    {
+        "from":  "INTELLIGENT_AUDIT_SYSTEM.md",
+        "to":  "testing/docs/root-markdown/INTELLIGENT_AUDIT_SYSTEM.md"
+    },
+    {
+        "from":  "MODERN_UI_GUIDE.md",
+        "to":  "testing/docs/root-markdown/MODERN_UI_GUIDE.md"
+    },
+    {
+        "from":  "MYSQL_CONNECTION_FIX.md",
+        "to":  "testing/docs/root-markdown/MYSQL_CONNECTION_FIX.md"
+    },
+    {
+        "from":  "PARTIAL_PO_LOGIC_FIX.md",
+        "to":  "testing/docs/root-markdown/PARTIAL_PO_LOGIC_FIX.md"
+    },
+    {
+        "from":  "PENDING_PAYMENTS_FIX.md",
+        "to":  "testing/docs/root-markdown/PENDING_PAYMENTS_FIX.md"
+    },
+    {
+        "from":  "PHASE1_IMPLEMENTATION_SUMMARY.md",
+        "to":  "testing/docs/root-markdown/PHASE1_IMPLEMENTATION_SUMMARY.md"
+    },
+    {
+        "from":  "PHASE_3_FULFILLMENT_TRACKING.md",
+        "to":  "testing/docs/root-markdown/PHASE_3_FULFILLMENT_TRACKING.md"
+    },
+    {
+        "from":  "PO_ADVANCE_PAYMENT_IMPLEMENTATION.md",
+        "to":  "testing/docs/root-markdown/PO_ADVANCE_PAYMENT_IMPLEMENTATION.md"
+    },
+    {
+        "from":  "PRODUCTION_LOGGING_COMPLETE.md",
+        "to":  "testing/docs/root-markdown/PRODUCTION_LOGGING_COMPLETE.md"
+    },
+    {
+        "from":  "QUICK_TEST_PENDING_PAYMENTS.md",
+        "to":  "testing/docs/root-markdown/QUICK_TEST_PENDING_PAYMENTS.md"
+    },
+    {
+        "from":  "README.md",
+        "to":  "testing/docs/root-markdown/README.md"
+    },
+    {
+        "from":  "SYSTEM_ARCHITECTURE_REFERENCE.md",
+        "to":  "testing/docs/root-markdown/SYSTEM_ARCHITECTURE_REFERENCE.md"
+    },
+    {
+        "from":  "TRIAL_BALANCE_FIXES.md",
+        "to":  "testing/docs/root-markdown/TRIAL_BALANCE_FIXES.md"
+    },
+    {
+        "from":  "VENDOR_BILL_FRONTEND_GUIDE.md",
+        "to":  "testing/docs/root-markdown/VENDOR_BILL_FRONTEND_GUIDE.md"
+    },
+    {
+        "from":  "VENDOR_BILL_IMPLEMENTATION.md",
+        "to":  "testing/docs/root-markdown/VENDOR_BILL_IMPLEMENTATION.md"
+    },
+    {
+        "from":  "VENDOR_BILL_QUICK_REFERENCE.md",
+        "to":  "testing/docs/root-markdown/VENDOR_BILL_QUICK_REFERENCE.md"
+    }
+]

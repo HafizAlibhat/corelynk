@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Button Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <h2>Test Page - Click Button</h2>
+        
+        <div class="mb-3">
+            <button class="btn btn-sm btn-outline-primary view-processes" data-item-id="1" data-product-id="10">
+                <i class="bi bi-list"></i> View Processes & Batches
+            </button>
+        </div>
+        
+        <div class="processes-container mt-2" id="processes-for-item-1" style="display:none">
+            <!-- Results will appear here -->
+        </div>
+    </div>
+
+    <script>
+    // Global function to fetch and render processes
+    async function fetchAndRenderProcesses(itemId, productId) {
+        console.log('fetchAndRenderProcesses called with:', itemId, productId);
+        const workOrderId = 1; // Use work order 1 for testing
+        const base = 'http://localhost/pro_sys/public/index.php/work-orders';
+        const container = document.getElementById('processes-for-item-' + itemId);
+        if (!container) {
+            console.error('Container not found for item', itemId);
+            return;
+        }
+        
+        // toggle off if already visible
+        if (container.style.display === 'block') { 
+            container.style.display = 'none'; 
+            return; 
+        }
+        
+        container.innerHTML = '<div class="text-muted">Loading...</div>';
+        container.style.display = 'block';
+        
+        try {
+            const url = `${base}/${workOrderId}/items/${itemId}/processes?product_id=${productId}`;
+            console.log('Fetching URL:', url);
+            
+            const res = await fetch(url, { 
+                credentials: 'same-origin', 
+                headers: { 'X-Requested-With': 'XMLHttpRequest' } 
+            });
+            
+            console.log('Response status:', res.status);
+            console.log('Response headers:', res.headers.get('content-type'));
+            
+            const ctype = res.headers.get('content-type') || '';
+            let data;
+            if (ctype.indexOf('application/json') !== -1) {
+                data = await res.json();
+                console.log('JSON data:', data);
+            } else {
+                const txt = await res.text();
+                console.warn('Non-JSON response:', res.status, txt.slice(0,200));
+                container.innerHTML = `<div class="text-warning">Server returned non-JSON response (status ${res.status}).<br><small>Response preview:</small><pre style="max-height:200px;overflow:auto">${txt.replace(/</g,'&lt;').slice(0,1000)}</pre></div>`;
+                return;
+            }
+            
+            if (!data || !data.success) { 
+                container.innerHTML = '<div class="text-muted">No processes found or request failed</div>'; 
+                return; 
+            }
+            
+            let html = '<div class="alert alert-success">Data loaded successfully!</div>';
+            data.processes.forEach(p => {
+                html += `<div class="border rounded p-2 mb-2">`;
+                html += `<div><strong>${p.process_name || ('Process ' + p.process_id)}</strong></div>`;
+                html += `<div><small class="text-muted">${p.process_description || 'No description'}</small></div>`;
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+            
+        } catch (err) {
+            console.error('Fetch error:', err);
+            container.innerHTML = '<div class="text-danger">Error loading processes: ' + err.message + '</div>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, setting up test...');
+        
+        const buttons = document.querySelectorAll('.view-processes');
+        console.log('Found', buttons.length, 'view-processes buttons');
+        
+        buttons.forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                console.log('BUTTON CLICKED! Item:', btn.dataset.itemId, 'Product:', btn.dataset.productId);
+                alert('Button clicked! Item: ' + btn.dataset.itemId + ' Product: ' + btn.dataset.productId);
+                
+                try { 
+                    fetchAndRenderProcesses(btn.dataset.itemId, btn.dataset.productId); 
+                } catch (err) { 
+                    console.error('Error calling fetchAndRenderProcesses:', err);
+                    alert('Error: ' + err.message);
+                }
+            });
+        });
+        
+        console.log('Event listeners attached');
+    });
+    </script>
+</body>
+</html>

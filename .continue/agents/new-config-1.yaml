@@ -1,0 +1,17 @@
+name: "Remote Ollama"
+version: "1.0.0"
+
+providers:
+  - id: "ollama-remote"
+    type: "ollama"
+    url: "http://192.168.100.222:11434"
+
+models:
+  - providerId: "ollama-remote"
+    modelName: "phi4-mini:latest"
+  - providerId: "ollama-remote"
+    modelName: "llama3.1:8b"
+  - providerId: "ollama-remote"
+    modelName: "deepseek-r1:7b"
+
+defaultModel: "phi4-mini:latest"

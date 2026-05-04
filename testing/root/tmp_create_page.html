@@ -1,0 +1,1831 @@
+﻿<!-- DEBUG-VIEW START 9 APPPATH\Views\dashboard\index.php -->
+<!-- DEBUG-VIEW START 8 APPPATH\Views\layouts\main.php -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script  id="debugbar_loader" data-time="1765540660.543865" src="http://localhost/corelynk/?debugbar"></script><script  id="debugbar_dynamic_script"></script><style  id="debugbar_dynamic_style"></style><script class="kint-rich-script">"use strict";(()=>{function m(n){if(!(n instanceof Element))throw new Error("Invalid argument to dedupeElement()");let t=n.ownerDocument,e=E(n);for(let s of t.querySelectorAll(e))n!==s&&s.parentNode.removeChild(s)}function d(n){return n instanceof Element?n.ownerDocument.contains(n):!1}function E(n){if(!(n instanceof Element))throw new Error("Invalid argument to buildClassSelector()");return[n.nodeName,...n.classList].join(".")}function f(n){if(!(n instanceof Element))throw new Error("Invalid argument to selectText()");let t=n.ownerDocument,e=t.getSelection(),s=t.createRange();s.selectNodeContents(n),e.removeAllRanges(),e.addRange(s)}function I(n,t){let e;return function(...s){clearTimeout(e),e=setTimeout(function(){n(...s)},t)}}function x(n){if(!(n instanceof Element))throw new Error("Invalid argument to offsetTop()");return n.offsetTop+(n.offsetParent?x(n.offsetParent):0)}var u=class n{static#e=new Set;static toggleSearchBox(t,e){let s=t.querySelector(".kint-search"),i=t.parentNode;if(s)if(s.classList.toggle("kint-show",e)){if(s.focus(),s.select(),!n.#e.has(s)){let r=i.querySelectorAll("dl").length,o=200;r>1e4&&(o=700),s.addEventListener("keyup",I(n.#t.bind(null,s),o)),n.#e.add(s)}n.#t(s)}else i.classList.remove("kint-search-root")}static#t(t){let e=t.closest(".kint-parent")?.parentNode;if(e)if(t.classList.contains("kint-show")&&t.value.length){let s=e.dataset.lastSearch;if(e.classList.add("kint-search-root"),s!==t.value){e.dataset.lastSearch=t.value,e.classList.remove("kint-search-match");for(let i of e.querySelectorAll(".kint-search-match"))i.classList.remove("kint-search-match");n.#s(e,t.value.toUpperCase())}}else e.classList.remove("kint-search-root")}static#s(t,e){let s=t.cloneNode(!0);for(let c of s.querySelectorAll(".access-path"))c.remove();if(!s.textContent.toUpperCase().includes(e))return;t.classList.add("kint-search-match");let i=t.firstElementChild;for(;i&&i.tagName!=="DT";)i=i.nextElementSibling;if(!i)return;let r=a.getChildContainer(i);if(!r)return;let o,l;for(let c of r.children)c.tagName==="DL"?n.#s(c,e):c.tagName==="UL"&&(c.classList.contains("kint-tabs")?o=c.children:c.classList.contains("kint-tab-contents")&&(l=c.children));if(!(!o||o.length!==l?.length))for(let c=o.length;c--;){let k=!1,F=!1;o[c].textContent.toUpperCase().includes(e)&&(k=!0);let O=l[c].cloneNode(!0);for(let v of O.querySelectorAll(".access-path"))v.remove();if(O.textContent.toUpperCase().includes(e)&&(k=!0,F=!0),k&&o[c].classList.add("kint-search-match"),F)for(let v of l[c].children)v.tagName==="DL"&&n.#s(v,e)}}};var g=class{static sort(t,e){let s=t.dataset.kintTableSort,i=parseInt(s)===e?-1:1,r=t.tBodies[0];[...r.rows].sort(function(o,l){o=o.cells[e].textContent.trim().toLocaleLowerCase(),l=l.cells[e].textContent.trim().toLocaleLowerCase();let c=0;return!isNaN(o)&&!isNaN(l)?(o=parseFloat(o),l=parseFloat(l),c=o-l):isNaN(o)&&!isNaN(l)?c=1:isNaN(l)&&!isNaN(o)?c=-1:c=(""+o).localeCompare(""+l),c*i}).forEach(o=>r.appendChild(o)),i<0?t.dataset.kintTableSort=null:t.dataset.kintTableSort=e}};var a=class n{#e;#t;#s;constructor(t){if(!(t instanceof h))throw new Error("Invalid argument to Rich.constructor()");this.#e=t,this.#e.runOnInit(this.#i.bind(this));let e=new q(this,t);new b(this,t.window,e)}#i(){let t=this.#e.window.document;if(d(this.#t)||(this.#t=t.querySelector("style.kint-rich-style")),this.#t&&m(this.#t),t.querySelector(".kint-rich.kint-file")){this.setupFolder(t);let e=this.#s.querySelector("dd.kint-foldout"),s=Array.from(t.querySelectorAll(".kint-rich.kint-file"));for(let i of s)i.parentNode!==e&&e.appendChild(i);this.#s.classList.add("kint-show")}}addToFolder(t){let e=t.closest(".kint-rich");if(!e)throw new Error("Bad addToFolder");let s=this.#e.window.document;if(this.setupFolder(s),this.folder.contains(t))throw new Error("Bad addToFolder");let i=this.#s.querySelector("dd.kint-foldout"),r=t.closest(".kint-parent, .kint-rich"),o=Array.from(e.querySelectorAll(".kint-folder-trigger"));if(e===r||e.querySelectorAll(".kint-rich > dl").length===1){for(let l of o)l.remove();e.classList.add("kint-file"),i.insertBefore(e,i.firstChild)}else{let l=s.createElement("div");l.classList.add("kint-rich"),l.classList.add("kint-file"),l.appendChild(r.closest(".kint-rich > dl"));let c=e.lastElementChild;c.matches(".kint-rich > footer")&&l.appendChild(c.cloneNode(!0));for(let k of o)k.remove();i.insertBefore(l,i.firstChild)}n.toggle(this.#s.querySelector(".kint-parent"),!0)}setupFolder(t){if(this.#s)d(this.#s)||(this.#s=t.querySelector(".kint-rich.kint-folder"));else{let e=t.createElement("template");e.innerHTML='<div class="kint-rich kint-folder"><dl><dt class="kint-parent"><nav></nav>Kint</dt><dd class="kint-foldout"></dd></dl></div>',this.#s=e.content.firstChild,t.body.appendChild(this.#s)}}get folder(){return d(this.#s)||(this.#s=this.#e.window.document.querySelector(".kint-rich.kint-folder")),this.#s&&m(this.#s),this.#s}isFolderOpen(){let t=this.#s?.querySelector("dd.kint-foldout");if(t)return t.previousSibling.classList.contains("kint-show")}static getChildContainer(t){let e=t.nextElementSibling;for(;e&&!e.matches("dd");)e=e.nextElementSibling;return e}static toggle(t,e){let s=n.getChildContainer(t);s&&(e=t.classList.toggle("kint-show",e),n.#n(s,e))}static switchTab(t){t.parentNode.getElementsByClassName("kint-active-tab")[0].classList.remove("kint-active-tab"),t.classList.add("kint-active-tab");let e=t,s=0;for(;e=e.previousElementSibling;)s++;let i=t.parentNode.nextSibling.children;for(let r=i.length;r--;)r===s?(i[r].classList.add("kint-show"),n.#n(i[r],!0)):i[r].classList.remove("kint-show")}static toggleChildren(t,e){let s=n.getChildContainer(t);if(!s)return;e===void 0&&(e=t.classList.contains("kint-show"));let i=Array.from(s.getElementsByClassName("kint-parent"));for(let r of i)r.classList.toggle("kint-show",e)}static toggleAccessPath(t,e){let s=t.querySelector(".access-path");s?.classList.toggle("kint-show",e)&&f(s)}static#n(t,e){if(t.children.length===2&&t.lastElementChild.matches("ul.kint-tab-contents"))for(let s of t.lastElementChild.children)s.matches("li.kint-show")&&(t=s);if(t.children.length===1&&t.firstElementChild.matches("dl")){let s=t.firstElementChild.firstElementChild;s?.classList?.contains("kint-parent")&&n.toggle(s,e)}}},b=class{#e;#t;#s;#i=null;#n=null;#o=0;constructor(t,e,s){this.#e=t,this.#t=s,this.#s=e,this.#s.addEventListener("click",this.#a.bind(this),!0)}#r(){clearTimeout(this.#i),this.#i=setTimeout(this.#l.bind(this),250)}#l(){clearTimeout(this.#i),this.#i=null,this.#n=null,this.#o=0}#c(){let t=this.#n;if(!t.matches(".kint-parent > nav"))return;let e=t.parentNode;if(this.#o===1)a.toggleChildren(e),this.#t.onTreeChanged(),this.#r(),this.#o=2;else if(this.#o===2){this.#l();let s=e.classList.contains("kint-show"),i=this.#e.folder?.querySelector(".kint-parent"),r=Array.from(this.#s.document.getElementsByClassName("kint-parent"));for(let o of r)o!==i&&o.classList.toggle("kint-show",s);this.#t.onTreeChanged(),this.#t.scrollToFocus()}}#a(t){if(this.#o){this.#c();return}let e=t.target;if(!e.closest(".kint-rich"))return;if(e.tagName==="DFN"&&f(e),e.tagName==="TH"){t.ctrlKey||g.sort(e.closest("table"),e.cellIndex);return}if(e.tagName==="LI"&&e.parentNode.className==="kint-tabs"){if(e.className!=="kint-active-tab"){let i=e.closest("dl")?.querySelector(".kint-parent > nav")??e;a.switchTab(e),this.#t.onTreeChanged(),this.#t.setCursor(i)}return}let s=e.closest("dt");if(e.tagName==="NAV")e.parentNode.tagName==="FOOTER"?(this.#t.setCursor(e),e.parentNode.classList.toggle("kint-show")):s?.classList.contains("kint-parent")&&(a.toggle(s),this.#t.onTreeChanged(),this.#t.setCursor(e),this.#r(),this.#o=1,this.#n=e);else if(e.classList.contains("kint-access-path-trigger"))s&&a.toggleAccessPath(s);else if(e.classList.contains("kint-search-trigger"))s?.matches(".kint-rich > dl > dt.kint-parent")&&u.toggleSearchBox(s);else if(e.classList.contains("kint-folder-trigger")){if(s?.matches(".kint-rich > dl > dt.kint-parent"))this.#e.addToFolder(e),this.#t.onTreeChanged(),this.#t.setCursor(s.querySelector("nav")),this.#t.scrollToFocus();else if(e.parentNode.tagName==="FOOTER"){let i=e.closest(".kint-rich").querySelector(".kint-parent > nav, .kint-rich > footer > nav");this.#e.addToFolder(e),this.#t.onTreeChanged(),this.#t.setCursor(i),this.#t.scrollToFocus()}}else e.classList.contains("kint-search")||(e.tagName==="PRE"&&t.detail===3?f(e):e.closest(".kint-source")&&t.detail===3?f(e.closest(".kint-source")):e.classList.contains("access-path")?f(e):e.tagName!=="A"&&s?.classList.contains("kint-parent")&&(a.toggle(s),this.#t.onTreeChanged(),this.#t.setCursor(s.querySelector("nav"))))}},j=65,G=68,A=70,S=72,K=74,D=75,p=76,V=83,P=9,T=13,B=27,L=32,N=37,R=38,C=39,H=40,M=".kint-rich .kint-parent > nav, .kint-rich > footer > nav, .kint-rich .kint-tabs > li:not(.kint-active-tab)",q=class{#e=[];#t=0;#s=!1;#i;#n;constructor(t,e){this.#i=t,this.#n=e.window,this.#n.addEventListener("keydown",this.#c.bind(this),!0),e.runOnInit(this.onTreeChanged.bind(this))}scrollToFocus(){let t=this.#e[this.#t];if(!t)return;let e=this.#i.folder;if(t===e?.querySelector(".kint-parent > nav"))return;let s=x(t);if(this.#i.isFolderOpen()){let i=e.querySelector("dd.kint-foldout");i.scrollTo(0,s-i.clientHeight/2)}else this.#n.scrollTo(0,s-this.#n.innerHeight/2)}onTreeChanged(){let t=this.#e[this.#t];this.#e=[];let e=this.#i.folder,s=e?.querySelector(".kint-parent > nav"),i=this.#n.document;this.#i.isFolderOpen()&&(i=e,this.#e.push(s));let r=Array.from(i.querySelectorAll(M));for(let o of r)o.offsetParent!==null&&o!==s&&this.#e.push(o);if(s&&!this.#i.isFolderOpen()&&this.#e.push(s),this.#e.length===0){this.#s=!1,this.#r();return}t&&this.#e.indexOf(t)!==-1?this.#t=this.#e.indexOf(t):this.#r()}setCursor(t){if(this.#i.isFolderOpen()&&!this.#i.folder.contains(t)||!t.matches(M))return!1;let e=this.#e.indexOf(t);if(e===-1&&(this.onTreeChanged(),e=this.#e.indexOf(t)),e!==-1){if(e!==this.#t)return this.#t=e,this.#r(),!0;this.#e[e]?.classList.remove("kint-weak-focus")}else console.error("setCursor failed to find target in list",t),console.info("Please report this as a bug in Kint at https://github.com/kint-php/kint");return!1}#o(t){if(this.#e.length===0)return this.#t=0,null;for(this.#t+=t;this.#t<0;)this.#t+=this.#e.length;for(;this.#t>=this.#e.length;)this.#t-=this.#e.length;return this.#r(),this.#t}#r(){let t=this.#n.document.querySelector(".kint-focused");t&&(t.classList.remove("kint-focused"),t.classList.remove("kint-weak-focus")),this.#s&&this.#e[this.#t]?.classList.add("kint-focused")}#l(t){let e=t.closest(".kint-rich .kint-parent ~ dd")?.parentNode.querySelector(".kint-parent > nav");e&&(this.setCursor(e),this.scrollToFocus())}#c(t){if(this.#s&&t.keyCode===B&&t.target.matches(".kint-search")){t.target.blur(),this.#r();return}if(t.target!==this.#n.document.body||t.altKey||t.ctrlKey)return;if(t.keyCode===G){if(this.#s)this.#s=!1;else{if(this.#s=!0,this.onTreeChanged(),this.#e.length===0){this.#s=!1;return}this.scrollToFocus()}this.#r(),t.preventDefault();return}else if(t.keyCode===B){this.#s&&(this.#s=!1,this.#r(),t.preventDefault());return}else if(!this.#s)return;t.preventDefault(),d(this.#e[this.#t])||this.onTreeChanged();let e=this.#e[this.#t];if([P,R,D,H,K].includes(t.keyCode)){t.keyCode===P?this.#o(t.shiftKey?-1:1):t.keyCode===R||t.keyCode===D?this.#o(-1):(t.keyCode===H||t.keyCode===K)&&this.#o(1),this.scrollToFocus();return}if(e.tagName==="LI"&&[L,T,C,p,N,S].includes(t.keyCode)){t.keyCode===L||t.keyCode===T?(a.switchTab(e),this.onTreeChanged()):t.keyCode===C||t.keyCode===p?this.#o(1):(t.keyCode===N||t.keyCode===S)&&this.#o(-1),this.scrollToFocus();return}if(e.parentNode.tagName==="FOOTER"&&e.closest(".kint-rich")){if(t.keyCode===L||t.keyCode===T)e.parentNode.classList.toggle("kint-show");else if(t.keyCode===N||t.keyCode===S)if(e.parentNode.classList.contains("kint-show"))e.parentNode.classList.remove("kint-show");else{this.#l(e.closest(".kint-rich"));return}else if(t.keyCode===C||t.keyCode===p)e.parentNode.classList.add("kint-show");else if(t.keyCode===A&&!this.#i.isFolderOpen()&&e.matches(".kint-rich > footer > nav")){let i=e.closest(".kint-rich").querySelector(".kint-parent > nav, .kint-rich > footer > nav");this.#i.addToFolder(e),this.onTreeChanged(),this.setCursor(i),this.scrollToFocus()}return}let s=e.closest(".kint-parent");if(s){if(t.keyCode===j){a.toggleAccessPath(s);return}if(t.keyCode===A){!this.#i.isFolderOpen()&&s.matches(".kint-rich:not(.kint-folder) > dl > .kint-parent")&&(this.#i.addToFolder(e),this.onTreeChanged(),this.setCursor(e),this.scrollToFocus());return}if(t.keyCode===V){let i=s.closest(".kint-rich > dl")?.querySelector(".kint-search")?.closest(".kint-parent");if(i){e.classList.add("kint-weak-focus"),u.toggleSearchBox(i,!0);return}}if(t.keyCode===L||t.keyCode===T){a.toggle(s),this.onTreeChanged();return}if([C,p,N,S].includes(t.keyCode)){let i=s.classList.contains("kint-show");if(t.keyCode===C||t.keyCode===p){i&&a.toggleChildren(s,!0),a.toggle(s,!0),this.onTreeChanged();return}else if(i){a.toggleChildren(s,!1),a.toggle(s,!1),this.onTreeChanged();return}else{this.#l(s);return}}}}};var y=class{#e;#t;constructor(t){if(!(t instanceof h))throw new Error("Invalid argument to Plain.constructor()");this.#e=t.window,t.runOnInit(this.#s.bind(this))}#s(){d(this.#t)||(this.#t=this.#e.document.querySelector("style.kint-plain-style")),this.#t&&m(this.#t)}};var w=class{#e;constructor(t){if(!(t instanceof h))throw new Error("Invalid argument to Microtime.constructor()");this.#e=t.window,t.runOnInit(this.#t.bind(this))}#t(){let t={},e=this.#e.document.querySelectorAll("[data-kint-microtime-group]");for(let s of e){let i=s.querySelector(".kint-microtime-lap");if(!i)continue;let r=s.dataset.kintMicrotimeGroup,o=parseFloat(i.textContent),l=parseFloat(s.querySelector(".kint-microtime-avg").textContent);t[r]??={min:o,max:o,avg:l},t[r].min>o&&(t[r].min=o),t[r].max<o&&(t[r].max=o),t[r].avg=l}for(let s of e){let i=s.querySelector(".kint-microtime-lap");if(!i)continue;let r=parseFloat(i.textContent),o=t[s.dataset.kintMicrotimeGroup];if(s.querySelector(".kint-microtime-avg").textContent=o.avg,!(r===o.min&&r===o.max))if(s.classList.add("kint-microtime-js"),r>o.avg){let l=(r-o.avg)/(o.max-o.avg);i.style.background="hsl("+(40-40*l)+", 100%, 65%)"}else{let l=0;o.avg!==o.min&&(l=(o.avg-r)/(o.avg-o.min)),i.style.background="hsl("+(40+80*l)+", 100%, 65%)"}}}};var U=Symbol(),h=class n{static#e=null;#t;#s=[];#i=new Set;static init(t){return n.#e??=new n(t,U),n.#e.#n(),n.#e.runOnLoad(n.#r),n.#e}get window(){return this.#t}constructor(t,e){if(U!==e)throw new Error("Kint constructor is private. Use Kint.init()");if(!(t instanceof Window))throw new Error("Invalid argument to Kint.init()");this.#t=t,this.runOnInit(this.#o.bind(this)),new y(this),new a(this),new w(this)}runOnLoad(t){if(this.#t.document.readyState==="complete")try{t()}catch{}else this.#t.addEventListener("load",t)}runOnInit(t){this.#s.push(t)}#n(){this.#t.document.currentScript&&(this.#i.add(E(window.document.currentScript)),window.document.currentScript.remove())}#o(){for(let t of this.#i.keys())for(let e of this.#t.document.querySelectorAll(t))e.remove()}static#r(){for(let t of n.#e.#s)t()}};window.Kint||(window.Kint=h);window.Kint.init(window);})();
+</script><style class="kint-rich-style">.kint-rich{--spacing: 4px;--nav-size: 15px;--backdrop-color: rgba(255, 255, 255, 0.9);--main-background: #e0eaef;--secondary-background: #c1d4df;--text-color: #1d1e1e;--variable-name-color: #1d1e1e;--variable-type-color: #0092db;--variable-type-color-hover: #5cb730;--border-color: #b6cedb;--border-color-hover: #0092db;--border: 1px solid var(--border-color);--foldout-max-size: calc(100vh - 100px);--foldout-zindex: 999999;--caret-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 150'><g stroke-width='2' fill='%23FFF'><path d='M1 1h28v28H1zm5 14h18m-9 9V6M1 61h28v28H1zm5 14h18' stroke='%23379'/><path d='M1 31h28v28H1zm5 14h18m-9 9V36M1 91h28v28H1zm5 14h18' stroke='%235A3'/><path d='M1 121h28v28H1zm5 5l18 18m-18 0l18-18' stroke='%23CCC'/></g></svg>");--ap-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g stroke='%23000' fill='transparent'><path d='M2 8h3m3 3v3M8 2v3m3 3h3M3 8' stroke-width='2' stroke-linecap='round'/><circle stroke-width='1.5' r='4.5' cx='8' cy='8'/></g></svg>");--folder-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h4l2 2h6v9H2V2h2' stroke-width='2' stroke='%23000' fill='transparent' stroke-linejoin='round'/></svg>");--search-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g stroke='%23000' fill='transparent'><path d='M2 14l3-3' stroke-linecap='round' stroke-width='3'/><circle stroke-width='2' r='5' cx='9' cy='7'/></g></svg>");font-size:13px;overflow-x:auto;white-space:nowrap;background:var(--backdrop-color);direction:ltr;contain:content}.kint-rich.kint-folder{position:fixed;bottom:0;left:0;right:0;z-index:var(--foldout-zindex);width:100%;margin:0;display:block}.kint-rich.kint-folder dd.kint-foldout{max-height:var(--foldout-max-size);padding-right:calc(var(--spacing)*2);overflow-y:scroll;display:none}.kint-rich.kint-folder dd.kint-foldout.kint-show{display:block}.kint-rich::selection{background:var(--border-color-hover);color:var(--text-color)}.kint-rich .kint-focused{box-shadow:0 0 3px 3px var(--variable-type-color-hover)}.kint-rich .kint-focused.kint-weak-focus{box-shadow:0 0 3px 1px color-mix(in srgb, var(--variable-type-color-hover) 50%, transparent)}.kint-rich,.kint-rich::before,.kint-rich::after,.kint-rich *,.kint-rich *::before,.kint-rich *::after{box-sizing:border-box;border-radius:0;color:var(--text-color);float:none !important;font-family:Consolas,Menlo,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New,monospace,serif;line-height:15px;margin:0;padding:0;text-align:left}.kint-rich{margin:calc(var(--spacing)*2) 0}.kint-rich dt,.kint-rich dl{width:auto}.kint-rich dt,.kint-rich div.access-path{background:var(--main-background);border:var(--border);color:var(--text-color);display:block;font-weight:bold;list-style:none outside none;overflow:auto;padding:var(--spacing)}.kint-rich dt:hover,.kint-rich div.access-path:hover{border-color:var(--border-color-hover)}.kint-rich>dl dl{padding:0 0 0 calc(var(--spacing)*3)}.kint-rich dt.kint-parent>nav,.kint-rich>footer>nav{background:var(--caret-image) no-repeat scroll 0 0/var(--nav-size) 75px rgba(0,0,0,0);cursor:pointer;display:inline-block;height:var(--nav-size);width:var(--nav-size);margin-right:3px;vertical-align:middle}.kint-rich dt.kint-parent:hover>nav,.kint-rich>footer>nav:hover{background-position:0 25%}.kint-rich dt.kint-parent.kint-show>nav,.kint-rich>footer.kint-show>nav{background-position:0 50%}.kint-rich dt.kint-parent.kint-show:hover>nav,.kint-rich>footer.kint-show>nav:hover{background-position:0 75%}.kint-rich dt.kint-parent.kint-locked>nav{background-position:0 100%}.kint-rich dt.kint-parent+dd{display:none;border-left:1px dashed var(--border-color);contain:strict}.kint-rich dt.kint-parent.kint-show+dd{display:block;contain:content}.kint-rich var,.kint-rich var a{color:var(--variable-type-color);font-style:normal}.kint-rich dt:hover var,.kint-rich dt:hover var a{color:var(--variable-type-color-hover)}.kint-rich dfn{font-style:normal;font-family:monospace;color:var(--variable-name-color)}.kint-rich pre{color:var(--text-color);margin:0 0 0 calc(var(--spacing)*3);padding:5px;overflow-y:hidden;border-top:0;border:var(--border);background:var(--main-background);display:block;word-break:normal}.kint-rich .kint-access-path-trigger,.kint-rich .kint-folder-trigger,.kint-rich .kint-search-trigger{background:color-mix(in srgb, var(--text-color) 80%, transparent);border-radius:3px;padding:2px;height:var(--nav-size);width:var(--nav-size);font-size:var(--nav-size);margin-left:5px;font-weight:bold;text-align:center;line-height:1;float:right !important;cursor:pointer;position:relative;overflow:hidden}.kint-rich .kint-access-path-trigger::before,.kint-rich .kint-folder-trigger::before,.kint-rich .kint-search-trigger::before{display:block;content:"";width:100%;height:100%;background:var(--main-background);mask:center/contain no-repeat alpha}.kint-rich .kint-access-path-trigger:hover,.kint-rich .kint-folder-trigger:hover,.kint-rich .kint-search-trigger:hover{background:var(--main-background)}.kint-rich .kint-access-path-trigger:hover::before,.kint-rich .kint-folder-trigger:hover::before,.kint-rich .kint-search-trigger:hover::before{background:var(--text-color)}.kint-rich .kint-access-path-trigger::before{mask-image:var(--ap-image)}.kint-rich .kint-folder-trigger::before{mask-image:var(--folder-image)}.kint-rich .kint-search-trigger::before{mask-image:var(--search-image)}.kint-rich input.kint-search{display:none;border:var(--border);border-top-width:0;border-bottom-width:0;padding:var(--spacing);float:right !important;margin:calc(var(--spacing)*-1) 0;color:var(--variable-name-color);background:var(--secondary-background);height:calc(var(--nav-size) + var(--spacing)*2);width:calc(var(--nav-size)*10);position:relative;z-index:100}.kint-rich input.kint-search.kint-show{display:block}.kint-rich .kint-search-root ul.kint-tabs>li:not(.kint-search-match){background:var(--secondary-background);filter:saturate(0);opacity:.5}.kint-rich .kint-search-root dl:not(.kint-search-match){opacity:.5}.kint-rich .kint-search-root dl:not(.kint-search-match)>dt{background:var(--main-background);filter:saturate(0)}.kint-rich .kint-search-root dl:not(.kint-search-match) dl,.kint-rich .kint-search-root dl:not(.kint-search-match) ul.kint-tabs>li:not(.kint-search-match){opacity:1}.kint-rich div.access-path{background:var(--secondary-background);display:none;margin-top:5px;padding:4px;white-space:pre}.kint-rich div.access-path.kint-show{display:block}.kint-rich footer{padding:0 3px 3px;font-size:9px;background:rgba(0,0,0,0)}.kint-rich footer>.kint-folder-trigger{background:rgba(0,0,0,0)}.kint-rich footer>.kint-folder-trigger::before{background:var(--text-color)}.kint-rich footer nav{height:10px;width:10px;background-size:10px 50px}.kint-rich footer>ol{display:none;margin-left:32px}.kint-rich footer.kint-show>ol{display:block}.kint-rich a{color:var(--text-color);text-shadow:none;text-decoration:underline}.kint-rich a:hover{color:var(--variable-name-color);border-bottom:1px dotted var(--variable-name-color)}.kint-rich ul{list-style:none;padding-left:calc(var(--spacing)*3)}.kint-rich ul:not(.kint-tabs) li{border-left:1px dashed var(--border-color)}.kint-rich ul:not(.kint-tabs) li>dl{border-left:none}.kint-rich ul.kint-tabs{margin:0 0 0 calc(var(--spacing)*3);padding-left:0;background:var(--main-background);border:var(--border);border-top:0}.kint-rich ul.kint-tabs>li{background:var(--secondary-background);border:var(--border);cursor:pointer;display:inline-block;height:calc(var(--spacing)*6);margin:calc(var(--spacing)/2);padding:0 calc(2px + var(--spacing)*2.5);vertical-align:top}.kint-rich ul.kint-tabs>li:hover,.kint-rich ul.kint-tabs>li.kint-active-tab:hover{border-color:var(--border-color-hover);color:var(--variable-type-color-hover)}.kint-rich ul.kint-tabs>li.kint-active-tab{background:var(--main-background);border-top:0;margin-top:-1px;height:27px;line-height:24px}.kint-rich ul.kint-tabs>li:not(.kint-active-tab){line-height:calc(var(--spacing)*5)}.kint-rich ul.kint-tabs li+li{margin-left:0}.kint-rich ul.kint-tab-contents>li{display:none;contain:strict}.kint-rich ul.kint-tab-contents>li.kint-show{display:block;contain:content}.kint-rich dt:hover+dd>ul>li.kint-active-tab{border-color:var(--border-color-hover);color:var(--variable-type-color-hover)}.kint-rich dt>.kint-color-preview{width:var(--nav-size);height:var(--nav-size);display:inline-block;vertical-align:middle;margin-left:10px;border:var(--border);background-color:#ccc;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><path fill="%23FFF" d="M0 0h1v2h1V1H0z"/></svg>');background-size:min(20px,100%)}.kint-rich dt>.kint-color-preview:hover{border-color:var(--border-color-hover)}.kint-rich dt>.kint-color-preview>div{width:100%;height:100%}.kint-rich table{border-collapse:collapse;empty-cells:show;border-spacing:0}.kint-rich table *{font-size:12px}.kint-rich table dt{background:none;padding:calc(var(--spacing)/2)}.kint-rich table dt .kint-parent{min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kint-rich table td,.kint-rich table th{border:var(--border);padding:calc(var(--spacing)/2);vertical-align:center}.kint-rich table th{cursor:alias}.kint-rich table td:first-child,.kint-rich table th{font-weight:bold;background:var(--secondary-background);color:var(--variable-name-color)}.kint-rich table td{background:var(--main-background);white-space:pre}.kint-rich table td>dl{padding:0}.kint-rich table pre{border-top:0;border-right:0}.kint-rich table thead th:first-child{background:none;border:0}.kint-rich table tr:hover>td{box-shadow:0 0 1px 0 var(--border-color-hover) inset}.kint-rich table tr:hover var{color:var(--variable-type-color-hover)}.kint-rich table ul.kint-tabs li.kint-active-tab{height:20px;line-height:17px}.kint-rich pre.kint-source{margin-left:-1px}.kint-rich pre.kint-source[data-kint-filename]:before{display:block;content:attr(data-kint-filename);margin-bottom:var(--spacing);padding-bottom:var(--spacing);border-bottom:1px solid var(--secondary-background)}.kint-rich pre.kint-source>div:before{display:inline-block;content:counter(kint-l);counter-increment:kint-l;border-right:1px solid var(--border-color-hover);padding-right:calc(var(--spacing)*2);margin-right:calc(var(--spacing)*2)}.kint-rich pre.kint-source>div.kint-highlight{background:var(--secondary-background)}.kint-rich .kint-microtime-js .kint-microtime-lap{text-shadow:-1px 0 var(--border-color-hover),0 1px var(--border-color-hover),1px 0 var(--border-color-hover),0 -1px var(--border-color-hover);color:var(--main-background);font-weight:bold}input.kint-note-input{width:100%}.kint-rich{--main-background: #f8f8f8;--secondary-background: #f8f8f8;--variable-type-color: #06f;--variable-type-color-hover: #f00;--border-color: #d7d7d7;--border-color-hover: #aaa;--alternative-background: #fff;--highlight-color: #cfc;--caret-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 150'><path d='M6 7h18l-9 15zm0 30h18l-9 15zm0 45h18l-9-15zm0 30h18l-9-15zm0 12l18 18m-18 0l18-18' fill='%23555'/><path d='M6 126l18 18m-18 0l18-18' stroke-width='2' stroke='%23555'/></svg>")}.kint-rich .kint-focused{box-shadow:0 0 3px 2px var(--variable-type-color-hover)}.kint-rich dt{font-weight:normal}.kint-rich dt.kint-parent{margin-top:4px}.kint-rich dl dl{margin-top:4px;padding-left:25px;border-left:none}.kint-rich>dl>dt{background:var(--secondary-background)}.kint-rich ul{margin:0;padding-left:0}.kint-rich ul:not(.kint-tabs)>li{border-left:0}.kint-rich ul.kint-tabs{background:var(--secondary-background);border:var(--border);border-width:0 1px 1px 1px;padding:4px 0 0 12px;margin-left:-1px;margin-top:-1px}.kint-rich ul.kint-tabs li,.kint-rich ul.kint-tabs li+li{margin:0 0 0 4px}.kint-rich ul.kint-tabs li{border-bottom-width:0;height:calc(var(--spacing)*6 + 1px)}.kint-rich ul.kint-tabs li:first-child{margin-left:0}.kint-rich ul.kint-tabs li.kint-active-tab{border-top:var(--border);background:var(--alternative-background);font-weight:bold;padding-top:0;border-bottom:1px solid var(--alternative-background) !important;margin-bottom:-1px}.kint-rich ul.kint-tabs li.kint-active-tab:hover{border-bottom:1px solid var(--alternative-background)}.kint-rich ul>li>pre{border:var(--border)}.kint-rich dt:hover+dd>ul{border-color:var(--border-color-hover)}.kint-rich pre{background:var(--alternative-background);margin-top:4px;margin-left:25px}.kint-rich .kint-source{margin-left:-1px}.kint-rich .kint-source .kint-highlight{background:var(--highlight-color)}.kint-rich .kint-parent.kint-show>.kint-search{border-bottom-width:1px}.kint-rich table td{background:var(--alternative-background)}.kint-rich table td>dl{padding:0;margin:0}.kint-rich table td>dl>dt.kint-parent{margin:0}.kint-rich table td:first-child,.kint-rich table td,.kint-rich table th{padding:2px 4px}.kint-rich table dd,.kint-rich table dt{background:var(--alternative-background)}.kint-rich table tr:hover>td{box-shadow:none;background:var(--highlight-color)}
+</style>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> - Corelynk</title>
+    <meta name="csrf-token" content="9eeb6bf27abdc261b83bfe4e94414121">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Accounting Dashboard Styles (absolute path to avoid relative resolution inside /accounting) -->
+        <link rel="stylesheet" href="http://localhost/corelynk/assets/css/accounting-dashboard.css">
+    <!-- Fallback duplicate (root-relative) in case base_url misconfigured -->
+    <link rel="stylesheet" href="/corelynk/public/assets/css/accounting-dashboard.css" onerror="this.remove()">
+        <!-- Universal List/Table Styles -->
+    <link rel="stylesheet" href="http://localhost/corelynk/assets/css/style.css?v=2">
+    <!-- Select2 (searchable selects) -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <!-- Speed: avoid blocking on third-party CDNs. Chart.js is now loaded lazily only on pages that need it. -->
+    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <!-- jQuery (required by Select2) and Select2 will be initialized at the end of the page -->
+
+    <script>
+        // Early theme application to avoid FOUC and ensure correct mode before paint
+        (function() {
+            try {
+                var pref = localStorage.getItem('global_theme_pref') || 'dark';
+                var dark = false;
+                if (pref === 'dark') {
+                    dark = true;
+                } else if (pref === 'light' || pref === 'disabled') {
+                    dark = false;
+                } else { // auto
+                    dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                }
+                if (dark) {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    document.addEventListener('DOMContentLoaded', function(){ document.body.classList.add('theme-dark'); });
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                    document.addEventListener('DOMContentLoaded', function(){ document.body.classList.remove('theme-dark'); });
+                }
+            } catch(e) { /* ignore */ }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-dark: #3730a3;
+            --secondary-color: #64748b;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --info-color: #06b6d4;
+            --light-bg: #f8fafc;
+            --white: #ffffff;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --sidebar-width: 250px; /* default sidebar width */
+            --sidebar-collapsed-width: 70px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--gray-700);
+            line-height: 1.6;
+            color-scheme: light dark; /* hint for native form controls */
+        }
+
+        /* Dark theme variables (applied when body has .theme-dark) */
+        body.theme-dark {
+            --light-bg: #0f172a;
+            --white: #1e293b;
+            --gray-50: #162033;
+            --gray-100: #1e293b;
+            --gray-200: #334155;
+            --gray-300: #475569;
+            --gray-400: #64748b;
+            --gray-500: #94a3b8;
+            --gray-600: #cbd5e1;
+            --gray-700: #e2e8f0;
+            --gray-800: #f1f5f9;
+            --gray-900: #f8fafc;
+            background-color: var(--light-bg);
+            color: var(--gray-600);
+        }
+            /* ...existing code... */
+
+    /* Smooth theme transitions */
+    body, .sidebar, .top-header, .card, .card-header, .content-wrapper { transition: background-color .25s ease, color .25s ease, border-color .25s ease; }
+    .top-header .btn-group .btn { display:inline-flex; align-items:center; gap:.25rem; }
+    .top-header .btn-group .btn i { line-height:1; }
+
+    body.theme-dark .sidebar { background: linear-gradient(180deg, var(--white) 0%, var(--gray-50) 100%); border-color: var(--gray-200); }
+        body.theme-dark .top-header { background: var(--white); border-color: var(--gray-200); }
+        body.theme-dark .content-wrapper { background-color: var(--gray-50); }
+        body.theme-dark .card { background: var(--white); color: var(--gray-600); }
+        body.theme-dark .card-header { background: var(--white); border-color: var(--gray-200); }
+        body.theme-dark .nav-link { color: var(--gray-500); }
+        body.theme-dark .nav-link:hover { background: var(--gray-100); color: var(--gray-700); }
+        body.theme-dark .nav-link.active { color: #fff; }
+        body.theme-dark .dropdown-menu { background: var(--white); border-color: var(--gray-200); }
+        body.theme-dark .modal-content { background: var(--white); }
+    body.theme-dark .table { color: var(--gray-600); border-color: var(--gray-300); }
+    body.theme-dark .table thead th { background: var(--gray-100); color: var(--gray-700); border-color: var(--gray-300); }
+    body.theme-dark .table tbody tr { background: var(--white); border-color: var(--gray-300); }
+    body.theme-dark .table-striped tbody tr:nth-of-type(odd) { background: var(--gray-50); }
+    body.theme-dark .tree-table { color: var(--gray-600); }
+    body.theme-dark .form-control, body.theme-dark .form-select { background: var(--gray-50); border-color: var(--gray-300); color: var(--gray-600); }
+    body.theme-dark .form-control::placeholder { color: var(--gray-500); }
+        body.theme-dark .form-control:disabled, body.theme-dark .form-select:disabled { background: var(--gray-100); color: var(--gray-500); }
+        body.theme-dark .btn-outline-secondary { color: var(--gray-500); border-color: var(--gray-300); }
+        body.theme-dark .btn-outline-secondary:hover { background: var(--gray-100); }
+        body.theme-dark .btn-outline-primary { color: var(--primary-light); border-color: var(--primary-light); }
+        body.theme-dark hr { border-color: var(--gray-200); }
+        body.theme-dark .alert { background: var(--gray-100); color: var(--gray-700); border-color: var(--gray-200); }
+    body.theme-dark .badge.bg-light, body.theme-dark .badge.text-bg-light, body.theme-dark .tt-badge { background: var(--gray-50) !important; color: var(--gray-700) !important; border-color: var(--gray-300) !important; }
+
+        /* Sidebar Styles */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--white) 0%, var(--gray-50) 100%);
+            border-right: 1px solid var(--gray-200);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        .sidebar.collapsed .nav-link span {
+            display: none;
+        }
+
+        .sidebar.collapsed .sidebar-brand .brand-text {
+            display: none;
+        }
+
+        /* Hide old left sidebar UI: top menu replaces it (keeps markup for backward compatibility) */
+        .sidebar, .sidebar-backdrop, .sidebar-toggle { display: none !important; }
+        .main-content { margin-left: 0 !important; }
+
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid var(--gray-200);
+            background: var(--white);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--gray-800);
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.75rem;
+            font-size: 1.25rem;
+            color: white;
+        }
+
+        .brand-text {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+
+        .sidebar-toggle {
+            background: none;
+            border: none;
+            color: var(--gray-500);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
+        .sidebar-nav {
+            padding: 1rem 0;
+        }
+
+        .nav-item {
+            margin: 0 0.75rem 0.25rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            color: var(--gray-600);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            background: var(--gray-100);
+            color: var(--gray-800);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            color: white;
+            box-shadow: var(--shadow);
+        }
+
+        .nav-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            font-size: 1rem;
+        }
+
+        /* Main Content Layout */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.sidebar-collapsed {
+            margin-left: var(--sidebar-collapsed-width);
+        }
+
+        .top-header {
+            display: none;
+        }
+
+        /* Ensure top nav links are visible and accessible (desktop) */
+        .top-header .nav .nav-link { color: var(--gray-700); padding: .5rem .75rem; font-weight:600; }
+        .top-header .nav .nav-link:hover, .top-header .nav .nav-link:focus { color: var(--primary-dark); background: transparent; }
+        .top-header .nav .dropdown-menu { min-width: 220px; }
+
+        /* When overlay sidebar open prevent body scroll */
+        body.no-scroll {
+            overflow: hidden;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            background-color: var(--gray-50);
+            margin-top: 1rem;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+        }
+
+        /* Cards */
+        .card {
+            border: none;
+            box-shadow: var(--shadow-sm);
+            border-radius: 12px;
+        }
+
+        .card-header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-200);
+            border-radius: 12px 12px 0 0;
+        }
+
+        /* Global section header pattern (reused across pages)
+           Use .section-header in a .card-header, plus optional .section-icon, .section-title, .section-sub */
+        .section-header { background: linear-gradient(90deg, #ffffff, #f8fafc); border-bottom: 1px solid var(--gray-200); }
+        .section-icon { width:40px; height:40px; border-radius:8px; font-size:1.1rem; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,.08); }
+        .section-title { font-weight:600; letter-spacing:.5px; }
+        .section-sub { color:#6c757d; }
+        /* Color accents helpers */
+        .section-accent-primary { background:#0d6efd; color:#fff; }
+        .section-accent-amber { background:#f59e0b; color:#0f172a; }
+        .section-accent-green { background:#22c55e; color:#0f172a; }
+
+        /* Back-compat: map existing logs headers to the generic pattern */
+        .start-batch-header, .active-batches-header { background: linear-gradient(90deg,#ffffff,#f8fafc); border-bottom:1px solid var(--gray-200); }
+        .sbh-icon, .abh-icon { width:40px; height:40px; border-radius:8px; font-size:1.1rem; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,.08); }
+        .sbh-title, .abh-title { font-weight:600; letter-spacing:.5px; }
+        .sbh-sub, .abh-sub { color:#6c757d; }
+
+          /* Compact action icon buttons and consistent action cell spacing
+             NOTE: Action/button styles (including .btn-icon and .actions-col) are centralized
+             in public/assets/css/style.css. Per-view/inline duplicates removed to avoid
+             overriding the single source of truth. */
+          .tt-actions { white-space: nowrap; }
+
+        /* Lightweight pill badges used in tables */
+        .tt-badge { display:inline-flex; align-items:center; gap:.25rem; padding:.12rem .45rem; border-radius:.9rem; font-size:.7rem; border:1px solid var(--gray-200); background:#f8f9fb; color:#495057; }
+        /* Status chips */
+        .tt-status { display:inline-flex; align-items:center; gap:.25rem; padding:.12rem .45rem; border-radius:.9rem; font-size:.7rem; border:1px solid transparent; }
+        .tt-s-plan { background:#fff3cd; color:#664d03; border-color:#ffecb5; }
+        .tt-s-inprog { background:#e7f1ff; color:#0a58ca; border-color:#d0e3ff; }
+        .tt-s-done { background:#d1e7dd; color:#0f5132; border-color:#badbcc; }
+
+        /* Dark variants */
+        body.theme-dark .section-header { background: linear-gradient(90deg,#0f172a,#1e293b); border-bottom-color: var(--gray-200); }
+        body.theme-dark .section-sub { color: var(--gray-500); }
+        body.theme-dark .sbh-icon { background:#22c55e; color:#0f172a; }
+        body.theme-dark .abh-icon { background:#f59e0b; color:#0f172a; }
+        body.theme-dark .tt-badge { background: var(--gray-50); border-color: var(--gray-300); color: var(--gray-700); }
+        body.theme-dark .tt-status { border-color: var(--gray-300); }
+
+        /* Make Bootstrap's utility .bg-white respect dark theme for headers/cards */
+        body.theme-dark .bg-white {
+            background: var(--gray-100) !important;
+            color: var(--gray-700) !important;
+            border-color: var(--gray-300) !important;
+        }
+
+        /* Ensure card headers that used bg-white blend with dark theme and use subtle gradient */
+        body.theme-dark .card-header.bg-white {
+            background: linear-gradient(90deg, var(--gray-100) 0%, var(--white) 100%) !important;
+            border-bottom: 1px solid var(--gray-300) !important;
+            color: var(--gray-700) !important;
+        }
+
+        /* Price input compact styling for right-panel */
+        .price-row .price-field { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+        .price-row .currency-select { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; max-width: 110px; }
+        .price-row .input-group-sm .price-field, .price-row .input-group-sm .currency-select { height: calc(1.5em + .5rem); }
+        .price-row .form-label { display:block; margin-bottom:.25rem; }
+
+        /* Slightly tighten the Settings card spacing */
+        .card .card-body .form-label.small { font-weight:600; color:var(--gray-500); }
+
+    /* Actions column: keep it compact and right aligned across list tables */
+    .table .actions-col, .table th.actions-col { white-space: nowrap; width: 1%; }
+    .table td.actions-col { text-align: right; }
+    .table .btn-group, .table .btn-group-sm { gap: .25rem; }
+    /* Make sure tables use full available width */
+    .table { width: 100%; }
+
+    /* Action/button visual rules have been moved to public/assets/css/style.css
+       to ensure consistent styling across all views and to avoid inline overrides. */
+
+        /* Status badges */
+        .badge {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 6px;
+        }
+
+        /* Stats Cards */
+        .stats-card {
+            background: linear-gradient(135deg, #0c1531, #111933 85%);
+            border-radius: 12px;
+            padding: 1.5rem;
+            color: white;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow-md);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stats-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stats-card.bg-gradient-primary {
+            background: linear-gradient(135deg, #1f2a44, #12213b);
+        }
+
+        .stats-card.bg-gradient-success {
+            background: linear-gradient(135deg, #1d2d26, #101b16);
+        }
+
+        .stats-card.bg-gradient-warning {
+            background: linear-gradient(135deg, #3f3012, #1f1707);
+        }
+
+        .stats-card.bg-gradient-info {
+            background: linear-gradient(135deg, #14232f, #0b1720);
+        }
+
+        /* Global compact data-first utilities (applies app-wide) */
+        .table-compact { font-size: .88rem; }
+        .table-compact th, .table-compact td { padding: .35rem .5rem !important; }
+        .btn-xs { --bs-btn-padding-y: .125rem; --bs-btn-padding-x: .35rem; --bs-btn-font-size: .7rem; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .filters-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:.5rem; }
+        .filters-panel { border:1px solid var(--gray-200); border-radius:10px; padding:.5rem; }
+
+        .stats-content {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .stats-icon {
+            font-size: 2.5rem;
+            margin-right: 1rem;
+            opacity: 0.8;
+        }
+
+        .stats-info h3 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1;
+        }
+
+        .stats-info p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                z-index: 1050;
+            }
+            
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .main-content.sidebar-collapsed {
+                margin-left: 0;
+            }
+            
+            .top-header {
+                padding: 1rem;
+            }
+            
+            .content-wrapper {
+                padding: 1rem;
+            }
+        }
+
+        /* Backdrop for mobile/sidebar overlay */
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 900;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar.show + .sidebar-backdrop {
+            display: block;
+        }
+
+        /* Utility classes */
+        .border-left-primary {
+            border-left: 4px solid var(--primary-color);
+        }
+
+        <nav class="sidebar-nav">
+            <ul class="nav flex-column">
+                <li class="nav-item section-title text-uppercase small text-muted px-3 mt-2">Purchases</li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/accounting/purchase-orders">
+                        <i class="bi bi-cart4"></i>
+                        <span>Purchase Orders</span>
+                    </a>
+                </li>
+                <li class="nav-item ms-3">
+                    <a class="nav-link " href="http://localhost/corelynk/accounting/purchase-orders">
+                        <i class="bi bi-box-arrow-in-down"></i>
+                        <span>Receipts / GRNs</span>
+                    </a>
+                </li>
+                <li class="nav-item ms-3">
+                    <a class="nav-link " href="http://localhost/corelynk/vendors">
+                        <i class="bi bi-people"></i>
+                        <span>Vendors</span>
+                    </a>
+                </li>
+
+                <li class="nav-item section-title text-uppercase small text-muted px-3 mt-3">Inventory</li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/products">
+                        <i class="bi bi-box-seam"></i>
+                        <span>Products</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/components">
+                        <i class="bi bi-tools"></i>
+                        <span>Components</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/inventory">
+                        <i class="bi bi-boxes"></i>
+                        <span>Stock</span>
+                    </a>
+                </li>
+
+                <li class="nav-item section-title text-uppercase small text-muted px-3 mt-3">Production</li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/work-orders">
+                        <i class="bi bi-list-check"></i>
+                        <span>Work Orders</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/processes">
+                        <i class="bi bi-gear"></i>
+                        <span>Processes</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/logs">
+                        <i class="bi bi-clipboard-data"></i>
+                        <span>Production Logs</span>
+                    </a>
+                </li>
+
+
+                <li class="nav-item section-title text-uppercase small text-muted px-3 mt-3">Sales</li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/customers">
+                        <i class="bi bi-people-fill"></i>
+                        <span>Customers</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/product-categories">
+                        <i class="bi bi-tags"></i>
+                        <span>Category Management</span>
+                    </a>
+                </li>
+
+                <li class="nav-item section-title text-uppercase small text-muted px-3 mt-3">Accounting</li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/accounting/cheques">
+                        <i class="bi bi-receipt"></i>
+                        <span>Cheques & Payments</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/accounting/journals">
+                        <i class="bi bi-journal-text"></i>
+                        <span>Journals</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link " href="http://localhost/corelynk/accounting/accounts">
+                        <i class="bi bi-list-ul"></i>
+                        <span>Accounts</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+
+    <!-- Backdrop for overlay sidebar on smaller screens -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Top Header (leaned down, nav is provided by global_nav) -->
+        <header class="top-header">
+            <div class="header-left d-flex align-items-center gap-3">
+                <h1 class="mb-0"></h1>
+            </div>
+            <div class="header-right d-flex align-items-center gap-2">
+                <!-- DEBUG-VIEW START 6 APPPATH\Views\partials\mega_menu.php -->
+<div class="nav-item dropdown me-2 d-none d-md-block">
+    <a class="btn btn-sm btn-outline-primary dropdown-toggle" href="#" id="allLinksMenuTop" data-bs-toggle="dropdown" aria-expanded="false" title="All Links">
+        <i class="bi bi-compass"></i>
+    </a>
+    <div class="dropdown-menu p-3" aria-labelledby="allLinksMenuTop" style="min-width:720px;">
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Core</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/"><i class="bi bi-house me-2"></i>Home</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/dashboard"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/notifications"><i class="bi bi-bell me-2"></i>Notifications</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/search"><i class="bi bi-search me-2"></i>Search</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/help"><i class="bi bi-question-circle me-2"></i>Help</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/profile"><i class="bi bi-person-circle me-2"></i>Profile</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/settings"><i class="bi bi-gear me-2"></i>Settings</a>
+                                    <a class="dropdown-item text-danger" href="http://localhost/corelynk/devtools/clear-data"><i class="bi bi-broom me-2"></i>Development: Clear Data</a>
+                            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Purchasing</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/purchase-orders"><i class="bi bi-cart4 me-2"></i>Purchase Orders</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/purchase-orders"><i class="bi bi-box-arrow-in-down me-2"></i>Receipts / GRNs</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/vendors"><i class="bi bi-people me-2"></i>Vendors</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/vendor-contacts"><i class="bi bi-person-lines-fill me-2"></i>Vendor Contacts</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/cheques"><i class="bi bi-receipt me-2"></i>Vendor Payments</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/gate_passes"><i class="bi bi-door-open me-2"></i>Gate Passes</a>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Inventory</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/products"><i class="bi bi-box-seam me-2"></i>Products</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/product-categories"><i class="bi bi-tags me-2"></i>Product Categories</a>
+                    <a class="dropdown-item" href="http://localhost/corelynk/product-attributes"><i class="bi bi-list-ul me-2"></i>Attributes</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/product-processes"><i class="bi bi-layout-text-sidebar-reverse me-2"></i>Product Processes</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/components"><i class="bi bi-tools me-2"></i>Components</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/inventory"><i class="bi bi-boxes me-2"></i>Stock</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/inventory/transactions"><i class="bi bi-stack me-2"></i>Inventory Transactions</a>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Production</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/work-orders"><i class="bi bi-list-check me-2"></i>Work Orders</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/processes"><i class="bi bi-gear me-2"></i>Processes</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/process-templates"><i class="bi bi-journal-bookmark me-2"></i>Process Templates</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/process-categories"><i class="bi bi-sliders me-2"></i>Process Categories</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/batches"><i class="bi bi-diagram-3 me-2"></i>Batches</a>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Sales & CRM</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/customers"><i class="bi bi-people-fill me-2"></i>Customers</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/product-categories"><i class="bi bi-tags me-2"></i>Categories</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/reports"><i class="bi bi-bar-chart-line me-2"></i>Reporting</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/integrations/odoo/screen"><i class="bi bi-display me-2"></i>Odoo Screen</a>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="dropdown-header">Accounting & Finance</h6>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting"><i class="bi bi-journal-text me-2"></i>Accounting</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/journals"><i class="bi bi-journal me-2"></i>Journals</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/cheques"><i class="bi bi-receipt me-2"></i>Cheques</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/accounting/accounts"><i class="bi bi-list-ul me-2"></i>Accounts</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/tax-codes"><i class="bi bi-percent me-2"></i>Tax Codes</a>
+                <a class="dropdown-item" href="http://localhost/corelynk/users"><i class="bi bi-people-gear me-2"></i>Users</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DEBUG-VIEW ENDED 6 APPPATH\Views\partials\mega_menu.php -->
+                    <!-- Mobile hamburger (visible on xs-sm) -->
+                    <button id="mobileMenuToggle" class="btn btn-outline-secondary d-md-none" aria-label="Open menu">
+                        <span class="navbar-toggler-icon">☰</span>
+                    </button>
+                <div class="btn-group me-2" role="group" aria-label="Module switcher">
+                    <a href="http://localhost/corelynk/" class="btn btn-sm btn-outline-primary " title="Corelynk Home"><i class="bi bi-grid"></i></a>
+                    <a href="http://localhost/corelynk/dashboard" class="btn btn-sm btn-outline-primary active">Production</a>
+                    <a href="http://localhost/corelynk/accounting" class="btn btn-sm btn-outline-primary ">Accounting</a>
+                </div>
+                <div class="btn-group me-3" role="group">
+                    <button id="themeQuickToggle" type="button" class="btn btn-sm btn-outline-secondary" title="Toggle light/dark" aria-label="Toggle theme">
+                        <i class="bi bi-moon"></i>
+                    </button>
+                    <!-- Settings dropdown: Global settings and sub-pages like Categories -->
+                    <div class="btn-group me-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Settings menu">
+                            <i class="bi bi-gear-fill"></i>
+                            <span class="d-none d-sm-inline ms-1">Settings</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="http://localhost/corelynk/settings"><i class="bi bi-gear me-2"></i>Global Settings</a></li>
+                            <li><a class="dropdown-item" href="http://localhost/corelynk/product-categories"><i class="bi bi-tags me-2"></i>Categories</a></li>
+                            <li><a class="dropdown-item" href="http://localhost/corelynk/product-attributes"><i class="bi bi-list-ul me-2"></i>Attributes</a></li>
+                            <li><a class="dropdown-item" href="http://localhost/corelynk/product-variants"><i class="bi bi-box-seam me-2"></i>Product Variants</a></li>
+                            <li><a class="dropdown-item" href="http://localhost/corelynk/settings/company"><i class="bi bi-building me-2"></i>Company Settings</a></li>
+                                                            <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="http://localhost/corelynk/devtools/clear-data">
+                                        <i class="bi bi-broom me-2"></i>Development: Clear Data
+                                    </a>
+                                </li>
+                                                    </ul>
+                    </div>
+                    <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open theme menu">
+                        <span id="themeLabel" class="d-none d-sm-inline">Theme</span>
+                    </button>
+                    <ul id="themeMenu" class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" data-theme="auto"><i class="bi bi-laptop me-2"></i><span>Auto (System)</span></a></li>
+                        <li><a class="dropdown-item" href="#" data-theme="light"><i class="bi bi-brightness-high me-2"></i><span>Light</span></a></li>
+                        <li><a class="dropdown-item" href="#" data-theme="dark"><i class="bi bi-moon-stars me-2"></i><span>Dark</span></a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" data-theme="disabled"><i class="bi bi-slash-circle me-2"></i><span>Disable Dark Mode</span></a></li>
+                    </ul>
+                </div>
+                <div class="dropdown">
+                    <div class="user-avatar" data-bs-toggle="dropdown">
+                        S
+                    </div>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><h6 class="dropdown-header">System Admin</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="http://localhost/corelynk/profile"><i class="bi bi-person me-2"></i>Profile</a></li>
+                        <li><a class="dropdown-item" href="http://localhost/corelynk/settings"><i class="bi bi-gear me-2"></i>Settings</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="http://localhost/corelynk/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                    </ul>
+                </div>
+                <!-- Quick access: View Balance (vendors / employees) -->
+                <div class="ms-2">
+                    <a href="http://localhost/corelynk/accounting/cheques/balances" class="btn btn-sm btn-outline-primary" title="View Balance">View Balance</a>
+                </div>
+                                    <div class="ms-2">
+                        <a href="http://localhost/corelynk/devtools/clear-data" class="btn btn-sm btn-outline-danger" title="Development: Clear Data">
+                            <i class="bi bi-broom"></i>
+                            <span class="d-none d-sm-inline ms-1">Dev: Clear Data</span>
+                        </a>
+                    </div>
+                            </div>
+        </header>
+
+    <!-- Mobile Fullscreen Menu -->
+    <div id="mobileFullMenu" class="mobile-fullmenu" aria-hidden="true">
+        <button class="menu-close" id="mobileMenuClose" aria-label="Close menu">&times;</button>
+        <div class="container">
+            <h3>Menu</h3>
+            <div class="menu-section">
+                <strong>Purchases</strong>
+                <a href="http://localhost/corelynk/accounting/purchase-orders">Purchase Orders</a>
+                <a href="http://localhost/corelynk/accounting/purchase-orders">Receipts / GRNs</a>
+                <a href="http://localhost/corelynk/vendors">Vendors</a>
+                <a href="http://localhost/corelynk/vendor-contacts">Vendor Contacts</a>
+            </div>
+            <div class="menu-section">
+                <strong>Inventory</strong>
+                <a href="http://localhost/corelynk/products">Products</a>
+                <a href="http://localhost/corelynk/product-attributes">Attributes</a>
+                <a href="http://localhost/corelynk/components">Components</a>
+                <a href="http://localhost/corelynk/inventory">Stock</a>
+                <a href="http://localhost/corelynk/product-processes">Product Processes</a>
+            </div>
+            <div class="menu-section">
+                <strong>Production</strong>
+                <a href="http://localhost/corelynk/work-orders">Work Orders</a>
+                <a href="http://localhost/corelynk/processes">Processes</a>
+                <a href="http://localhost/corelynk/logs">Production Logs</a>
+                <a href="http://localhost/corelynk/process-templates">Process Templates</a>
+            </div>
+            <div class="menu-section">
+                <strong>Sales</strong>
+                <a href="http://localhost/corelynk/customers">Customers</a>
+                <a href="http://localhost/corelynk/product-categories">Categories</a>
+                <a href="http://localhost/corelynk/reports">Reporting</a>
+            </div>
+            <div class="menu-section">
+                <strong>Accounting</strong>
+                <a href="http://localhost/corelynk/accounting/cheques">Cheques & Payments</a>
+                <a href="http://localhost/corelynk/accounting/journals">Journals</a>
+                <a href="http://localhost/corelynk/accounting/accounts">Accounts</a>
+                <a href="http://localhost/corelynk/tax-codes">Tax Codes</a>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Mobile full-screen menu styles */
+        .mobile-fullmenu { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.98); color:#fff; z-index:1200; padding:2.5rem 1.25rem; overflow-y:auto; }
+        .mobile-fullmenu.show { display:block; animation:mm-fadein .18s ease-out; }
+        .mobile-fullmenu .menu-close { position:absolute; top:1rem; right:1rem; background:transparent; border:none; color:#fff; font-size:1.5rem; }
+        .mobile-fullmenu h3 { margin-top:0; color:#fff; }
+        .mobile-fullmenu .menu-section { margin:1.25rem 0; }
+        .mobile-fullmenu .menu-section a { display:block; padding:.6rem 0; color:#e6eef8; font-weight:600; text-decoration:none; }
+        .mobile-fullmenu .menu-section a:hover { color:#fff; }
+        @keyframes mm-fadein { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+    </style>
+    <!-- Select2 dark-theme fixes: ensure searchable selects fit the app dark theme -->
+    <style>
+        /* Use CSS variables so this adapts to light/dark modes */
+        body.theme-dark .select2-container--default .select2-selection--single,
+        body.theme-dark .select2-container--default .select2-selection--multiple {
+            background: var(--gray-50) !important;
+            border-color: var(--gray-300) !important;
+            color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-container--default .select2-selection__rendered {
+            color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-container--default .select2-selection__arrow b {
+            border-top-color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-dropdown {
+            background: var(--white) !important;
+            color: var(--gray-600) !important;
+            border-color: var(--gray-300) !important;
+        }
+
+        body.theme-dark .select2-results__option--highlighted,
+        body.theme-dark .select2-results__option[aria-selected="true"] {
+            background: var(--gray-100) !important;
+            color: var(--gray-700) !important;
+        }
+
+        body.theme-dark .select2-search--dropdown .select2-search__field,
+        body.theme-dark .select2-search--inline .select2-search__field {
+            background: transparent !important;
+            color: var(--gray-600) !important;
+        }
+
+        /* Fix for single-select placeholder color */
+        body.theme-dark .select2-container--default .select2-selection__placeholder {
+            color: var(--gray-500) !important;
+        }
+
+        /* Make select2 dropdowns match input sizes and spacing */
+        .select2-container .select2-selection--single { height: calc(1.5em + 0.75rem); }
+        .select2-container .select2-selection__rendered { line-height: calc(1.5em + 0.75rem); }
+    </style>
+            <style>
+            /* Floating dev button so Clear Data is always reachable */
+            .dev-clear-btn {
+                position: fixed;
+                right: 18px;
+                bottom: 18px;
+                z-index: 2200;
+            }
+        </style>
+        <div class="dev-clear-btn d-none d-md-block">
+            <a href="http://localhost/corelynk/devtools/clear-data" class="btn btn-danger btn-lg shadow" title="Dev: Clear Data">
+                <i class="bi bi-broom"></i>
+            </a>
+        </div>
+        </style>
+</head>
+<body>
+    <!-- DEBUG-VIEW START 7 APPPATH\Views\partials\global_nav.php -->
+<nav id="globalNavBar" class="navbar navbar-expand-lg sticky-top shadow-sm" role="navigation">
+  <div class="container-fluid px-3">
+    <a class="navbar-brand fw-bold" href="http://localhost/corelynk/">
+      <i class="bi bi-grid me-2"></i>CoreLynk
+    </a>
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#globalNav" aria-controls="globalNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="globalNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                              <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-sales" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-bag me-1"></i>Sales              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-sales">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/products">
+                      <i class="bi bi-box-seam me-2"></i>Products                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/customers">
+                      <i class="bi bi-people me-2"></i>Customers                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/quotations">
+                      <i class="bi bi-file-earmark-text me-2"></i>Quotations                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/price-lists">
+                      <i class="bi bi-tags me-2"></i>Price Lists                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/sales-orders">
+                      <i class="bi bi-receipt me-2"></i>Sales Orders                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/sales/reports">
+                      <i class="bi bi-bar-chart me-2"></i>Reports                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/product-categories">
+                      <i class="bi bi-tags me-2"></i>Category Management                    </a>
+                  </li>
+                              </ul>
+            </li>
+                                        <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-inventory" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-boxes me-1"></i>Inventory              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-inventory">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/inventory">
+                      <i class="bi bi-boxes me-2"></i>Stock                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/components">
+                      <i class="bi bi-tools me-2"></i>Components                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/product-attributes">
+                      <i class="bi bi-list-ul me-2"></i>Attributes                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/inventory/adjustments">
+                      <i class="bi bi-arrow-left-right me-2"></i>Adjustments                    </a>
+                  </li>
+                              </ul>
+            </li>
+                                        <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-production" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-gear me-1"></i>Production              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-production">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/work-orders">
+                      <i class="bi bi-list-check me-2"></i>Work Orders                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/processes">
+                      <i class="bi bi-gear me-2"></i>Processes                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/batches">
+                      <i class="bi bi-diagram-3 me-2"></i>Batches                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/logs">
+                      <i class="bi bi-clipboard-data me-2"></i>Production Logs                    </a>
+                  </li>
+                              </ul>
+            </li>
+                                        <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-vendors" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-truck me-1"></i>Vendors              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-vendors">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/vendors">
+                      <i class="bi bi-people me-2"></i>Vendors                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/cheques">
+                      <i class="bi bi-cash-stack me-2"></i>Vendor Payments                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/purchase-orders">
+                      <i class="bi bi-cart4 me-2"></i>Purchase Orders                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/purchase-orders/receive">
+                      <i class="bi bi-box-arrow-in-down me-2"></i>Receipts / GRNs                    </a>
+                  </li>
+                              </ul>
+            </li>
+                                        <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-finance" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-currency-dollar me-1"></i>Finance              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-finance">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/accounts">
+                      <i class="bi bi-list-ul me-2"></i>Accounts                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/journals">
+                      <i class="bi bi-journal-text me-2"></i>Journals                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/tax-codes">
+                      <i class="bi bi-percent me-2"></i>Tax Codes                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/cheques">
+                      <i class="bi bi-receipt me-2"></i>Cheques &amp; Payments                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/cheques/balances">
+                      <i class="bi bi-cash-stack me-2"></i>Balances                    </a>
+                  </li>
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/accounting/trial-balance">
+                      <i class="bi bi-gem me-2"></i>Trial Balance                    </a>
+                  </li>
+                              </ul>
+            </li>
+                                        <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="nav-hr" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person-badge me-1"></i>HR              </a>
+              <ul class="dropdown-menu" aria-labelledby="nav-hr">
+                                  <li>
+                    <a class="dropdown-item" href="http://localhost/corelynk/employees">
+                      <i class="bi bi-person-badge me-2"></i>Employees                    </a>
+                  </li>
+                              </ul>
+            </li>
+                          <!-- Settings quick icon placed after module links (appears after HR link) -->
+        <li class="nav-item d-none d-lg-block">
+          <a class="nav-link" href="http://localhost/corelynk/settings" title="Settings" aria-label="Open settings">
+            <i class="bi bi-gear-fill"></i>
+          </a>
+        </li>
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        <a href="http://localhost/corelynk/accounting/cheques/balances" class="btn btn-outline-warning fw-semibold px-3 py-1" title="View Balances">
+          <i class="bi bi-cash-coin me-1"></i>Balances
+        </a>
+        <!-- FX widget removed from navbar (moved to dashboard header) -->
+        <button id="themeSwitchBtn" class="btn btn-outline-light px-2 py-1" type="button" title="Toggle light/dark mode">
+          <i id="themeSwitchIcon" class="bi"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+<style>
+  #globalNavBar { border-bottom:1px solid transparent; background:#0f1724; }
+  #globalNavBar .navbar-brand, #globalNavBar .nav-link { font-weight:600; padding:.55rem .95rem; }
+  #globalNavBar .nav-link:hover { opacity:0.85; }
+  #globalNavBar .dropdown-menu { min-width:220px; }
+  #globalNavBar .btn-outline-warning { border-color:#f97316; color:#f97316; }
+
+  body.theme-dark #globalNavBar {
+    background:#0f1724;
+    border-color:rgba(255,255,255,0.08);
+    color:#e8eef8;
+  }
+  body.theme-dark #globalNavBar .navbar-brand,
+  body.theme-dark #globalNavBar .nav-link,
+  body.theme-dark #globalNavBar .dropdown-item {
+    color:#f8fafc;
+  }
+  body.theme-dark #globalNavBar .nav-link:hover {
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+  }
+  body.theme-dark #globalNavBar .dropdown-menu {
+    background:#0d1624;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:0 20px 60px rgba(2,6,23,0.65);
+    z-index:1300;
+  }
+  body.theme-dark #globalNavBar .dropdown-item {
+    color:#e2e8f0;
+  }
+  body.theme-dark #globalNavBar .dropdown-item:hover {
+    background:#152033;
+  }
+
+  body:not(.theme-dark) #globalNavBar {
+    background:#fff;
+    border-color:#e2e8f0;
+    box-shadow:0 3px 12px rgba(15,23,42,0.12);
+  }
+  body:not(.theme-dark) #globalNavBar .navbar-brand,
+  body:not(.theme-dark) #globalNavBar .nav-link,
+  body:not(.theme-dark) #globalNavBar .dropdown-item {
+    color:#0f1724;
+  }
+  body:not(.theme-dark) #globalNavBar .nav-link:hover {
+    background:#f1f5f9;
+  }
+  body:not(.theme-dark) #globalNavBar .dropdown-menu {
+    background:#fff;
+    border:1px solid #e2e8f0;
+    box-shadow:0 12px 32px rgba(15,23,42,0.12);
+  }
+  body:not(.theme-dark) #globalNavBar .dropdown-item:hover {
+    background:#edf2ff;
+  }
+  body:not(.theme-dark) #globalNavBar .btn-outline-light {
+    border-color:#cbd5f5;
+    color:#0f1724;
+    background:#f8fafc;
+  }
+
+  @media (max-width:992px){
+    #globalNavBar .nav-link { padding:.45rem .6rem; }
+  }
+
+  body.theme-dark .card {
+    background: linear-gradient(135deg,#121826 60%,#192233 100%);
+    color:#e6eef8;
+    border:none;
+    box-shadow:0 6px 18px rgba(2,6,23,0.6);
+  }
+  body.theme-dark .card-header {
+    background:transparent;
+    color:#e6eef8;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  body.theme-dark .card .text-muted {
+    color:#93a4b8 !important;
+  }
+  .content-wrapper { margin-top: 1.75rem; }
+</style>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const btn = document.getElementById('themeSwitchBtn');
+    const icon = document.getElementById('themeSwitchIcon');
+    const THEME_KEY = 'global_theme_pref';
+    function setIcon(){ const dark = document.body.classList.contains('theme-dark'); icon.className = 'bi ' + (dark ? 'bi-sun-fill' : 'bi-moon-stars'); }
+    function toggleTheme(){ const dark = document.body.classList.contains('theme-dark'); const next = dark ? 'light' : 'dark'; localStorage.setItem(THEME_KEY, next); document.documentElement.setAttribute('data-bs-theme', next); document.body.classList.toggle('theme-dark', next==='dark'); setIcon(); }
+    btn?.addEventListener('click', toggleTheme);
+    setIcon();
+  });
+  // Fetch FX rates and update header widget
+  // FX fetching moved to dashboard header (so it's shown next to timezone)
+</script>
+
+<!-- DEBUG-VIEW ENDED 7 APPPATH\Views\partials\global_nav.php -->
+
+        <!-- Content -->
+        <div class="content-wrapper">
+            <!-- Flash Messages -->
+            
+            
+            
+            
+            <!-- Page Content -->
+            <div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">
+                <i class="bi bi-speedometer2 me-2"></i>
+                Dashboard
+            </h2>
+            <div class="d-flex align-items-center gap-3">
+                <div class="text-muted me-2">
+                    Welcome back, <strong>Demo Admin</strong>
+                    <span class="badge bg-primary ms-2">Admin</span>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="modulesModalBtn">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Modules
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-primary bg-gradient rounded-circle p-3">
+                            <i class="bi bi-clipboard-check text-white fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Active Work Orders</h6>
+                        <h3 class="mb-0">1</h3>
+                                            </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-success bg-gradient rounded-circle p-3">
+                            <i class="bi bi-box text-white fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Active Products</h6>
+                        <h3 class="mb-0">2</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-info bg-gradient rounded-circle p-3">
+                            <i class="bi bi-building text-white fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Active Vendors</h6>
+                        <h3 class="mb-0">10</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-warning bg-gradient rounded-circle p-3">
+                            <i class="bi bi-layers text-white fs-4"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Stock Value</h6>
+                        <h3 class="mb-0">
+                                                            $0                                                    </h3>
+                                            </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Role-specific Content -->
+<div class="row">
+            <!-- Planner Dashboard -->
+        <div class="col-lg-8 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Work Orders Overview
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="workOrdersChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Alerts & Notifications
+                    </h5>
+                </div>
+                <div class="card-body">
+                    
+                                    </div>
+            </div>
+        </div>
+
+    </div>
+
+<!-- Recent Work Orders -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history me-2"></i>
+                        Recent Work Orders
+                    </h5>
+                    <a href="http://localhost/corelynk/work-orders" class="btn btn-sm btn-outline-primary">
+                        View All <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>WO Number</th>
+                                    <th>Product</th>
+                                    <th>Quantity</th>
+                                    <th>Status</th>
+                                    <th>Priority</th>
+                                    <th>Due Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                                                    <tr>
+                                        <td>
+                                            <a href="http://localhost/corelynk/work-orders/18" class="text-decoration-none">
+                                                S00077                                            </a>
+                                        </td>
+                                        <td>N/A</td>
+                                        <td>2,000</td>
+                                        <td>
+                                                                                        <span class="badge bg-primary">
+                                                Planned                                            </span>
+                                        </td>
+                                        <td>
+                                                                                        <span class="badge bg-warning">
+                                                High                                            </span>
+                                        </td>
+                                        <td>
+                                                                                            Dec 15, 2025                                                                                                                                    </td>
+                                    </tr>
+                                                            </tbody>
+                        </table>
+                    </div>
+                            </div>
+        </div>
+    </div>
+</div>
+<!-- DEBUG-VIEW START 2 APPPATH\Views\components\modules_drawer.php -->
+<style>
+/* Simple right-side drawer (no Bootstrap dependency) */
+#modulesDrawer {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 420px;
+    height: 100vh;
+    background: var(--white);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.2);
+    transition: right 240ms ease-in-out;
+    z-index: 2000;
+    overflow-y: auto;
+}
+body.theme-dark #modulesDrawer { background: #0f172a; color: var(--gray-600); }
+#modulesDrawer.open { right: 0; }
+#modulesDrawer .drawer-header { padding: 1rem; border-bottom: 1px solid rgba(0,0,0,0.06); }
+#modulesDrawer .drawer-body { padding: 1rem; }
+#modulesDrawerClose { position: absolute; left: 10px; top: 10px; }
+</style>
+
+<div id="modulesDrawer" aria-hidden="true">
+    <div class="drawer-header d-flex align-items-center">
+        <button id="modulesDrawerClose" class="btn btn-sm btn-outline-secondary me-2" title="Close">×</button>
+        <h5 class="mb-0">System Modules</h5>
+    </div>
+    <div class="drawer-body">
+        <!-- DEBUG-VIEW START 1 APPPATH\Views\components\modules_panel.php -->
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <strong>System Modules Tree</strong>
+    </div>
+    <div class="card-body">
+        <div id="corelynk-modules-tree"></div>
+        <div class="mt-3 small text-muted">
+            <div>Notes:</div>
+            <ul>
+                <li>Tree structure is auto-generated from <code>/modules.json</code>. Run <code>php scripts/generate_modules_json.php</code> after adding new modules.</li>
+                <li>Click any module to open its page in a new tab.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+<script>
+    // Provide a correct absolute URL for modules.json to the tree script
+    window.MODULES_JSON_URL = 'http://localhost/corelynk/modules.json';
+</script>
+<script src="http://localhost/corelynk/assets/js/modules-tree.js"></script>
+
+<!-- DEBUG-VIEW ENDED 1 APPPATH\Views\components\modules_panel.php -->
+    </div>
+</div>
+
+<script>
+    (function(){
+        const drawer = document.getElementById('modulesDrawer');
+        const openBtn = document.getElementById('modulesModalBtn');
+        const closeBtn = document.getElementById('modulesDrawerClose');
+        function open(){ drawer.classList.add('open'); drawer.setAttribute('aria-hidden','false'); }
+        function close(){ drawer.classList.remove('open'); drawer.setAttribute('aria-hidden','true'); }
+        if (openBtn) {
+            openBtn.addEventListener('click', function(e){
+                // prevent Bootstrap default if present
+                try{ e.preventDefault(); } catch(e){}
+                // toggle
+                if (drawer.classList.contains('open')) close(); else open();
+            });
+        }
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        // close on ESC
+        document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+    })();
+</script>
+
+<!-- DEBUG-VIEW ENDED 2 APPPATH\Views\components\modules_drawer.php -->
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery and Select2 for searchable dropdowns -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <script>
+        // Initialize Select2 on elements with .searchable once DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+                    window.jQuery('.searchable').each(function() {
+                        try {
+                            if (window.jQuery(this).data('select2')) {
+                                window.jQuery(this).select2('destroy');
+                            }
+                            window.jQuery(this).select2({ width: '100%', placeholder: 'Search...', allowClear: true });
+                        } catch (e) {
+                            console.warn('Select2 init failed', e);
+                        }
+                    });
+                }
+            } catch (e) { /* ignore */ }
+        });
+    </script>
+
+    <script>
+        // Auto-hide alerts after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    try {
+                        if (alert.classList.contains('show')) {
+                            if (window.bootstrap && window.bootstrap.Alert) {
+                                const bsAlert = new window.bootstrap.Alert(alert);
+                                bsAlert.close();
+                            } else {
+                                // Fallback: remove element if Bootstrap isn't ready
+                                alert.parentNode && alert.parentNode.removeChild(alert);
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }, 5000);
+            });
+        });
+
+        // CSRF Token for AJAX requests
+        window.csrfToken = 'csrf_test_name';
+        window.csrfHash = '9eeb6bf27abdc261b83bfe4e94414121';
+        
+        // Sidebar toggle functionality with backdrop support
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebarToggleTop = document.getElementById('sidebarToggleTop');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            const MOBILE_BREAKPOINT = 768; // match CSS @media breakpoint
+            const themeMenuBtn = document.getElementById('themeToggle');
+            const themeQuickBtn = document.getElementById('themeQuickToggle');
+
+            // Theme handling
+            const THEME_KEY = 'global_theme_pref';
+            let mediaQuery;
+            const themeLabel = document.getElementById('themeLabel');
+            function updateQuickToggleIcon(isDark) {
+                if (!themeQuickBtn) return;
+                const i = themeQuickBtn.querySelector('i');
+                if (!i) return;
+                i.className = isDark ? 'bi bi-brightness-high' : 'bi bi-moon';
+            }
+            function applyTheme(mode){
+                const body = document.body;
+                // Remove existing listener if any
+                if (mediaQuery) { mediaQuery.removeEventListener?.('change', mqHandler); mediaQuery = null; }
+                if (mode === 'dark') {
+                    body.classList.add('theme-dark');
+                    // Inform Bootstrap 5.3 color mode
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    updateQuickToggleIcon(true);
+                } else {
+                    body.classList.remove('theme-dark');
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                    updateQuickToggleIcon(false);
+                }
+            }
+            function mqHandler(e){ applyTheme(e.matches ? 'dark' : 'light'); }
+            function setThemePreference(pref){
+                if (pref === 'auto') {
+                    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                    applyTheme(mediaQuery.matches ? 'dark' : 'light');
+                    mediaQuery.addEventListener?.('change', mqHandler);
+                } else if (pref === 'light') {
+                    applyTheme('light');
+                } else if (pref === 'dark') {
+                    applyTheme('dark');
+                } else if (pref === 'disabled') {
+                    // Force light and clear preference completely
+                    applyTheme('light');
+                }
+                updateThemeUI(pref);
+            }
+            function updateThemeUI(pref){
+                const items = document.querySelectorAll('#themeMenu [data-theme]');
+                items.forEach(a => a.classList.remove('active'));
+                const active = document.querySelector(`#themeMenu [data-theme="${pref}"]`);
+                active?.classList.add('active');
+                if (themeLabel) {
+                    themeLabel.textContent = (pref === 'auto') ? 'Auto' : (pref === 'disabled' ? 'Disabled' : (pref.charAt(0).toUpperCase() + pref.slice(1)));
+                }
+            }
+
+            // Default to original light theme when nothing is stored
+            const stored = localStorage.getItem(THEME_KEY) || 'light';
+            setThemePreference(stored);
+            // Robust event delegation for dropdown items (works even if menu re-renders)
+            const themeMenu = document.getElementById('themeMenu');
+            if (themeMenu) {
+                themeMenu.addEventListener('click', function(e){
+                    const link = e.target.closest('[data-theme]');
+                    if (!link) return;
+                    e.preventDefault();
+                    const pref = link.getAttribute('data-theme');
+                    if (pref !== 'disabled') localStorage.setItem(THEME_KEY, pref); else localStorage.removeItem(THEME_KEY);
+                    setThemePreference(pref);
+                });
+            }
+
+            // One-click quick toggle between light and dark
+            themeQuickBtn?.addEventListener('click', (e)=>{
+                e.preventDefault();
+                const isDark = document.body.classList.contains('theme-dark');
+                const next = isDark ? 'light' : 'dark';
+                localStorage.setItem(THEME_KEY, next);
+                setThemePreference(next);
+            });
+
+            function isMobile() {
+                return window.innerWidth < MOBILE_BREAKPOINT;
+            }
+
+            function openSidebarOverlay() {
+                if (!sidebar) return;
+                sidebar.classList.add('show');
+                if (backdrop) backdrop.style.display = 'block';
+                document.body.classList.add('no-scroll');
+            }
+
+            function closeSidebarOverlay() {
+                if (!sidebar) return;
+                sidebar.classList.remove('show');
+                if (backdrop) backdrop.style.display = 'none';
+                document.body.classList.remove('no-scroll');
+            }
+
+            function handleToggleClick() {
+                    if (isMobile()) {
+                        // On mobile treat as overlay
+                        if (sidebar.classList.contains('show')) {
+                            closeSidebarOverlay();
+                        } else {
+                            openSidebarOverlay();
+                        }
+                        return;
+                    }
+
+                    // Desktop/tablet: collapse/push
+                    sidebar.classList.toggle('collapsed');
+                    mainContent.classList.toggle('sidebar-collapsed');
+
+                    // Save state to localStorage
+                    if (sidebar.classList.contains('collapsed')) {
+                        localStorage.setItem('sidebarCollapsed', 'true');
+                    } else {
+                        localStorage.removeItem('sidebarCollapsed');
+                    }
+            }
+
+            if (sidebar && mainContent) {
+                if (sidebarToggle) sidebarToggle.addEventListener('click', handleToggleClick);
+                if (sidebarToggleTop) sidebarToggleTop.addEventListener('click', handleToggleClick);
+
+                // Backdrop click closes overlay
+                if (backdrop) {
+                    backdrop.addEventListener('click', function() {
+                        closeSidebarOverlay();
+                    });
+                }
+
+                // Restore desktop collapsed state from localStorage
+                if (!isMobile() && localStorage.getItem('sidebarCollapsed') === 'true') {
+                    sidebar.classList.add('collapsed');
+                    mainContent.classList.add('sidebar-collapsed');
+                }
+            }
+
+                // Ensure sidebar closes when window resizes to desktop
+                window.addEventListener('resize', function() {
+                    if (!isMobile()) {
+                        // remove overlay styles
+                        closeSidebarOverlay();
+                    } else {
+                        // hide backdrop when switching to mobile until opened
+                        if (backdrop) backdrop.style.display = 'none';
+                    }
+                });
+            }
+    </script>
+
+    <script>
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function(){
+            var openBtn = document.getElementById('mobileMenuToggle');
+            var closeBtn = document.getElementById('mobileMenuClose');
+            var menu = document.getElementById('mobileFullMenu');
+
+            function openMenu(){
+                if (!menu) return;
+                menu.classList.add('show');
+                menu.setAttribute('aria-hidden','false');
+                document.body.classList.add('no-scroll');
+            }
+            function closeMenu(){
+                if (!menu) return;
+                menu.classList.remove('show');
+                menu.setAttribute('aria-hidden','true');
+                document.body.classList.remove('no-scroll');
+            }
+
+            openBtn?.addEventListener('click', function(e){ e.preventDefault(); openMenu(); });
+            closeBtn?.addEventListener('click', function(e){ e.preventDefault(); closeMenu(); });
+
+            // Close when clicking any link inside menu
+            menu?.addEventListener('click', function(e){
+                var a = e.target.closest('a');
+                if (a) {
+                    // allow normal navigation, but ensure menu closes immediately
+                    closeMenu();
+                }
+            });
+
+            // Close on escape
+            document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeMenu(); });
+        });
+    </script>
+
+    <!-- Remote modal (loads pages via AJAX into a modal so users don't leave the current page) -->
+    <div class="modal fade" id="remoteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="remoteModalLabel">Loading...</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center py-4" id="remoteModalSpinner">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="remoteModalContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Delegated handler for opening links/buttons in the remote modal
+        document.addEventListener('click', function(e) {
+            var trigger = e.target.closest && e.target.closest('.open-remote-modal');
+            if (!trigger) return;
+            e.preventDefault();
+            var url = trigger.getAttribute('data-url') || trigger.getAttribute('href');
+            if (!url) return;
+            var title = trigger.getAttribute('data-title') || trigger.getAttribute('title') || 'Manage';
+
+            var modalEl = document.getElementById('remoteModal');
+            var modal = new bootstrap.Modal(modalEl);
+            document.getElementById('remoteModalLabel').textContent = title;
+            document.getElementById('remoteModalContent').innerHTML = '';
+            document.getElementById('remoteModalSpinner').style.display = 'block';
+            modal.show();
+
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(res){ return res.text(); })
+                .then(function(html){
+                    document.getElementById('remoteModalSpinner').style.display = 'none';
+                    var modalContent = document.getElementById('remoteModalContent');
+                    modalContent.innerHTML = html;
+
+                    // Execute any inline <script> tags included in the fetched HTML so that
+                    // page-specific initializers (like the Add Value handlers) run. When
+                    // HTML is injected via innerHTML the browser doesn't execute scripts,
+                    // so we manually recreate them.
+                    try {
+                        Array.from(modalContent.querySelectorAll('script')).forEach(function(s){
+                            var ns = document.createElement('script');
+                            if (s.src) {
+                                ns.src = s.src; // external script will load and execute
+                                // preserve async/defer if present
+                                if (s.async) ns.async = true;
+                                if (s.defer) ns.defer = true;
+                            } else {
+                                ns.text = s.innerHTML;
+                            }
+                            s.parentNode.replaceChild(ns, s);
+                        });
+                    } catch(e) { console.error('Error executing modal scripts', e); }
+
+                    // Initialize Select2 inside loaded content if available
+                    try {
+                        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+                            window.jQuery('#remoteModalContent').find('.searchable').each(function(){
+                                try { if (window.jQuery(this).data('select2')) window.jQuery(this).select2('destroy'); } catch(e){}
+                                try { window.jQuery(this).select2({ width: '100%', placeholder: 'Search...', allowClear: true }); } catch(e){}
+                            });
+                        }
+                    } catch(e) { /* ignore */ }
+                })
+                .catch(function(err){
+                    document.getElementById('remoteModalSpinner').style.display = 'none';
+                    document.getElementById('remoteModalContent').innerHTML = '<div class="alert alert-danger">Failed to load content. <a href="'+url+'" target="_blank">Open in new tab</a></div>';
+                });
+        });
+    </script>
+
+    <!-- Page-specific JavaScript -->
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('modulesModalBtn');
+    if (btn) {
+        btn.addEventListener('click', function(e) {
+            // Fallback: force open modal if Bootstrap data attributes fail
+            setTimeout(function() {
+                var modalEl = document.getElementById('modulesModal');
+                if (modalEl && !modalEl.classList.contains('show')) {
+                    if (window.PMS && PMS.modal && PMS.modal.show) {
+                        PMS.modal.show('modulesModal');
+                    } else if (window.bootstrap && window.bootstrap.Modal) {
+                        var modal = new window.bootstrap.Modal(modalEl);
+                        modal.show();
+                    }
+                }
+            }, 200);
+        });
+    }
+});
+</script>
+<script>
+// Lightweight lazy loader for Chart.js: prefer local file, fallback to CDN
+function ensureChartJs(){
+    return new Promise((resolve, reject)=>{
+        if (window.Chart) return resolve();
+        const tryLoad = (src, onfail)=>{ const s=document.createElement('script'); s.src=src; s.defer=true; s.onload=()=>resolve(); s.onerror=()=>onfail&&onfail(); document.head.appendChild(s); };
+        // Try local first (drop chart.umd.min.js into public/assets/vendor/chart.js/)
+        tryLoad('http://localhost/corelynk/assets/vendor/chart.js/chart.umd.min.js', ()=>{
+            // Fallback to CDN
+            tryLoad('https://cdn.jsdelivr.net/npm/chart.js');
+        });
+        // Safety timeout to avoid hanging forever
+        setTimeout(()=>{ if(!window.Chart) reject(new Error('Chart.js load timeout')); }, 8000);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+        ensureChartJs()
+      .then(()=> loadWorkOrdersChart())
+      .catch((e)=>{ console.warn('Chart.js not available, skipping chart.', e); });
+    });
+
+function loadWorkOrdersChart() {
+    fetch('http://localhost/corelynk/dashboard/widget-data?widget=work_orders_chart')
+        .then(response => response.json())
+        .then(data => {
+            const ctx = document.getElementById('workOrdersChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        })
+        .catch(error => { console.error('Error loading chart:', error); });
+}
+</script>
+
+    <!-- Bootstrap JS (removed duplicate include) -->
+
+
+</body>
+</html>
+
+
+
+<!-- DEBUG-VIEW ENDED 8 APPPATH\Views\layouts\main.php -->
+
+<!-- DEBUG-VIEW ENDED 9 APPPATH\Views\dashboard\index.php -->
+

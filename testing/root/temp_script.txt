@@ -1,0 +1,95 @@
+<script>
+// Simple functions to show/hide vendor section
+function showVendorSection() {
+    console.log('*** SHOWING vendor section ***');
+    var vendorSection = document.getElementById('vendorSection');
+    var vendorSelect = document.getElementById('vendor_id');
+    
+    if (vendorSection) {
+        vendorSection.style.display = 'block';
+        console.log('Vendor section display set to block');
+    }
+    
+    if (vendorSelect) {
+        vendorSelect.setAttribute('required', 'required');
+    }
+    
+    updateDebugInfo();
+}
+
+function hideVendorSection() {
+    console.log('*** HIDING vendor section ***');
+    var vendorSection = document.getElementById('vendorSection');
+    var vendorSelect = document.getElementById('vendor_id');
+    
+    if (vendorSection) {
+        vendorSection.style.display = 'none';
+        console.log('Vendor section display set to none');
+    }
+    
+    if (vendorSelect) {
+        vendorSelect.removeAttribute('required');
+        vendorSelect.value = '';
+    }
+    
+    updateDebugInfo();
+}
+
+// Debug functions
+function forceShowVendor() {
+    var vendorSection = document.getElementById('vendorSection');
+    if (vendorSection) {
+        vendorSection.style.display = 'block';
+        console.log('Force showed vendor section');
+    }
+    updateDebugInfo();
+}
+
+function checkStatus() {
+    var outsourceRadio = document.getElementById('outsource');
+    var vendorSection = document.getElementById('vendorSection');
+    
+    console.log('=== STATUS CHECK ===');
+    console.log('Outsource radio exists:', !!outsourceRadio);
+    console.log('Outsource radio checked:', outsourceRadio ? outsourceRadio.checked : 'N/A');
+    console.log('Vendor section exists:', !!vendorSection);
+    console.log('Vendor section display:', vendorSection ? vendorSection.style.display : 'N/A');
+    
+    updateDebugInfo();
+}
+
+function updateDebugInfo() {
+    var outsourceRadio = document.getElementById('outsource');
+    var vendorSection = document.getElementById('vendorSection');
+    var outsourceStatus = document.getElementById('outsourceStatus');
+    var vendorDisplay = document.getElementById('vendorDisplay');
+    
+    if (outsourceStatus) {
+        outsourceStatus.textContent = outsourceRadio ? outsourceRadio.checked : 'not found';
+    }
+    
+    if (vendorDisplay) {
+        vendorDisplay.textContent = vendorSection ? vendorSection.style.display : 'not found';
+    }
+}
+
+// Show new vendor modal
+function showNewVendorModal() {
+    var modal = new bootstrap.Modal(document.getElementById('newVendorModal'));
+    modal.show();
+}
+
+// Initialize when page loads
+window.onload = function() {
+    console.log('*** Page loaded, checking initial state ***');
+    var outsourceRadio = document.getElementById('outsource');
+    
+    if (outsourceRadio && outsourceRadio.checked) {
+        showVendorSection();
+    } else {
+        hideVendorSection();
+    }
+    
+    updateDebugInfo();
+};
+</script>

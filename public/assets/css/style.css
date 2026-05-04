@@ -1,0 +1,99 @@
+/* Universal Corelynk List View & Actions Styles */
+
+/* List/table container and header spacing */
+.container-fluid.py-3 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+}
+
+.card.border-0.shadow-sm, .card.shadow, .card {
+    border: none !important;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1) !important;
+    border-radius: 12px !important;
+}
+
+.card-header, .section-header {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    border-radius: 12px 12px 0 0;
+}
+
+/* Table full width and compact actions column */
+.table { width: 100% !important; }
+.table .actions-col, .table th.actions-col { white-space: nowrap; width: 1%; }
+.table td.actions-col { text-align: right; }
+.table .btn-group, .table .btn-group-sm { gap: .25rem; }
+
+/* Action buttons: square, icon-only, consistent */
+.actions-col .btn, .actions-col button, .actions-col .dropdown-item {
+    /* Prepare to add rfqpo specific overrides below */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0.25rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    line-height: 1;
+    box-shadow: none;
+}
+.actions-col .btn + .btn, .actions-col .btn + button, .actions-col button + .btn { margin-left: .35rem; }
+@media (max-width: 576px) {
+    .actions-col .btn, .actions-col button, .actions-col .dropdown-item { width: 40px; height: 40px; }
+}
+.actions-col .btn, .actions-col button, .actions-col .dropdown-item {
+    width: 40px; height: 40px; /* This line is for consistency */
+}
+.actions-col .dropdown-menu .dropdown-item i { font-size: 1rem; }
+.actions-col .dropdown-toggle::after { display: none; }
+
+/* Icon-only: hide text if icon present, keep visually-hidden for a11y */
+.actions-col .btn:has(i), .actions-col .dropdown-item:has(i) {
+    font-size: 0;
+    padding-left: .45rem; padding-right: .45rem;
+}
+
+/* RFQ/PO list: allow text buttons (not icon-only) and avoid fixed square buttons */
+.rfqpo-table .actions-col, .rfqpo-table th.actions-col { width: auto; }
+.rfqpo-table .actions-col .btn, .rfqpo-table .actions-col button { width: auto; height: auto; padding: .25rem .5rem; font-size: .9rem; }
+.rfqpo-table .actions-col .btn + .btn { margin-left: .35rem; }
+.actions-col .btn:has(i) i, .actions-col .dropdown-item:has(i) i {
+    font-size: 1rem;
+    vertical-align: middle;
+}
+.actions-col .btn .visually-hidden, .actions-col .dropdown-item .visually-hidden { font-size: 0.9rem; }
+
+/* Status badges */
+.badge {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+/* Responsive tweaks for filter/search cards */
+.card .card-body .form-label.small { font-weight:600; color:#6c757d; }
+
+/* Dark theme overrides (optional: can be extended) */
+body.theme-dark .card-header, body.theme-dark .section-header { background: #1e293b !important; color: #e2e8f0 !important; }
+body.theme-dark .card { background: #1e293b !important; color: #e2e8f0 !important; }
+body.theme-dark .table { color: #e2e8f0; border-color: #475569; }
+body.theme-dark .table thead th { background: #334155; color: #f8fafc; border-color: #475569; }
+body.theme-dark .table tbody tr { background: #1e293b; border-color: #475569; }
+body.theme-dark .table-striped tbody tr:nth-of-type(odd) { background: #162033; }
+body.theme-dark .badge.bg-light, body.theme-dark .badge.text-bg-light { background: #162033 !important; color: #e2e8f0 !important; border-color: #475569 !important; }
+
+/* Universal icon button helper used throughout views (centralized) */
+.btn-icon {
+    min-width: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 1rem !important;
+    border-radius: 6px !important;
+}
+.btn-icon i { line-height: 1; }

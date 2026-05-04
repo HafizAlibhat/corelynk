@@ -1,0 +1,8 @@
+/* Basic styling for enhanced quotations page */
+.quote-lines-table tbody tr:nth-child(odd) { background: rgba(255,255,255,0.02); }
+.autocomplete-list { max-height: 240px; overflow:auto; }
+.line-total { font-weight:600; }
+.totals-panel { background: transparent; }
+@media print {
+    .no-print { display:none; }
+}

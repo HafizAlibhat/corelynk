@@ -1,0 +1,42 @@
+﻿[
+    {
+        "from":  "app/Controllers/DebugController.php",
+        "to":  "testing/app/Controllers/DebugController.php"
+    },
+    {
+        "from":  "app/Controllers/DebugBatches.php",
+        "to":  "testing/app/Controllers/DebugBatches.php"
+    },
+    {
+        "from":  "app/Controllers/DatabaseTest.php",
+        "to":  "testing/app/Controllers/DatabaseTest.php"
+    },
+    {
+        "from":  "app/Controllers/BatchDebug.php",
+        "to":  "testing/app/Controllers/BatchDebug.php"
+    },
+    {
+        "from":  "app/Controllers/TestBatches.php",
+        "to":  "testing/app/Controllers/TestBatches.php"
+    },
+    {
+        "from":  "app/Controllers/TestProducts.php",
+        "to":  "testing/app/Controllers/TestProducts.php"
+    },
+    {
+        "from":  "app/Controllers/TestSystem.php",
+        "to":  "testing/app/Controllers/TestSystem.php"
+    },
+    {
+        "from":  "app/Controllers/LoginTest.php",
+        "to":  "testing/app/Controllers/LoginTest.php"
+    },
+    {
+        "from":  "app/Views/test_system.php",
+        "to":  "testing/app/Views/test_system.php"
+    },
+    {
+        "from":  "app/Views/error_debug.php",
+        "to":  "testing/app/Views/error_debug.php"
+    }
+]

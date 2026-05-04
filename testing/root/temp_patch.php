@@ -1,0 +1,14 @@
+<?php
+$path = 'app/Database/Migrations/2026-03-26-000001_CreateRbacAndSecurityTables.php';
+$text = file_get_contents($path);
+$pattern = "#\s*/\* ----------------------------------------------------------------\n         \* 9\. ALTER existing `users` table\n         \*    – add role_id FK, avatar, lockout fields\n         \*    – keep legacy `role` enum for backward compat \(nullable\)\n         \* ---------------------------------------------------------------- \*/\n        \$this->forge->addColumn\('users', \[.*?\]\);#s";
+$replacement = "        /* ----------------------------------------------------------------\n         * 9. ALTER existing `users` table\n         *    – add role_id FK, avatar, lockout fields\n         *    – keep legacy `role` enum for backward compat (nullable)\n         * ---------------------------------------------------------------- */\n        if ($this->db->tableExists('users')) {\n            $userFields = [];\n            if (! $this->db->fieldExists('role_id', 'users')) {\n                $userFields['role_id'] = [\n                    'type' => 'INT',\n                    'unsigned' => true,\n                    'null' => true,\n                    'after' => 'role',\n                    'comment' => 'FK to roles table – replaces enum role',\n                ];\n            }\n            if (! $this->db->fieldExists('avatar_path', 'users')) {\n                $userFields['avatar_path'] = [\n                    'type' => 'VARCHAR',\n                    'constraint' => 255,\n                    'null' => true,\n                    'after' => 'last_name',\n                ];\n            }\n            if (! $this->db->fieldExists('failed_login_count', 'users')) {\n                $userFields['failed_login_count'] = [\n                    'type' => 'TINYINT',\n                    'unsigned' => true,\n                    'default' => 0,\n                    'after' => 'is_active',\n                ];\n            }\n            if (! $this->db->fieldExists('locked_until', 'users')) {\n                $userFields['locked_until'] = [\n                    'type' => 'TIMESTAMP',\n                    'null' => true,\n                    'after' => 'failed_login_count',\n                ];\n            }\n            if (! $this->db->fieldExists('password_changed_at', 'users')) {\n                $userFields['password_changed_at'] = [\n                    'type' => 'TIMESTAMP',\n                    'null' => true,\n                    'after' => 'locked_until',\n                ];\n            }\n            if (! empty($userFields)) {\n                $this->forge->addColumn('users', $userFields);\n            }\n        }";
+$replaced = preg_replace($pattern, $replacement, $text, 1);
+if ($replaced === null) {
+    throw new RuntimeException('preg_replace failed');
+}
+if ($replaced === $text) {
+    throw new RuntimeException('pattern not matched');
+}
+file_put_contents($path, $replaced);
+?>

@@ -1,0 +1,51 @@
+INFO:
+Array
+(
+    [url] => http://localhost/pro_sys/public/work-orders/ajax_create_batch
+    [content_type] => text/html; charset=UTF-8
+    [http_code] => 303
+    [header_size] => 504
+    [request_size] => 201
+    [filetime] => -1
+    [ssl_verify_result] => 0
+    [redirect_count] => 0
+    [total_time] => 0.118304
+    [namelookup_time] => 0.000114
+    [connect_time] => 0.00592
+    [pretransfer_time] => 0.006059
+    [size_upload] => 56
+    [size_download] => 0
+    [speed_download] => 0
+    [speed_upload] => 473
+    [download_content_length] => 0
+    [upload_content_length] => 56
+    [starttransfer_time] => 0.118255
+    [redirect_time] => 0
+    [redirect_url] => http://localhost/pro_sys/public/auth/login
+    [primary_ip] => ::1
+    [certinfo] => Array
+        (
+        )
+
+    [primary_port] => 80
+    [local_ip] => ::1
+    [local_port] => 51640
+    [http_version] => 2
+    [protocol] => 1
+    [ssl_verifyresult] => 0
+    [scheme] => HTTP
+    [appconnect_time_us] => 0
+    [connect_time_us] => 5920
+    [namelookup_time_us] => 114
+    [pretransfer_time_us] => 6059
+    [redirect_time_us] => 0
+    [starttransfer_time_us] => 118255
+    [total_time_us] => 118304
+    [effective_method] => POST
+)
+
+
+ERR:
+
+
+RESP:

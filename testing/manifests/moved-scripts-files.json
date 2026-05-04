@@ -1,0 +1,62 @@
+﻿[
+    {
+        "from":  "scripts/alter_customers_add_type.php",
+        "to":  "testing/scripts/alter_customers_add_type.php"
+    },
+    {
+        "from":  "scripts/alter_customers_add_type_status.php",
+        "to":  "testing/scripts/alter_customers_add_type_status.php"
+    },
+    {
+        "from":  "scripts/alter_status_enum.php",
+        "to":  "testing/scripts/alter_status_enum.php"
+    },
+    {
+        "from":  "scripts/backfill_customers.php",
+        "to":  "testing/scripts/backfill_customers.php"
+    },
+    {
+        "from":  "scripts/check_customers.php",
+        "to":  "testing/scripts/check_customers.php"
+    },
+    {
+        "from":  "scripts/check_customers_db.php",
+        "to":  "testing/scripts/check_customers_db.php"
+    },
+    {
+        "from":  "scripts/column_info.php",
+        "to":  "testing/scripts/column_info.php"
+    },
+    {
+        "from":  "scripts/drop_customers.php",
+        "to":  "testing/scripts/drop_customers.php"
+    },
+    {
+        "from":  "scripts/generate_modules_json.php",
+        "to":  "testing/scripts/generate_modules_json.php"
+    },
+    {
+        "from":  "scripts/insert_test_customer.php",
+        "to":  "testing/scripts/insert_test_customer.php"
+    },
+    {
+        "from":  "scripts/insert_ui_test_customer.php",
+        "to":  "testing/scripts/insert_ui_test_customer.php"
+    },
+    {
+        "from":  "scripts/inspect_invoice.php",
+        "to":  "testing/scripts/inspect_invoice.php"
+    },
+    {
+        "from":  "scripts/run_customer_contacts_addresses_migration.php",
+        "to":  "testing/scripts/run_customer_contacts_addresses_migration.php"
+    },
+    {
+        "from":  "scripts/tail_logs.php",
+        "to":  "testing/scripts/tail_logs.php"
+    },
+    {
+        "from":  "scripts/update_status.php",
+        "to":  "testing/scripts/update_status.php"
+    }
+]

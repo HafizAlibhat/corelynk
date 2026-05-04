@@ -1,0 +1,16 @@
+SQL: SELECT pv.id, pv.product_id, pv.art_number, pv.name, pv.attributes FROM product_variants pv WHERE pv.product_id IN (9,22,23) AND LOWER(pv.attributes) LIKE '%shape%' AND LOWER(pv.attributes) LIKE '%curved%' AND LOWER(pv.attributes) LIKE '%size%' AND LOWER(pv.attributes) LIKE '%20cm%' ORDER BY pv.product_id, pv.id LIMIT 50
+Found: 10 matching variants
+P#9 | V#2822 | RI-KI-02840 | {"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Curved","Size":"20cm"}
+P#9 | V#2833 | RI-KI-02851 | {"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#22 | V#2867 | RI-KI-02889 | {"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#22 | V#2870 | RI-KI-02892 | {"Colors & Patterns":"Gold Plasma","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#22 | V#2873 | RI-KI-02895 | {"Colors & Patterns":"Black Plasma","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#22 | V#2876 | RI-KI-02898 | {"Colors & Patterns":"Rainbow-Multi Plasma","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#22 | V#2879 | RI-KI-02901 | {"Colors & Patterns":"Purple Plasma","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#23 | V#2904 | RI-KI-02926 | {"Colors & Patterns":"Black PC","Finish":"Matt Finish","Shape":"Curved","Size":"20cm"}
+P#23 | V#2905 | RI-KI-02927 | {"Colors & Patterns":"Rosegold PC","Finish":"Matt Finish","Shape":"Curved","Size":"20cm"}
+P#23 | V#2906 | RI-KI-02928 | {"Colors & Patterns":"Green Camouflage Paper Coating","Finish":"Matt Finish","Shape":"Curved","Size":"20cm"}
+
+--- With search term 'tweezer' too ---
+Found with search: 0
+Variants matching 'tweezer' search: 0

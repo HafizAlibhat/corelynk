@@ -1,0 +1,60 @@
+CREATE TABLE IF NOT EXISTS `vendor_send_notes` (
+  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `reference_no` VARCHAR(50) NOT NULL,
+  `vendor_id` INT(10) UNSIGNED NOT NULL,
+  `step_id` INT(10) UNSIGNED NOT NULL,
+  `product_id` INT(10) UNSIGNED NOT NULL,
+  `qty` DECIMAL(10,4) NOT NULL,
+  `from_location_id` INT(10) UNSIGNED NOT NULL,
+  `to_location_id` INT(10) UNSIGNED NOT NULL,
+  `status` ENUM('draft','sent','completed','cancelled') NOT NULL DEFAULT 'draft',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_vendor_send_notes_reference_no` (`reference_no`),
+  KEY `idx_vendor_send_notes_vendor` (`vendor_id`),
+  KEY `idx_vendor_send_notes_step` (`step_id`),
+  KEY `idx_vendor_send_notes_product` (`product_id`),
+  KEY `idx_vendor_send_notes_from_loc` (`from_location_id`),
+  KEY `idx_vendor_send_notes_to_loc` (`to_location_id`),
+  CONSTRAINT `fk_vendor_send_notes_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `vendors` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_vendor_send_notes_step` FOREIGN KEY (`step_id`) REFERENCES `preparation_steps` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_vendor_send_notes_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_vendor_send_notes_from_loc` FOREIGN KEY (`from_location_id`) REFERENCES `warehouse_locations` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_vendor_send_notes_to_loc` FOREIGN KEY (`to_location_id`) REFERENCES `warehouse_locations` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `vendor_send_note_items` (
+  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `send_note_id` INT(10) UNSIGNED NOT NULL,
+  `product_id` INT(10) UNSIGNED NOT NULL,
+  `qty` DECIMAL(10,4) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_vendor_send_note_items_send_note` (`send_note_id`),
+  KEY `idx_vendor_send_note_items_product` (`product_id`),
+  CONSTRAINT `fk_vendor_send_note_items_send_note` FOREIGN KEY (`send_note_id`) REFERENCES `vendor_send_notes` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_vendor_send_note_items_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `processing_records` (
+  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `product_id` INT(10) UNSIGNED NOT NULL,
+  `step_id` INT(10) UNSIGNED NOT NULL,
+  `vendor_id` INT(10) UNSIGNED NULL,
+  `qty` DECIMAL(10,4) NOT NULL,
+  `status` ENUM('in_progress','ready_for_qc','completed') NOT NULL DEFAULT 'in_progress',
+  `location_id` INT(10) UNSIGNED NOT NULL,
+  `parent_id` INT(10) UNSIGNED NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_processing_records_product` (`product_id`),
+  KEY `idx_processing_records_step` (`step_id`),
+  KEY `idx_processing_records_vendor` (`vendor_id`),
+  KEY `idx_processing_records_location` (`location_id`),
+  KEY `idx_processing_records_parent` (`parent_id`),
+  KEY `idx_processing_records_product_step_status` (`product_id`,`step_id`,`status`),
+  CONSTRAINT `fk_processing_records_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_processing_records_step` FOREIGN KEY (`step_id`) REFERENCES `preparation_steps` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_processing_records_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `vendors` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_processing_records_location` FOREIGN KEY (`location_id`) REFERENCES `warehouse_locations` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_processing_records_parent` FOREIGN KEY (`parent_id`) REFERENCES `processing_records` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

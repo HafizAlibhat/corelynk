@@ -1,0 +1,1483 @@
+<?= $this->extend('layouts/main') ?>
+<?= $this->section('content') ?>
+<div class="container-fluid py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h5 class="mb-0"><i class="bi bi-diagram-3 me-1"></i>Production Logs</h5>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+            <strong>Production Hierarchy</strong>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-secondary btn-sm" type="button" title="Export"><i class="bi bi-download"></i></button>
+            </div>
+        </div>
+        <div class="card-body p-2">
+            <div id="simpleTree" style="font-family: monospace; line-height: 1.6;">
+                <div class="tree-container">
+                    <div class="tree-row wo-row">
+                        <div class="tree-content">
+                            <span class="toggle-btn js-toggle" data-target="wo-content">+</span>
+                            <strong>WO-2025-001</strong> | 1 products | 4 batches
+                        </div>
+                        <div class="tree-actions">
+                            <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                        </div>
+                    </div>
+                    <div id="wo-content" class="tree-branch" style="display:none;">
+                        <div class="tree-row product-row">
+                            <div class="tree-content">
+                                <strong>13&quot; Knife</strong> (1K-075)
+                            </div>
+                            <div class="tree-actions">
+                                <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                            </div>
+                        </div>
+                        <div class="tree-branch">
+                            <div class="tree-row process-row">
+                                <div class="tree-content">
+                                    <span class="toggle-btn js-toggle" data-target="process-content">+</span>
+                                    <strong>Laser Cutting</strong> (3 batches)
+                                </div>
+                                <div class="tree-actions">
+                                    <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                                </div>
+                            </div>
+                            <div id="process-content" class="tree-branch" style="display:none;">
+                                <div class="tree-row batch-row">
+                                    <div class="tree-content">
+                                        <strong>LC-20251012-1644</strong> | 0/199 pcs | 0% | <span class="badge bg-warning text-dark">In Progress</span>
+                                    </div>
+                                    <div class="tree-actions">
+                                        <button class="btn btn-sm btn-light border" type="button">Daily Log</button>
+                                        <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                                    </div>
+                                </div>
+                                <div class="tree-row batch-row">
+                                    <div class="tree-content">
+                                        <strong>LC-20251013-1756</strong> | 0/444 pcs | 0% | <span class="badge bg-warning text-dark">In Progress</span>
+                                    </div>
+                                    <div class="tree-actions">
+                                        <button class="btn btn-sm btn-light border" type="button">Daily Log</button>
+                                        <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                                    </div>
+                                </div>
+                                <div class="tree-row batch-row">
+                                    <div class="tree-content">
+                                        <strong>LC-20251013-1756-01</strong> | 0/444 pcs | 0% | <span class="badge bg-warning text-dark">In Progress</span>
+                                    </div>
+                                    <div class="tree-actions">
+                                        <button class="btn btn-sm btn-light border" type="button">Daily Log</button>
+                                        <button class="btn btn-sm btn-light border" type="button">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="hierarchyEmpty" style="display:none; text-align:center; padding:50px;">
+                <h6>No Work Orders Found</h6>
+                <p class="text-muted">No active work orders match your current filters.</p>
+            </div>
+        </div>
+    </div>
+</div>
+<?= $this->endSection() ?>
+
+<?= $this->section('js') ?>
+<script>
+// Minimal toggle script
+document.addEventListener('click', function(e){
+    var t = e.target.closest('.js-toggle');
+    if(!t) return;
+    var id = t.getAttribute('data-target');
+    if(!id) return;
+    var el = document.getElementById(id);
+    if(!el) return;
+    var open = el.style.display === 'block';
+    el.style.display = open ? 'none' : 'block';
+    t.textContent = open ? '+' : '−';
+});
+</script>
+<?= $this->endSection() ?>
+ 
+
+// Helper functions to check for children before deletion
+function hasWorkOrderChildren(woId) {
+    // Check if work order has any products (represented by our hardcoded data)
+    const hardcodedBatches = [
+        { id: 1, work_order_item_id: 3, wo_number: 'WO-2025-001' },
+        { id: 2, work_order_item_id: 3, wo_number: 'WO-2025-001' },
+        { id: 3, work_order_item_id: 3, wo_number: 'WO-2025-001' }
+    ];
+    
+    // For demo purposes, WO-2025-001 (id=9) always has children
+    return woId == 9 && hardcodedBatches.length > 0;
+}
+
+function hasProductChildren(productId) {
+    // Check if product has any batches
+    const hardcodedBatches = [
+        { id: 1, work_order_item_id: 3, process_id: 12 },
+        { id: 2, work_order_item_id: 3, process_id: 12 },
+        { id: 3, work_order_item_id: 3, process_id: 12 }
+    ];
+    
+    return hardcodedBatches.some(batch => batch.work_order_item_id == productId);
+}
+
+function hasProcessChildren(processId) {
+    // Check if process has any batches
+    const hardcodedBatches = [
+        { id: 1, process_id: 12 },
+        { id: 2, process_id: 12 },
+        { id: 3, process_id: 12 }
+    ];
+    
+    return hardcodedBatches.some(batch => batch.process_id == processId);
+}
+
+// Load hierarchical data
+function loadHierarchicalData() {
+    console.log('Loading hierarchical data - START');
+    
+    const loadingEl = document.getElementById('batchLoading');
+    const hierarchyEmpty = document.getElementById('hierarchyEmpty');
+    
+    if (loadingEl) loadingEl.style.display = 'inline-block';
+    const treeContainer = document.getElementById('simpleTree');
+    if (treeContainer) treeContainer.innerHTML = '';
+    if (hierarchyEmpty) hierarchyEmpty.style.display = 'none';
+    
+    // Use working hardcoded data with proper styling
+    console.log('Loading hierarchical data with enhanced styling');
+    
+    const workingData = [
+        {
+            id: 9,
+            wo_number: 'WO-2025-001',
+            wo_status: 'planned',
+            created_at: '2025-10-10 23:54:02',
+            total_products: 1,
+            total_batches: 4,
+            total_planned_qty: 1187,
+            completed_qty: 0,
+            progress_percentage: 0,
+            has_children: true,
+            customer_name: 'Customer 9'
+        }
+    ];
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    renderSimpleTree(workingData);
+}
+
+// Render simple tree view
+function renderSimpleTree(workOrders) {
+    console.log('Rendering simple tree with data:', workOrders);
+    
+    const treeContainer = document.getElementById('simpleTree');
+    if (!treeContainer) {
+        console.error('simpleTree element not found');
+        return;
+    }
+    
+    let html = '<div class="tree-container">';
+    workOrders.forEach(wo => {
+        html += createSimpleWorkOrder(wo);
+    });
+    html += '</div>';
+    treeContainer.innerHTML = html;
+    console.log('Simple tree rendered successfully');
+
+    // Auto-expand the first work order to ensure content loads immediately
+    try {
+        if (workOrders && workOrders.length > 0) {
+            const firstId = workOrders[0].id;
+            setTimeout(() => window.toggleSimple('wo-' + firstId), 100);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+// Simple page load trigger
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page loaded, starting data load...');
+    setTimeout(loadHierarchicalData, 500);
+});
+
+function createSimpleWorkOrder(wo) {
+    const isExpanded = expanded.has('wo-' + wo.id);
+    const toggleBtn = `<span class="toggle-btn" onclick="toggleSimple('wo-${wo.id}')">${isExpanded ? '−' : '+'}</span>`;
+    
+    let html = `<div class="tree-row wo-row">
+        <div class="tree-content">
+            ${toggleBtn}
+            <strong>WO-${wo.wo_number}</strong> | ${wo.total_products} products | ${wo.total_batches} batches
+        </div>
+        <div class="tree-actions">
+            <button class="btn-simple btn-delete" onclick="deleteWorkOrder(${wo.id})">Delete</button>
+        </div>
+    </div>`;
+    
+    if (isExpanded) {
+        html += `<div id="wo-${wo.id}-content" class="tree-branch" style="display:block;">Loading...</div>`;
+    } else {
+        html += `<div id="wo-${wo.id}-content" class="tree-branch" style="display:none;"></div>`;
+    }
+    
+    return html;
+}
+
+// Create work order tree node (Level 1)
+function createWorkOrderTreeNode(workOrder) {
+    const isExpanded = expandedNodes.workOrders.has(workOrder.id);
+    
+    return `
+        <div class="tree-node tree-level-1" data-node-id="${workOrder.id}" data-wo-id="${workOrder.id}">
+            <div class="node-content" onclick="toggleTreeNode('workOrders', ${workOrder.id}, this.parentElement)">
+                <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">${isExpanded ? '−' : '+'}</span>
+                <i class="bi bi-briefcase text-primary me-2"></i>
+                <div class="node-info">
+                    <strong>${workOrder.wo_number} — ${workOrder.customer_name}</strong>
+                    <div class="node-stats">
+                        <span class="badge bg-light text-dark me-2">${workOrder.total_products} products</span>
+                        <span class="badge bg-light text-dark me-2">${workOrder.total_batches} batches</span>
+                        <span class="progress-mini">
+                            <div class="progress-bar bg-success" style="width: ${workOrder.progress_percentage}%"></div>
+                        </span>
+                        <span class="ms-2">${workOrder.progress_percentage}%</span>
+                        <span class="status-badge status-${workOrder.wo_status || 'planned'} ms-2">${workOrder.wo_status || 'planned'}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="tree-children ${!isExpanded ? 'collapsed' : ''}" id="wo-children-${workOrder.id}">
+                <!-- Children loaded on demand -->
+            </div>
+        </div>
+    `;
+}
+
+// Toggle work order expansion
+window.toggleWorkOrder = function(workOrderId) {
+    console.log('toggleWorkOrder called with ID:', workOrderId);
+    
+    const isCurrentlyExpanded = expandedWorkOrders.has(workOrderId);
+    console.log('Currently expanded:', isCurrentlyExpanded);
+    
+    if (isCurrentlyExpanded) {
+        // Collapse
+        expandedWorkOrders.delete(workOrderId);
+        const content = document.getElementById(`wo-content-${workOrderId}`);
+        const header = content ? content.previousElementSibling : null;
+        const icon = header ? header.querySelector('.expand-icon') : null;
+        
+        if (content) content.style.display = 'none';
+        if (header) header.classList.remove('expanded');
+        if (icon) {
+            icon.classList.remove('expanded');
+            icon.textContent = '+';
+        }
+        
+        console.log('Work order collapsed:', workOrderId);
+        
+    } else {
+        // Expand
+        expandedWorkOrders.add(workOrderId);
+        const content = document.getElementById(`wo-content-${workOrderId}`);
+        const header = content ? content.previousElementSibling : null;
+        const icon = header ? header.querySelector('.expand-icon') : null;
+        
+        if (content) content.style.display = 'block';
+        if (header) header.classList.add('expanded');
+        if (icon) {
+            icon.classList.add('expanded');
+            icon.textContent = '−';
+        }
+        
+        console.log('Work order expanded, loading details...', workOrderId);
+        
+        // Load work order details if not already loaded
+        loadWorkOrderDetails(workOrderId);
+    }
+}
+
+// Load work order details (products, processes, batches)
+function loadWorkOrderDetails(workOrderId) {
+    const contentDiv = document.getElementById(`wo-content-${workOrderId}`);
+    if (!contentDiv) return;
+    
+    const url = `<?= base_url('/production/ajax-get-work-order-details') ?>/${workOrderId}`;
+    
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': window.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Work order details response:', data);
+        if (data.success && data.data) {
+            console.log('Rendering work order details:', data.data);
+            renderWorkOrderDetails(workOrderId, data.data);
+        } else {
+            console.log('No details available:', data);
+            contentDiv.innerHTML = '<div class="text-center py-3 text-muted">No details available</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading work order details:', error);
+        contentDiv.innerHTML = '<div class="text-center py-3 text-danger">Error loading details</div>';
+    });
+}
+
+// Render work order details with products and processes
+function renderWorkOrderDetails(workOrderId, workOrder) {
+    const contentDiv = document.getElementById(`wo-content-${workOrderId}`);
+    if (!contentDiv) return;
+    
+    let html = '';
+    
+    if (workOrder.products && workOrder.products.length > 0) {
+        workOrder.products.forEach(product => {
+            html += createProductTreeNode(product);
+        });
+    } else {
+        html = '<div class="text-center py-3 text-muted">No products found for this work order</div>';
+    }
+    
+    contentDiv.innerHTML = html;
+}
+
+// Create product tree node (Level 2)
+function createProductTreeNode(product) {
+    const isExpanded = expandedNodes.products.has(product.woi_id);
+    
+    // Always generate processes HTML (they're part of the data structure)
+    let processesHtml = '';
+    if (product.processes && product.processes.length > 0) {
+        product.processes.forEach(process => {
+            processesHtml += createProcessTreeNode(process);
+        });
+    }
+    
+    const hasProcesses = product.processes && product.processes.length > 0;
+    
+    return `
+        <div class="tree-node tree-level-2" data-node-id="${product.woi_id}">
+            <div class="node-content" onclick="event.stopPropagation(); toggleTreeNode('products', ${product.woi_id}, this.parentElement)">
+                <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">${hasProcesses ? (isExpanded ? '−' : '+') : ''}</span>
+                <i class="bi bi-box text-warning me-2"></i>
+                <div class="node-info">
+                    <strong>${product.product_name}</strong>
+                    <span class="text-muted ms-2">(${product.product_code || 'N/A'})</span>
+                    <div class="node-stats">
+                        <span class="badge bg-warning text-dark">Ordered: ${product.quantity_ordered}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="tree-children ${!isExpanded ? 'collapsed' : ''}" id="product-children-${product.woi_id}">
+                ${processesHtml}
+            </div>
+        </div>
+    `;
+}
+
+// Create process tree node (Level 3)
+function createProcessTreeNode(process) {
+    const isExpanded = expandedNodes.processes.has(process.process_id);
+    
+    let batchesHtml = '';
+    if (process.batches && process.batches.length > 0) {
+        process.batches.forEach(batch => {
+            batchesHtml += createBatchTreeNode(batch);
+        });
+    }
+    
+    return `
+        <div class="tree-node tree-level-3" data-node-id="${process.process_id}">
+            <div class="node-content" onclick="event.stopPropagation(); toggleTreeNode('processes', ${process.process_id}, this.parentElement)">
+                <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">${process.batches?.length > 0 ? (isExpanded ? '−' : '+') : ''}</span>
+                <i class="bi bi-gear text-success me-2"></i>
+                <div class="node-info">
+                    <strong>${process.process_name}</strong>
+                    ${process.is_vendor_process ? '<span class="badge bg-secondary ms-2">Vendor</span>' : ''}
+                    <div class="node-stats">
+                        <div class="progress-mini me-2">
+                            <div class="progress-bar bg-info" style="width: ${process.progress_percentage || 0}%"></div>
+                        </div>
+                        <span>${process.progress_percentage || 0}%</span>
+                        <span class="badge bg-info text-white ms-2">${process.batch_count || 0} batches</span>
+                    </div>
+                </div>
+            </div>
+            <div class="tree-children ${!isExpanded ? 'collapsed' : ''}" id="process-children-${process.process_id}">
+                ${batchesHtml}
+            </div>
+        </div>
+    `;
+}
+
+// Create batch tree node (Level 4)
+function createBatchTreeNode(batch) {
+    const statusClass = `status-${batch.status}`;
+    const isCompleted = batch.progress_percentage >= 100;
+    const showAddLogBtn = !isCompleted && (batch.status === 'in_progress' || batch.status === 'planned');
+    const isExpanded = expandedNodes.batches.has(batch.id);
+    
+    let logsHtml = '';
+    if (batch.recent_logs && batch.recent_logs.length > 0) {
+        batch.recent_logs.forEach(log => {
+            logsHtml += `
+                <div class="tree-node tree-level-5">
+                    <div class="node-content">
+                        <i class="bi bi-clock text-muted me-2"></i>
+                        <div class="node-info">
+                            <span>${log.log_date}</span>
+                            <span class="text-muted ms-2">•</span>
+                            <span class="ms-2">Completed: ${log.qty_completed || 0}</span>
+                            ${log.employee_name ? `<span class="text-muted ms-2">by ${log.employee_name}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    return `
+        <div class="tree-node tree-level-4" data-node-id="${batch.id}" data-batch-id="${batch.id}">
+            <div class="node-content" onclick="event.stopPropagation(); toggleTreeNode('batches', ${batch.id}, this.parentElement)">
+                <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">${logsHtml ? (isExpanded ? '−' : '+') : ''}</span>
+                <i class="bi bi-clipboard-data text-info me-2"></i>
+                <div class="node-info flex-grow-1">
+                    <div class="batch-main-info">
+                        <strong>${batch.batch_code}</strong>
+                        <span class="text-muted ms-2">•</span>
+                        <span class="qty-display ms-2">
+                            <span class="qty-completed">${batch.completed_qty || 0}</span> / 
+                            <span class="qty-total">${batch.planned_qty}</span> pcs
+                        </span>
+                        <div class="progress-mini ms-2">
+                            <div class="progress-bar bg-success" style="width: ${batch.progress_percentage}%"></div>
+                        </div>
+                        <span class="ms-2">${batch.progress_percentage}%</span>
+                        <span class="status-badge ${statusClass} ms-2">${batch.status.replace('_', ' ')}</span>
+                    </div>
+                </div>
+                <div class="action-buttons ms-auto">
+                    ${showAddLogBtn ? `
+                        <button class="action-btn btn-add-log" onclick="event.stopPropagation(); showAddLogForBatch(${batch.id})" title="Add Daily Log">
+                            <i class="bi bi-journal-plus"></i>
+                        </button>
+                    ` : ''}
+                    <button class="action-btn btn-view" onclick="event.stopPropagation(); viewBatchDetails(${batch.id})" title="View Details">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="action-btn btn-edit" onclick="event.stopPropagation(); showEditBatchModal(${batch.id})" title="Edit Batch">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="action-btn btn-delete" onclick="event.stopPropagation(); deleteBatch(${batch.id})" title="Delete Batch">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="tree-children ${!isExpanded ? 'collapsed' : ''}" id="batch-children-${batch.id}">
+                ${logsHtml}
+            </div>
+        </div>
+    `;
+}
+
+// Batch action functions for hierarchy view
+window.viewBatch = function(batchId) {
+    console.log('View batch:', batchId);
+    viewBatchDetails(batchId);
+};
+
+window.editBatch = function(batchId) {
+    console.log('Edit batch:', batchId);
+    showEditBatchModal(batchId);
+};
+
+// New functions for hierarchical view actions
+window.showAddLogForBatch = function(batchId) {
+    console.log('Add log for batch:', batchId);
+    
+    // Pre-select the batch in the add log modal
+    const logBatchSelect = document.getElementById('logBatch');
+    if (logBatchSelect) {
+        // First load the available batches, then select the specific one
+        loadActiveBatches().then(() => {
+            logBatchSelect.value = batchId;
+            // Trigger change event to load batch details
+            logBatchSelect.dispatchEvent(new Event('change'));
+        });
+    }
+    
+    // Show the add log modal
+    const modal = new bootstrap.Modal(document.getElementById('addLogModal'));
+    modal.show();
+};
+
+window.showEditBatchModal = function(batchId) {
+    console.log('Edit batch modal for:', batchId);
+    
+    // First get batch details to populate the edit form
+    fetch(`<?= base_url('/production/ajax-get-batch-details/') ?>${batchId}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': window.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.batch) {
+            // Populate edit form with batch data
+            populateEditBatchForm(data.batch);
+            
+            // Show edit modal (you'll need to create this modal)
+            showSuccess('Edit batch modal functionality - implement edit form modal');
+        } else {
+            showError('Failed to load batch details for editing');
+        }
+    })
+    .catch(error => {
+        console.error('Error loading batch details:', error);
+        showError('Error loading batch details');
+    });
+};
+
+function populateEditBatchForm(batch) {
+    // This function will populate the edit form when you create the edit modal
+    console.log('Populating edit form with:', batch);
+    // Implementation depends on your edit form structure
+};
+
+// Load production data for main table
+function loadProductionData() {
+    console.log('loadProductionData called');
+    // show loading spinner
+    const loadingEl = document.getElementById('batchLoading');
+    const countEl = document.getElementById('batchCount');
+    if (loadingEl) loadingEl.style.display = 'inline-block';
+    if (countEl) { countEl.style.display = 'none'; countEl.textContent = ''; }
+    
+    const filterForm = document.getElementById('filterForm');
+    if (!filterForm) {
+        console.error('filterForm element not found');
+        return;
+    }
+    
+    const formData = new FormData(filterForm);
+    const params = new URLSearchParams(formData);
+    
+    const url = `<?= base_url('/production/ajax-get-batches') ?>?${params}`;
+    console.log('Loading production data from:', url);
+    
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+        .then(response => {
+            console.log('Response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.success) {
+                renderProductionTable(data.batches);
+                // set batch count if present
+                try {
+                    const uniqueCount = (data.batches || []).length;
+                    if (countEl) { countEl.textContent = uniqueCount; countEl.style.display = 'inline-block'; }
+                } catch(e) { /* ignore */ }
+                if (data.message && data.batches.length === 0) {
+                    console.log('Info:', data.message);
+                }
+            } else {
+                console.error('Server error:', data.message);
+                showError(data.message || 'Failed to load production data');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Network error loading production data');
+        })
+        .finally(() => {
+            if (loadingEl) loadingEl.style.display = 'none';
+            // Re-enable page scroll after content render
+            ensureScrollEnabled();
+        });
+}
+
+// Render production table
+function renderProductionTable(batches) {
+    const tbody = document.getElementById('productionTableBody');
+
+    if (!batches || batches.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox display-6"></i>
+                    <div class="mt-2">No production batches found</div>
+                    <small>Start a new batch to begin production tracking</small>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    // Group batches by work order
+    const groups = {};
+    batches.forEach(b => {
+        const wo = b.wo_number || 'Unassigned';
+        if (!groups[wo]) {
+            let header = 'Unassigned';
+            if (b.wo_number && b.wo_number.trim() !== '') {
+                header = b.wo_number;
+                if (b.customer_name && b.customer_name.trim() !== '' && b.customer_name !== 'N/A') {
+                    header += ` — ${b.customer_name}`;
+                }
+            }
+            groups[wo] = { header: header, items: [] };
+        }
+        groups[wo].items.push(b);
+    });
+
+    let html = '';
+    let idx = 0;
+    for (const woKey in groups) {
+        const group = groups[woKey];
+        const gid = `wo_${idx++}`;
+
+        // Work order header row with toggle (no nested tbody; use classes on rows)
+        html += `
+            <tr class="table-secondary wo-header" data-group="${gid}">
+                <td colspan="9" style="vertical-align: middle;">
+                    <button type="button" class="me-3 expand-toggle" onclick="toggleWorkOrder('${gid}', this); return false;" aria-expanded="false" aria-controls="${gid}">
+                        <span class="expand-icon" aria-hidden="true">+</span>
+                    </button>
+                    <strong>${escapeHtml(group.header)}</strong>
+                </td>
+            </tr>
+            <!-- Group-specific column headings (hidden/shown with group) -->
+            <tr class="group-columns ${gid}" style="display: none;">
+                <th>Batch Code</th>
+                <th>Work Order</th>
+                <th>Product</th>
+                <th>Process</th>
+                <th class="text-center">Planned Qty</th>
+                <th>Progress</th>
+                <th>Status</th>
+                <th>Last Update</th>
+                <th>Actions</th>
+            </tr>
+        `;
+
+        group.items.forEach(batch => {
+            const pct = batch.planned_qty && batch.planned_qty > 0 ? Math.round((batch.completed_qty / batch.planned_qty) * 100) : 0;
+            html += `
+                <tr class="wo-item ${gid}" style="display: none;">
+                    <td>
+                        <span class="fw-medium">${escapeHtml(batch.batch_code)}</span>
+                        <br><small class="text-muted">ID: ${batch.id}</small>
+                    </td>
+                    <td>
+                        <div class="fw-medium">${escapeHtml(batch.wo_number || '')}</div>
+                        <small class="text-muted">${escapeHtml(batch.customer_name || '')}</small>
+                    </td>
+                    <td>
+                        <div class="fw-medium truncate">${escapeHtml(batch.product_name || '')}</div>
+                        <small class="text-muted">${escapeHtml(batch.product_code || '')}</small>
+                    </td>
+                    <td>
+                        <div class="truncate">${escapeHtml(batch.process_name || '')}</div>
+                        <small class="text-muted">
+                            ${batch.is_vendor_process 
+                                ? (batch.vendor_name && batch.vendor_name.trim() !== '' 
+                                    ? escapeHtml(batch.vendor_name) 
+                                    : 'Vendor') 
+                                : 'In-house'}
+                        </small>
+                    </td>
+                    <td class="text-center">
+                        <div class="fw-bold">${batch.planned_qty || 0}</div>
+                        <small class="text-muted">pcs</small>
+                    </td>
+                    <td>
+                        <div class="progress mb-1" style="height: 8px;">
+                            <div class="progress-bar bg-success" style="width: ${pct}%"></div>
+                        </div>
+                        <small class="text-muted">${batch.completed_qty || 0}/${batch.planned_qty || 0} (${pct}%)</small>
+                    </td>
+                    <td>
+                        <span class="badge status-badge bg-${getStatusColor(batch.status)}">${batch.status === 'in_progress' ? 'In Progress' : (batch.status === 'completed' ? 'Completed' : escapeHtml(batch.status))}</span>
+                    </td>
+                    <td>
+                        <div>${escapeHtml(batch.last_log_date || 'No Update Yet')}</div>
+                        <small class="text-muted">
+                            ${
+                                (typeof batch.days_since_update === 'number') 
+                                    ? `${batch.days_since_update} day${batch.days_since_update === 1 ? '' : 's'} ago`
+                                    : (
+                                        batch.last_log_date 
+                                            ? escapeHtml(String(batch.days_since_update || '')) 
+                                            : '—'
+                                      )
+                            }
+                        </small>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" onclick="viewBatchDetails(${batch.id})" title="View Details">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-success" onclick="addLogToBatch(${batch.id})" title="Add Log">
+                                <i class="bi bi-journal-plus"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" onclick="deleteBatch(${batch.id}, this)" title="Delete Batch">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    tbody.innerHTML = html;
+}
+
+// Utility to escape HTML in JS strings (very small helper)
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// Toggle work order group
+function toggleWorkOrder(groupId, caller) {
+    // Show / hide rows that have class equal to the groupId
+    const rows = document.querySelectorAll('.wo-item.' + groupId);
+    const headerRows = document.querySelectorAll('.group-columns.' + groupId);
+    if (!rows || rows.length === 0) return;
+    const icon = caller.querySelector('.expand-icon');
+    // Use computed style to detect actual visibility (handles '' and table-row correctly)
+    const firstRow = rows[0];
+    const comp = window.getComputedStyle(firstRow);
+    const visible = comp && comp.display !== 'none';
+    if (visible) {
+        rows.forEach(r => r.style.display = 'none');
+        if (headerRows && headerRows.length) headerRows.forEach(h => h.style.display = 'none');
+        if (icon) icon.textContent = '+';
+        try { caller.setAttribute('aria-expanded', 'false'); } catch(e){}
+        try { caller.closest('tr')?.classList.remove('active'); } catch(e){}
+    } else {
+        // use explicit table-row to ensure rows are shown correctly in all browsers/tables
+        rows.forEach(r => r.style.display = 'table-row');
+        if (headerRows && headerRows.length) headerRows.forEach(h => h.style.display = 'table-row');
+        if (icon) icon.textContent = '\u2212';
+        try { caller.setAttribute('aria-expanded', 'true'); } catch(e){}
+        try { caller.closest('tr')?.classList.add('active'); } catch(e){}
+    }
+}
+
+// Delete batch via AJAX
+window.deleteBatch = function(batchId) {
+    console.log('deleteBatch called, batchId:', batchId);
+    if (!batchId || batchId === 'null') {
+        alert('Invalid batch ID');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to delete this batch? This action cannot be undone.')) {
+        console.log('User cancelled deletion');
+        return;
+    }
+    
+    console.log('User confirmed deletion, proceeding...');
+    
+    fetch('<?= base_url('production/ajax-delete-batch') ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ batch_id: batchId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Delete response:', data);
+        if (data.success) {
+            alert('Batch deleted successfully');
+            loadHierarchicalData();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to delete batch'));
+        }
+    })
+    .catch(error => {
+        console.error('Delete error:', error);
+        alert('Error deleting batch');
+    });
+};
+        showError('Network error deleting batch');
+        btn.disabled = false;
+    }
+}
+
+// Helper functions
+function normalizeStatus(status) {
+    if (!status) return '';
+    return String(status).trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function getStatusColor(status) {
+    const key = normalizeStatus(status);
+    const colors = {
+        'planned': 'secondary',
+        'in_progress': 'primary',
+        'completed': 'success',
+        'on_hold': 'secondary'
+    };
+    return colors[key] || 'secondary';
+}
+
+// Modal functions
+function showCreateBatchModal() {
+    const modal = new bootstrap.Modal(document.getElementById('createBatchModal'));
+    modal.show();
+}
+
+function showAddLogModal() {
+    loadActiveBatches(); // Load available batches
+    const modal = new bootstrap.Modal(document.getElementById('addLogModal'));
+    modal.show();
+}
+
+// Load work order products when work order is selected
+function loadWorkOrderProducts() {
+    const workOrderId = document.getElementById('batchWorkOrder').value;
+    const productSelect = document.getElementById('batchProduct');
+    
+    console.log('Loading products for work order:', workOrderId);
+    productSelect.innerHTML = '<option value="">Loading...</option>';
+    
+    if (!workOrderId) {
+        productSelect.innerHTML = '<option value="">Select Product</option>';
+        return;
+    }
+    
+    fetch(`<?= base_url('/work-orders/') ?>${workOrderId}/products`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+        .then(response => {
+            console.log('Products response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Work order products response:', data);
+            if (data.success) {
+                const products = data.products || data.items || [];
+                if (products.length > 0) {
+                    productSelect.innerHTML = '<option value="">Select Product</option>' +
+                        products.map(item => 
+                            `<option value="${item.id}">${item.product_name || item.name} (${item.product_code || item.code}) - ${item.quantity_ordered} pcs</option>`
+                        ).join('');
+                } else {
+                    productSelect.innerHTML = '<option value="">No products found in this work order</option>';
+                }
+            } else {
+                console.error('Server error:', data.message);
+                productSelect.innerHTML = '<option value="">Error: ' + (data.message || 'Failed to load products') + '</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            productSelect.innerHTML = '<option value="">Error loading products</option>';
+        });
+}
+
+// Load product processes when product is selected
+function loadProductProcesses() {
+    const itemId = document.getElementById('batchProduct').value;
+    const processSelect = document.getElementById('batchProcess');
+    
+    console.log('Loading processes for item ID:', itemId);
+    processSelect.innerHTML = '<option value="">Loading...</option>';
+    
+    if (!itemId) {
+        processSelect.innerHTML = '<option value="">Select Process</option>';
+        return;
+    }
+    
+    fetch(`<?= base_url('/production/ajax-get-item-processes/') ?>${itemId}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+        .then(response => {
+            console.log('Processes response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Item processes response:', data);
+            if (data.success) {
+                const processes = data.processes || [];
+                if (processes.length > 0) {
+                    processSelect.innerHTML = '<option value="">Select Process</option>' +
+                        processes.map(process => 
+                            `<option value="${process.id}">${process.name} ${process.is_vendor_process ? '(Vendor)' : '(In-house)'}</option>`
+                        ).join('');
+                    
+                    // Auto-generate batch code when process is selected. Use onchange assignment to avoid stacking listeners.
+                    processSelect.onchange = generateBatchCode;
+                } else {
+                    processSelect.innerHTML = '<option value="">No processes assigned to this product</option>';
+                }
+            } else {
+                console.error('Server error:', data.message);
+                processSelect.innerHTML = '<option value="">Error: ' + (data.message || 'Failed to load processes') + '</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            // If server returned JSON error, try to extract message; otherwise show generic error
+            try {
+                // response.json() already attempted above; this catch likely has Error object only
+                processSelect.innerHTML = '<option value="">Error loading processes</option>';
+            } catch (e) {
+                processSelect.innerHTML = '<option value="">Error loading processes</option>';
+            }
+        });
+}
+
+// Generate batch code
+function generateBatchCode() {
+    const woSelect = document.getElementById('batchWorkOrder');
+    const processSelect = document.getElementById('batchProcess');
+    const codeInput = document.getElementById('batchCode');
+    
+    if (woSelect.value && processSelect.value) {
+        // Let backend generate the short code
+        codeInput.value = 'Auto-generated based on selections';
+    } else {
+        codeInput.value = '';
+    }
+}
+
+// Load active batches for log modal
+function loadActiveBatches() {
+    console.log('Loading active batches from:', `<?= base_url('/production/ajax-get-active-batches') ?>`);
+    
+    return fetch(`<?= base_url('/production/ajax-get-active-batches') ?>`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+        .then(response => {
+            console.log('Active batches response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Active batches response data:', data);
+            if (data.success) {
+                const batchSelect = document.getElementById('logBatch');
+                if (batchSelect) {
+                    batchSelect.innerHTML = '<option value="">Select Active Batch</option>' +
+                        data.batches.map(batch => 
+                            `<option value="${batch.id}">${batch.batch_code} - ${batch.product_name || 'N/A'} (${batch.process_name || 'N/A'})</option>`
+                        ).join('');
+                    console.log('Loaded', data.batches.length, 'active batches');
+                } else {
+                    console.error('logBatch select element not found');
+                }
+            } else {
+                console.error('Server error loading active batches:', data.message);
+                showError(data.message || 'Failed to load active batches');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading active batches:', error);
+            showError('Network error loading active batches');
+        });
+}
+
+// Form submissions
+document.getElementById('createBatchForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    // Don't send batch_code if it's just the placeholder text
+    const batchCodeInput = document.getElementById('batchCode');
+    if (batchCodeInput.value === 'Auto-generated based on selections') {
+        formData.delete('batch_code');
+    }
+    
+    fetch(`<?= base_url('/production/ajax-create-batch') ?>`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': window.csrfToken || ''
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSuccess('Batch created successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('createBatchModal')).hide();
+            this.reset();
+            loadProductionData();
+            loadActiveBatches();
+        } else {
+            showError(data.message || 'Failed to create batch');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Network error creating batch');
+    });
+});
+
+document.getElementById('addLogForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // Validate quantities before submission
+    if (!validateQuantities()) {
+        return;
+    }
+    
+    const formData = new FormData(this);
+    
+    // Use the hidden batch ID field value
+    const batchId = document.getElementById('logBatchId').value;
+    if (!batchId) {
+        showError('Batch ID is required');
+        return;
+    }
+    
+    // Override the batch_id in form data to use the hidden field
+    formData.set('batch_id', batchId);
+    
+    fetch(`<?= base_url('/production/ajax-add-log') ?>`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': window.csrfToken || ''
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSuccess('Production log added successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('addLogModal')).hide();
+            this.reset();
+            loadHierarchicalData(); // Reload the tree
+        } else {
+            showError(data.message || 'Failed to add log');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Network error adding log');
+    });
+});
+
+// Quantity validation function
+function validateQuantities() {
+    const received = parseInt(document.getElementById('logReceived').value) || 0;
+    const accepted = parseInt(document.getElementById('logAccepted').value) || 0;
+    const rejected = parseInt(document.getElementById('logRejected').value) || 0;
+    const repair = parseInt(document.getElementById('logRepair').value) || 0;
+    
+    let isValid = true;
+    
+    // Clear previous errors
+    clearValidationErrors();
+    
+    // Check if accepted quantity is negative
+    if (accepted < 0) {
+        showFieldError('acceptedError', 'Accepted quantity cannot be negative');
+        isValid = false;
+    }
+    
+    // Check if received quantity is negative
+    if (received < 0) {
+        showFieldError('receivedError', 'Received quantity cannot be negative');
+        isValid = false;
+    }
+    
+    // Check if rejected quantity is negative
+    if (rejected < 0) {
+        showFieldError('rejectedError', 'Rejected quantity cannot be negative');
+        isValid = false;
+    }
+    
+    // Check if repair quantity is negative
+    if (repair < 0) {
+        showFieldError('repairError', 'Repair quantity cannot be negative');
+        isValid = false;
+    }
+    
+    // Check if accepted + rejected + repair exceeds received
+    const totalProcessed = accepted + rejected + repair;
+    if (totalProcessed > received) {
+        showFieldError('acceptedError', 'Total processed (' + totalProcessed + ') cannot exceed received (' + received + ')');
+        isValid = false;
+    }
+    
+    // Check if accepted exceeds received
+    if (accepted > received) {
+        showFieldError('acceptedError', 'Accepted quantity cannot exceed received quantity');
+        isValid = false;
+    }
+    
+    // Get planned quantity from batch summary for validation
+    const plannedQty = parseInt(document.getElementById('summaryPlanned').textContent) || 0;
+    if (received > plannedQty) {
+        showFieldError('receivedError', 'Received quantity cannot exceed planned quantity (' + plannedQty + ')');
+        isValid = false;
+    }
+    
+    return isValid;
+}
+
+function clearValidationErrors() {
+    const acceptedError = document.getElementById('acceptedError');
+    const receivedError = document.getElementById('receivedError');
+    const rejectedError = document.getElementById('rejectedError');
+    const repairError = document.getElementById('repairError');
+    
+    if (acceptedError) acceptedError.textContent = '';
+    if (receivedError) receivedError.textContent = '';
+    if (rejectedError) rejectedError.textContent = '';
+    if (repairError) repairError.textContent = '';
+    
+    // Remove invalid class
+    const logAccepted = document.getElementById('logAccepted');
+    const logReceived = document.getElementById('logReceived');
+    const logRejected = document.getElementById('logRejected');
+    const logRepair = document.getElementById('logRepair');
+    
+    if (logAccepted) logAccepted.classList.remove('is-invalid');
+    if (logReceived) logReceived.classList.remove('is-invalid');
+    if (logRejected) logRejected.classList.remove('is-invalid');
+    if (logRepair) logRepair.classList.remove('is-invalid');
+}
+
+function showFieldError(errorId, message) {
+    const errorElement = document.getElementById(errorId);
+    if (errorElement) {
+        errorElement.textContent = message;
+    }
+    
+    // Add invalid class to corresponding input
+    const fieldId = errorId.replace('Error', '');
+    let inputElement = null;
+    
+    if (fieldId === 'accepted') {
+        inputElement = document.getElementById('logAccepted');
+    } else if (fieldId === 'received') {
+        inputElement = document.getElementById('logReceived');
+    } else if (fieldId === 'rejected') {
+        inputElement = document.getElementById('logRejected');
+    } else if (fieldId === 'repair') {
+        inputElement = document.getElementById('logRepair');
+    }
+    
+    if (inputElement) {
+        inputElement.classList.add('is-invalid');
+    }
+}
+
+// Global button handler functions (fix for all broken buttons)
+window.showAddLogForBatch = function(batchId) {
+    console.log('Add log for batch:', batchId);
+    // Set selected batch and show modal
+    document.getElementById('logBatch').value = batchId;
+    loadBatchDetails(); // Load batch summary
+    $('#addLogModal').modal('show');
+    // Focus on completed quantity field
+    setTimeout(() => {
+        const completedInput = document.getElementById('logCompleted');
+        if (completedInput) completedInput.focus();
+    }, 500);
+};
+
+window.viewBatchDetails = function(batchId) {
+    console.log('View batch details:', batchId);
+    showBatchDetails(batchId); // Use existing function
+};
+
+window.showEditBatchModal = function(batchId) {
+    console.log('Edit batch:', batchId);
+    // Placeholder for edit functionality
+    alert('Edit batch functionality - To be implemented');
+};
+
+// Utility functions
+function showSuccess(message) {
+    // You can implement a toast notification here
+    alert('✅ ' + message);
+}
+
+function showError(message) {
+    // You can implement a toast notification here
+    alert('❌ ' + message);
+}
+
+function applyFilters() {
+    if (currentView === 'table') {
+        loadProductionData();
+    } else if (currentView === 'hierarchy') {
+        loadHierarchicalData();
+    }
+}
+
+function clearFilters() {
+    document.getElementById('filterForm').reset();
+    if (currentView === 'table') {
+        loadProductionData();
+    } else if (currentView === 'hierarchy') {
+        loadHierarchicalData();
+    }
+}
+
+function refreshData() {
+    if (currentView === 'table') {
+        loadProductionData();
+        loadActiveBatches();
+    } else if (currentView === 'hierarchy') {
+        loadHierarchicalData();
+    }
+}
+
+window.viewBatchDetails = function(batchId) {
+    console.log('Viewing batch details for:', batchId);
+    
+    // Implementation for viewing batch details
+    fetch(`<?= base_url('/production/ajax-get-batch-details/') ?>${batchId}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': window.csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Batch details response:', data);
+            if (data.success) {
+                const contentDiv = document.getElementById('batchDetailsContent');
+                if (contentDiv) {
+                    contentDiv.innerHTML = data.html || '<div class="p-3">Batch details loaded successfully</div>';
+                }
+                const modal = new bootstrap.Modal(document.getElementById('batchDetailsModal'));
+                modal.show();
+            } else {
+                showError('Failed to load batch details: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error loading batch details:', error);
+            showError('Network error loading batch details');
+        });
+};
+
+function addLogToBatch(batchId) {
+    // Ensure active batches are loaded first
+    loadActiveBatches();
+    // Set selected batch, load details, then show modal
+    document.getElementById('logBatch').value = batchId;
+    loadBatchDetails();
+    showAddLogModal();
+}
+
+// Load batch details for log form
+function loadBatchDetails() {
+    const batchId = document.getElementById('logBatch').value;
+    const summaryDiv = document.getElementById('batchSummary');
+    
+    if (!batchId) {
+        summaryDiv.style.display = 'none';
+        // Clear prefilled inputs and make them editable
+        const receivedInput = document.getElementById('logReceived');
+        if (receivedInput) {
+            receivedInput.value = '';
+            receivedInput.readOnly = false;
+            receivedInput.classList.remove('bg-light');
+        }
+        document.getElementById('calcTotal').textContent = 0;
+        document.getElementById('calcNewPending').textContent = 0;
+        document.getElementById('calcEfficiency').textContent = '0%';
+        return;
+    }
+    
+    fetch(`<?= base_url('/production/ajax-get-batch-summary/') ?>${batchId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const batch = data.batch;
+                document.getElementById('summaryPlanned').textContent = batch.planned_qty;
+                document.getElementById('summaryCompleted').textContent = batch.completed_qty;
+                document.getElementById('summaryRejected').textContent = batch.rejected_qty;
+                document.getElementById('summaryPending').textContent = batch.pending_qty;
+                
+                // Prefill received qty (started quantities) and make it read-only to avoid accidental edits when auto-selecting
+                const receivedInput = document.getElementById('logReceived');
+                if (receivedInput) {
+                    receivedInput.value = batch.received_qty || 0;
+                    receivedInput.readOnly = true;
+                    receivedInput.classList.add('bg-light');
+                }
+
+                // Ensure calculation summary updates based on prefilled values
+                updatePending();
+
+                summaryDiv.style.display = 'block';
+            }
+        })
+        .catch(error => console.error('Error loading batch details:', error));
+}
+
+// Update pending calculation
+function updatePending() {
+    const received = parseInt(document.getElementById('logReceived').value) || 0;
+    const completed = parseInt(document.getElementById('logCompleted').value) || 0;
+    const rejected = parseInt(document.getElementById('logRejected').value) || 0;
+    const repair = parseInt(document.getElementById('logRepair').value) || 0;
+    
+    const total = received + completed + rejected + repair;
+    const pending = Math.max(0, received - completed - rejected - repair);
+    const efficiency = received > 0 ? Math.round((completed / received) * 100) : 0;
+    
+    document.getElementById('calcTotal').textContent = total;
+    document.getElementById('calcNewPending').textContent = pending;
+    document.getElementById('calcEfficiency').textContent = efficiency + '%';
+}
+
+function toggleContent(contentId) {
+    console.log('Toggle called for:', contentId);
+    var content = document.getElementById(contentId);
+    
+    if (!content) {
+        console.error('Content element not found:', contentId);
+        return;
+    }
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+    } else {
+        content.style.display = 'none';
+    }
+}
+
+function toggleWO() {
+    var content = document.getElementById('wo-content');
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        document.querySelector('[onclick="toggleWO()"]').textContent = '−';
+    } else {
+        content.style.display = 'none';
+        document.querySelector('[onclick="toggleWO()"]').textContent = '+';
+    }
+}
+
+function toggleProcess() {
+    var content = document.getElementById('process-content');
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        document.querySelector('[onclick="toggleProcess()"]').textContent = '−';
+    } else {
+        content.style.display = 'none';
+        document.querySelector('[onclick="toggleProcess()"]').textContent = '+';
+    }
+}
+
+// Force load data immediately
+window.addEventListener('load', function() {
+    console.log('Window loaded, forcing data...');
+    
+    // Direct data insertion
+    const treeContainer = document.getElementById('simpleTree');
+    if (treeContainer) {
+        console.log('Tree container found, inserting data...');
+        treeContainer.innerHTML = `
+            <div class="tree-container">
+                <div class="tree-row wo-row">
+                    <div class="tree-content">
+                        <span class="toggle-btn" onclick="toggleData()">+</span>
+                        <strong>WO-WO-2025-001</strong> | 1 products | 4 batches
+                    </div>
+                    <div class="tree-actions">
+                        <button class="btn-simple btn-delete" onclick="deleteBatch(1)">Delete</button>
+                    </div>
+                </div>
+                <div id="wo-content" class="tree-branch" style="display:none;">
+                    <div class="tree-row product-row">
+                        <div class="tree-content">
+                            <strong>13" Knife</strong> (1K-075)
+                        </div>
+                        <div class="tree-actions">
+                            <button class="btn-simple btn-delete" onclick="alert('Delete product')">Delete</button>
+                        </div>
+                    </div>
+                    <div class="tree-branch">
+                        <div class="tree-row process-row">
+                            <div class="tree-content">
+                                <span class="toggle-btn" onclick="alert('Process toggle')">+</span>
+                                <strong>Laser Cutting</strong> (3 batches)
+                            </div>
+                            <div class="tree-actions">
+                                <button class="btn-simple btn-delete" onclick="alert('Delete process')">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    } else {
+        console.error('Tree container not found');
+    }
+});
+
+function toggleData() {
+    const content = document.getElementById('wo-content');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+    } else {
+        content.style.display = 'none';
+    }
+}
+
+</script>
+<?= $this->endSection() ?>

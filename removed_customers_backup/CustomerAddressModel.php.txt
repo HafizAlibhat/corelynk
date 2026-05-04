@@ -1,0 +1,15 @@
+Backup of app/Models/CustomerAddressModel.php
+--------------------------------------------
+
+<?php
+namespace App\Models;
+
+use CodeIgniter\Model;
+
+class CustomerAddressModel extends Model
+{
+    protected $table = 'customer_addresses';
+    protected $primaryKey = 'id';
+    protected $allowedFields = ['customer_id','type','line1','line2','city','state','postal_code','country'];
+    protected $returnType = 'array';
+}

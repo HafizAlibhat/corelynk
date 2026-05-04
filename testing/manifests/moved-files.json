@@ -1,0 +1,1370 @@
+﻿[
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_add_cheque_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_add_cheque_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_add_variant_price_cols.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_add_variant_price_cols.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_attachments.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_attachments.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_bill_lines.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_bill_lines.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_bill_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_bill_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_cheqdata.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_cheqdata.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_cheques_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_cheques_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_cl.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_cl.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_dos.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_dos.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_movements.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_movements.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_check_vp_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_check_vp_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_create_pos_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_create_pos_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_debug_so4.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_debug_so4.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_fix_attachments.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_fix_attachments.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_fix_product_code_nullable.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_fix_product_code_nullable.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_migrate_cheque_payment.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_migrate_cheque_payment.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_migrate_privacy.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_migrate_privacy.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_migrate_user_privacy_flag.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_migrate_user_privacy_flag.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_sync_variant_inventory.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_sync_variant_inventory.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_tmp_check.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_tmp_check.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_tmp_describe.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_tmp_describe.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_tmp_products_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_tmp_products_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_tmp_ql.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_tmp_ql.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\_verify_fix.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\_verify_fix.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_categories.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_categories.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_category_to_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_category_to_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_cheques_module.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_cheques_module.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_converted_to_sales_order_id_to_quotations.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_converted_to_sales_order_id_to_quotations.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_gatepass_columns.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_gatepass_columns.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_missing_tables.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_missing_tables.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_multi_vendor_support.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_multi_vendor_support.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_parent_id_to_accounts.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_parent_id_to_accounts.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_process_id_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_process_id_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_process_id_to_product_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_process_id_to_product_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_sales_order_line_po_map.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_sales_order_line_po_map.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_tagline_to_company_settings.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_tagline_to_company_settings.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_tracking_docs_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_tracking_docs_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_variant_id_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_variant_id_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_variant_id_to_rfq_lines.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_variant_id_to_rfq_lines.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_variant_to_grn_lines.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_variant_to_grn_lines.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_variant_to_invoice_lines.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_variant_to_invoice_lines.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_vendor_column.bat",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_vendor_column.bat"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_vendor_price_pkr.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_vendor_price_pkr.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\add_vendor_to_variants.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\add_vendor_to_variants.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\alter_add_avatar.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\alter_add_avatar.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\api_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\api_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\bypass_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\bypass_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_accounting_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_accounting_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_accounts_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_accounts_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_april17_changes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_april17_changes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_batch_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_batch_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_cheque_requirements.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_cheque_requirements.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_ci.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_ci.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_ci_connection.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_ci_connection.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_column_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_column_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_core_db_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_core_db_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_correct_database.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_correct_database.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_currency.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_currency.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_customer_939.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_customer_939.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_customer_invoices.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_customer_invoices.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_data_details.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_data_details.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_database_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_database_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_db_status.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_db_status.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_db_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_db_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_db_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_db_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_dependencies.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_dependencies.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_descriptions.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_descriptions.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_existing_rfq.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_existing_rfq.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_fulfillment_issue.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_fulfillment_issue.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_grn_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_grn_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_invoice_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_invoice_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_invoice_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_invoice_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_invoice_payments.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_invoice_payments.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_journal_lines_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_journal_lines_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_journal_lines_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_journal_lines_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_journal_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_journal_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_logs_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_logs_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_payment_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_payment_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_permissions.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_permissions.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_po_lines_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_po_lines_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_po_lines_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_po_lines_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_po_variant_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_po_variant_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_process_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_process_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_processes_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_processes_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_processes_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_processes_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_product_processes_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_product_processes_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_product_variants_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_product_variants_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_product_vendor.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_product_vendor.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_production_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_production_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_products_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_products_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_products_columns2.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_products_columns2.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_quotation_lines.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_quotation_lines.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_real_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_real_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_rfq_source.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_rfq_source.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_sales_cache.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_sales_cache.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_sales_orders.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_sales_orders.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_so_invoice_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_so_invoice_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_so_po_mapping.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_so_po_mapping.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_stock_balances.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_stock_balances.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_stock_item_key.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_stock_item_key.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_table_constraints.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_table_constraints.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_table_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_table_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_timestamps.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_timestamps.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_users.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_users.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_variant_price_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_variant_price_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_variants.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_variants.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_variants_status.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_variants_status.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_vendor_bills_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_vendor_bills_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_vendor_contacts_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_vendor_contacts_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_vendor_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_vendor_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_vendors.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_vendors.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\check_workflow_system.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\check_workflow_system.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\clean_accounting_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\clean_accounting_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\cleanup_damascus_product.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\cleanup_damascus_product.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\clear_cache.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\clear_cache.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\clear_system_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\clear_system_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\complete_rfq_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\complete_rfq_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\count_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\count_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_accounting_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_accounting_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_company_settings_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_company_settings_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_missing_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_missing_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_pos_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_pos_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_proper_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_proper_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_sales_order_line_po_map_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_sales_order_line_po_map_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_test_payments.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_test_payments.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_vendor_contacts_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_vendor_contacts_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\create_workflow_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\create_workflow_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\customers_form.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\customers_form.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\db_test_simple.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\db_test_simple.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_accounting_metrics.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_accounting_metrics.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_add_process.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_add_process.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_ajax_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_ajax_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_balance_sheet_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_balance_sheet_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_batches.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_batches.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_batches_ui.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_batches_ui.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_categories.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_categories.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_cheque_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_cheque_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_contacts.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_contacts.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_controller_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_controller_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_customer_939.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_customer_939.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_dashboard_backend.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_dashboard_backend.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_dashboard_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_dashboard_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_database.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_database.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_debit_column.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_debit_column.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\DEBUG_FULFILLMENT.txt",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\DEBUG_FULFILLMENT.txt"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_full_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_full_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_hierarchy.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_hierarchy.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_join.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_join.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_logo.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_logo.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_po_lines.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_po_lines.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_process_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_process_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_product_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_product_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_relationships.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_relationships.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_simple.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_simple.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_so_fulfillment.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_so_fulfillment.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\debug_table_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\debug_table_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\dedupe_product_attributes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\dedupe_product_attributes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\delete_rfq.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\delete_rfq.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\diagnose_mysql.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\diagnose_mysql.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\find_damascus_products.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\find_damascus_products.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\find_laser_cutting.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\find_laser_cutting.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\find_product_dependencies.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\find_product_dependencies.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_foreign_key.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_foreign_key.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_gate_passes_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_gate_passes_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_legacy_work_orders_fk.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_legacy_work_orders_fk.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_po2_variants.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_po2_variants.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_processes_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_processes_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_product_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_product_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_product_processes_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_product_processes_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_root_password.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_root_password.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_sample_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_sample_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_stock_variants.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_stock_variants.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_table_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_table_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_tables.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_tables.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_tables_corrected.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_tables_corrected.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_templates_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_templates_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\fix_users.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\fix_users.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\force_fix_table.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\force_fix_table.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\grant_root.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\grant_root.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\grn_diagnostic.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\grn_diagnostic.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\import_schema.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\import_schema.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\insert_employee_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\insert_employee_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\insert_gate_pass_data.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\insert_gate_pass_data.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\insert_initial_company_settings.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\insert_initial_company_settings.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\insert_sample_dashboard_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\insert_sample_dashboard_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\insert_sample_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\insert_sample_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_cleanup_scope.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_cleanup_scope.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_doc_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_doc_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_po2_repair.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_po2_repair.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_quote2_3.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_quote2_3.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_rfq3.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_rfq3.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_so2_po3.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_so2_po3.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_stock_schema_po2.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_stock_schema_po2.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\inspect_wh_loc.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\inspect_wh_loc.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\list_quotations_now.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\list_quotations_now.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\mark_bank_accounts.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\mark_bank_accounts.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\merge_accounting_into_primary.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\merge_accounting_into_primary.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\merge_april17.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\merge_april17.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\migrate_grn.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\migrate_grn.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\migrate_service_products.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\migrate_service_products.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\migrate_subcontract_orders.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\migrate_subcontract_orders.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\migrate_to_corelynk.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\migrate_to_corelynk.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\normalize_po2_extra_bill.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\normalize_po2_extra_bill.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\populate_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\populate_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\populate_variant_ids.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\populate_variant_ids.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\debug_console.js",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\debug_console.js"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\debug_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\debug_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\debug_vendors.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\debug_vendors.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\login_test.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\login_test.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\session_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\session_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\simple_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\simple_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\test_batch.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\test_batch.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\test_button.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\test_button.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\test_direct.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\test_direct.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\test_trial_balance_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\test_trial_balance_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\upload_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\upload_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\public\\working_test.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\public\\working_test.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\quick_check.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\quick_check.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\quick_check_gatepasses.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\quick_check_gatepasses.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\quick_journal_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\quick_journal_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\recovery_summary.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\recovery_summary.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\repair_missing_grns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\repair_missing_grns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\repair_po2_missing_grn.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\repair_po2_missing_grn.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\reset_mysql_password.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\reset_mysql_password.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\run_migration.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\run_migration.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\run_vendor_bill_migration.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\run_vendor_bill_migration.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\seed_gatepass.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\seed_gatepass.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\set_default_currency.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\set_default_currency.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\setup_accounting_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\setup_accounting_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\setup_process_categories.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\setup_process_categories.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\show_expected_tree.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\show_expected_tree.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\show_tables.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\show_tables.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\simple_check.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\simple_check.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\simple_db_test.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\simple_db_test.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\simple_debug.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\simple_debug.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\simple_debug_batches.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\simple_debug_batches.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\simple_schema.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\simple_schema.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\sync_product_attributes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\sync_product_attributes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_add_category.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_add_category.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_describe_mysqli.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_describe_mysqli.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_describe_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_describe_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_describe_product_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_describe_product_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_patch.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_patch.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_processes_response.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_processes_response.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_script.txt",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_script.txt"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_show_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_show_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_show_qlines.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_show_qlines.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\temp_test_post.json",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\temp_test_post.json"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_accounting_debug.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_accounting_debug.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_add_process_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_add_process_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_ajax_endpoint.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_ajax_endpoint.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_ajax_endpoints.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_ajax_endpoints.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_ajax_fixed.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_ajax_fixed.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_ajax_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_ajax_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_ajax_ui.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_ajax_ui.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_all_endpoints.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_all_endpoints.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_api.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_api.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_api_endpoint.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_api_endpoint.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_balance_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_balance_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_balance_sheet_date.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_balance_sheet_date.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_base_url.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_base_url.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_batch_ajax.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_batch_ajax.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_batch_creation.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_batch_creation.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_batch_creation_simple.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_batch_creation_simple.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_batch_ui.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_batch_ui.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_bootstrap.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_bootstrap.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_breakdown.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_breakdown.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_breakdown_final.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_breakdown_final.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_breakdown2.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_breakdown2.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_breakdown3.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_breakdown3.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_categories.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_categories.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_cheque_insert.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_cheque_insert.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_coa_parent.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_coa_parent.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_connections.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_connections.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_controller.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_controller.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_controller_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_controller_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_controller_logic.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_controller_logic.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_correct_item.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_correct_item.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_create_rfq_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_create_rfq_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_db.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_db.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_db_connection.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_db_connection.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_dev_server_endpoint.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_dev_server_endpoint.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_direct_access.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_direct_access.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_endpoints.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_endpoints.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_exact_balance_sheet_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_exact_balance_sheet_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_fixed_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_fixed_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_form_data.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_form_data.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_helper_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_helper_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_hierarchy_endpoint.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_hierarchy_endpoint.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_hierarchy_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_hierarchy_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_insert_customer.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_insert_customer.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_invoice.pdf",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_invoice.pdf"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_invoice_prodimg.pdf",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_invoice_prodimg.pdf"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_join_columns.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_join_columns.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_joins.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_joins.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_model_fix.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_model_fix.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_pages.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_pages.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_payment_endpoint.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_payment_endpoint.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_pdf_logo.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_pdf_logo.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_po_lines.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_po_lines.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_process_assignment.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_process_assignment.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_process_creation.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_process_creation.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_process_query.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_process_query.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_processes_ajax.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_processes_ajax.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_product_image_pdf.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_product_image_pdf.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_product_model.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_product_model.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_product_processes.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_product_processes.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_query_fix.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_query_fix.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_quick_journal_post.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_quick_journal_post.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_rfq_button.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_rfq_button.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_system.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_system.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_templates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_templates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_templates_simple.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_templates_simple.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_trial_balance.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_trial_balance.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\test_work_order_fix.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\test_work_order_fix.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_check_attachments.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_check_attachments.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_check_sales_orders_cols.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_check_sales_orders_cols.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_create_page.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_create_page.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_find.py",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_find.py"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_fx_smoke.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_fx_smoke.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_quote.html",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_quote.html"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\tmp_rewrite_invoice.py",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\tmp_rewrite_invoice.py"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\update_admin_password.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\update_admin_password.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\update_currency_direct.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\update_currency_direct.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\update_grn5_variants.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\update_grn5_variants.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\update_processes_table.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\update_processes_table.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\update_stock_variants.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\update_stock_variants.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\vendor_bill_migration.sql",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\vendor_bill_migration.sql"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\verify_attribute_duplicates.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\verify_attribute_duplicates.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\verify_damascus_cleanup.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\verify_damascus_cleanup.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\verify_journal_structure.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\verify_journal_structure.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\verify_po2_repair.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\verify_po2_repair.php"
+    },
+    {
+        "from":  "C:\\xampp\\htdocs\\corelynk\\verify_quote2.php",
+        "to":  "c:\\xampp\\htdocs\\corelynk\\testing\\root\\verify_quote2.php"
+    }
+]

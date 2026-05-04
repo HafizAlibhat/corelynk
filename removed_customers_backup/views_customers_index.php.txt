@@ -1,0 +1,4 @@
+Backup of app/Views/customers/index.php
+--------------------------------------
+
+(Original index.php content omitted here; full backup stored in repository history)

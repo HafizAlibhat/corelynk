@@ -1,0 +1,20 @@
+Backup of app/Models/CustomerModel.php
+-------------------------------------
+
+<?php
+namespace App\Models;
+
+use CodeIgniter\Model;
+
+class CustomerModel extends Model
+{
+    protected $table = 'customers';
+    protected $primaryKey = 'id';
+    protected $returnType = 'array';
+    protected $allowedFields = [
+        'customer_code','avatar_path','name','type','primary_contact_id','default_currency','billing_address_id','shipping_address_id',
+        'tax_id_encrypted','credit_limit','payment_terms','status','metadata','version','created_by'
+    ];
+
+    // ... (rest of original file contents)
+}

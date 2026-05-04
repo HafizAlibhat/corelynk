@@ -1,0 +1,10 @@
+visit http://localhost/corelynk/app - check database schema for sales_order_lines and understand fulfillment issue.
+
+Key findings needed:
+1. Does sales_order_lines have variant_id column?
+2. Are stock_balances properly populated for each variant?
+3. Is FulfillmentStatusService properly checking variant-specific stock?
+
+The issue: Products in stock (Inventory Stock page shows 1.00 per product) but fulfillment status shows NOT_READY.
+
+Root cause likely: FulfillmentStatusService.getAvailableStock() sums ALL variants together instead of checking if a specific product variant is in stock.

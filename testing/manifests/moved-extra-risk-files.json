@@ -1,0 +1,22 @@
+﻿[
+    {
+        "from":  "complete_debug.php",
+        "to":  "testing/root/complete_debug.php"
+    },
+    {
+        "from":  "public/clear_cache.php",
+        "to":  "testing/public/clear_cache.php"
+    },
+    {
+        "from":  "public/generate_password_hash.php",
+        "to":  "testing/public/generate_password_hash.php"
+    },
+    {
+        "from":  "public/reset_admin.php",
+        "to":  "testing/public/reset_admin.php"
+    },
+    {
+        "from":  "public/vendor_cols.php",
+        "to":  "testing/public/vendor_cols.php"
+    }
+]

@@ -1,0 +1,4 @@
+Backup of app/Views/customers/show.php
+-------------------------------------
+
+(Original show.php content omitted here; full backup stored in repository history)

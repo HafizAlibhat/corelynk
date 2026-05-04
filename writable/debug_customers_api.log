@@ -1,0 +1,1 @@
+2025-11-30T17:02:40+00:00 apiCreate inserted id=2 payload={"customer_code":"C-8","name":"API Customer 20251130","type":"retail","credit_limit":0,"payment_terms":"NET30","status":"active","metadata":"{\"company_name\":\"From API\"}","version":1,"avatar_path":null,"created_by":1}

@@ -1,0 +1,9 @@
+# Redirect all traffic to public/ and disable directory listing
+Options -Indexes
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # If the request is already for /public, do nothing
+  RewriteRule ^public/ - [L]
+  # Otherwise rewrite everything into /public
+  RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

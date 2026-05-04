@@ -1,0 +1,5 @@
+<?php
+namespace App\Database\Migrations;use CodeIgniter\Database\Migration;
+class CreatePurchaseOrders extends Migration{public function up(){ $this->forge->addField([
+ 'id'=>['type'=>'INT','auto_increment'=>true],'vendor_id'=>['type'=>'INT','null'=>false],'order_date'=>['type'=>'DATE','null'=>false],'status'=>['type'=>'VARCHAR','constraint'=>20,'default'=>'draft','null'=>false],'currency_code'=>['type'=>'VARCHAR','constraint'=>10,'default'=>'PKR','null'=>false],'subtotal'=>['type'=>'DECIMAL','constraint'=>'15,2','default'=>'0.00','null'=>false],'tax_total'=>['type'=>'DECIMAL','constraint'=>'15,2','default'=>'0.00','null'=>false],'total'=>['type'=>'DECIMAL','constraint'=>'15,2','default'=>'0.00','null'=>false],'created_at'=>['type'=>'DATETIME','null'=>true],'updated_at'=>['type'=>'DATETIME','null'=>true],]);
+ $this->forge->addKey('id', true);$this->forge->addKey('vendor_id');$this->forge->createTable('purchase_orders', true);}public function down(){ $this->forge->dropTable('purchase_orders'); }}

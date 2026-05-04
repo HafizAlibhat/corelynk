@@ -1,0 +1,30 @@
+# This is an example configuration file
+# To learn more, see the full config.yaml reference: https://docs.continue.dev/reference
+
+name: LocalAICondingAgent
+version: 1.0.0  
+schema: v1  
+models:  
+  - name: Qwen2.5  
+    provider: ollama  
+    model: qwen2.5-coder:7b  
+    apiBase: "http://192.168.100.222:11434"
+    roles:  
+      - chat  
+      - edit  
+      - autocomplete  
+      - apply  
+      - summarize  
+  - name: embeddingsProvider  
+    provider: ollama  
+    model: nomic-embed-text  
+    roles:  
+      - embed  
+context:  
+  - provider: code  
+  - provider: docs  
+  - provider: diff  
+  - provider: terminal  
+  - provider: problems  
+  - provider: folder  
+  - provider: codebase

@@ -1,0 +1,41 @@
+Total variants: 3572
+Tweezers variants found: 30
+P#9 | Tweezers | V:2816 | ART:RI-KI-02834 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Curved","Size":"16cm"}
+P#9 | Tweezers | V:2817 | ART:RI-KI-02835 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Offset","Size":"16cm"}
+P#9 | Tweezers | V:2818 | ART:RI-KI-02836 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Straight","Size":"16cm"}
+P#9 | Tweezers | V:2819 | ART:RI-KI-02837 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Thintip Curved","Size":"16cm"}
+P#9 | Tweezers | V:2820 | ART:RI-KI-02838 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Thintip Straight","Size":"16cm"}
+P#9 | Tweezers | V:2821 | ART:RI-KI-02839 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Offset","Size":"14cm"}
+P#9 | Tweezers | V:2822 | ART:RI-KI-02840 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Curved","Size":"20cm"}
+P#9 | Tweezers | V:2823 | ART:RI-KI-02841 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Offset","Size":"20cm"}
+P#9 | Tweezers | V:2824 | ART:RI-KI-02842 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Straight","Size":"20cm"}
+P#9 | Tweezers | V:2825 | ART:RI-KI-02843 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Curved","Size":"30cm"}
+P#9 | Tweezers | V:2826 | ART:RI-KI-02844 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Matt Finish","Shape":"Straight","Size":"30cm"}
+P#9 | Tweezers | V:2827 | ART:RI-KI-02845 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Curved","Size":"16cm"}
+P#9 | Tweezers | V:2828 | ART:RI-KI-02846 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Offset","Size":"16cm"}
+P#9 | Tweezers | V:2829 | ART:RI-KI-02847 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Straight","Size":"16cm"}
+P#9 | Tweezers | V:2830 | ART:RI-KI-02848 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Thintip Curved","Size":"16cm"}
+P#9 | Tweezers | V:2831 | ART:RI-KI-02849 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Thintip Straight","Size":"16cm"}
+P#9 | Tweezers | V:2832 | ART:RI-KI-02850 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Offset","Size":"14cm"}
+P#9 | Tweezers | V:2833 | ART:RI-KI-02851 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Curved","Size":"20cm"}
+P#9 | Tweezers | V:2834 | ART:RI-KI-02852 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Offset","Size":"20cm"}
+P#9 | Tweezers | V:2835 | ART:RI-KI-02853 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Straight","Size":"20cm"}
+P#9 | Tweezers | V:2836 | ART:RI-KI-02854 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Curved","Size":"30cm"}
+P#9 | Tweezers | V:2837 | ART:RI-KI-02855 | ATTRS:{"Colors & Patterns":"Silver","Finish":"Polish","Shape":"Straight","Size":"30cm"}
+P#22 | Colorful Plasma Tweezers | V:2842 | ART:RI-KI-02864 | ATTRS:{"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Curved","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2843 | ART:RI-KI-02865 | ATTRS:{"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Offset","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2844 | ART:RI-KI-02866 | ATTRS:{"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Straight","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2845 | ART:RI-KI-02867 | ATTRS:{"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Thintip Curved","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2846 | ART:RI-KI-02868 | ATTRS:{"Colors & Patterns":"Blue Plasma","Finish":"Polish","Shape":"Thintip Straight","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2847 | ART:RI-KI-02869 | ATTRS:{"Colors & Patterns":"Gold Plasma","Finish":"Polish","Shape":"Curved","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2848 | ART:RI-KI-02870 | ATTRS:{"Colors & Patterns":"Gold Plasma","Finish":"Polish","Shape":"Offset","Size":"16cm"}
+P#22 | Colorful Plasma Tweezers | V:2849 | ART:RI-KI-02871 | ATTRS:{"Colors & Patterns":"Gold Plasma","Finish":"Polish","Shape":"Straight","Size":"16cm"}
+LIKE %shape%: 167
+LIKE %curved%: 34
+LIKE shape AND curved: 34
+LIKE size AND 20cm: 30
+EXISTS check P#9 | Tweezers | has_match:1
+EXISTS check P#22 | Colorful Plasma Tweezers | has_match:1
+EXISTS check P#23 | Printed & Powder Coated Color Tweezers | has_match:1
+EXISTS check P#32 | Professional Straight Tip Electrolysis Tweezer 20cm  | has_match:0
+EXISTS check P#33 | Precision Angled Tip Electrolysis 20cm Tweezer (Bayonet Style)  | has_match:0

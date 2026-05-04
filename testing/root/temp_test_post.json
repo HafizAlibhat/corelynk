@@ -1,0 +1,14 @@
+{
+    "customer_id": 736,
+    "lines": [
+        {
+            "product_id": 5,
+            "product_name": "Knife",
+            "quantity": 1,
+            "unit_price": 88,
+            "discount_type": "percent",
+            "discount_value": 0,
+            "tax_rate": 12
+        }
+    ]
+}

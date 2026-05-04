@@ -1,0 +1,2584 @@
+/*
+================================================================================
+CORELYNK PROFESSIONAL THEME — "Soft Enterprise"
+Version: 3.0 | 2026-03-26
+================================================================================
+A single source of truth for the entire CoreLynk ERP visual language.
+Loaded LAST in main.php so it overrides all legacy/scattered CSS.
+
+Design Principles:
+  1. Soft, eye-friendly tones — NO harsh white
+  2. User-adjustable comfort levels (Bright / Comfort / Dim)
+  3. Flat navigation with mega-menu capability
+  4. Compact padding (8px / 12px system)
+  5. Sticky table headers, zebra-striping, hover states
+  6. Desaturated semantic color badges
+  7. Inter font — 500 labels, 600 numeric data
+================================================================================
+*/
+
+/* ============================================================================
+   SECTION 1 — DESIGN TOKENS (CSS Custom Properties)
+   ============================================================================ */
+:root {
+  /* ── Primary Palette ────────────────────────────────────── */
+  --cl-primary:        #2563EB;
+  --cl-primary-hover:  #1D4ED8;
+  --cl-primary-light:  #DBEAFE;
+  --cl-primary-50:     #EFF6FF;
+
+  /* ── Semantic Colors ────────────────────────────────────── */
+  --cl-success:        #059669;
+  --cl-success-light:  #D1FAE5;
+  --cl-success-text:   #065F46;
+  --cl-warning:        #D97706;
+  --cl-warning-light:  #FEF3C7;
+  --cl-warning-text:   #92400E;
+  --cl-danger:         #DC2626;
+  --cl-danger-light:   #FEE2E2;
+  --cl-danger-text:    #991B1B;
+  --cl-info:           #2563EB;
+  --cl-info-light:     #DBEAFE;
+  --cl-info-text:      #1E40AF;
+
+  /* ── Neutrals (DEFAULT = Comfort: soft warm gray) ──────── */
+  --cl-canvas:         #EAECF0;     /* page background — warm gray, NOT bright */
+  --cl-surface:        #F5F6F8;     /* cards, modals — off-white, NOT pure white */
+  --cl-surface-alt:    #EDEEF1;     /* alternate row / secondary bg */
+  --cl-border:         #D5D9E0;
+  --cl-border-light:   #E4E7EC;
+  --cl-divider:        #D8DBE2;
+
+  /* ── Text ───────────────────────────────────────────────── */
+  --cl-text-primary:   #1A1D26;
+  --cl-text-secondary: #4A5068;
+  --cl-text-muted:     #8B92A5;
+  --cl-text-white:     #FFFFFF;
+
+  /* ── Typography ─────────────────────────────────────────── */
+  --cl-font:           'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --cl-font-mono:      'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* ── Spacing (compact 8/12 system) ──────────────────────── */
+  --cl-space-xs:   4px;
+  --cl-space-sm:   8px;
+  --cl-space-md:  12px;
+  --cl-space-lg:  16px;
+  --cl-space-xl:  24px;
+  --cl-space-2xl: 32px;
+
+  /* ── Radius ─────────────────────────────────────────────── */
+  --cl-radius-sm:  4px;
+  --cl-radius:     6px;
+  --cl-radius-lg:  8px;
+  --cl-radius-xl: 12px;
+  --cl-radius-pill: 9999px;
+
+  /* ── Shadows (softer for gray surfaces) ─────────────────── */
+  --cl-shadow-xs:  0 1px 2px rgba(15,23,42,0.05);
+  --cl-shadow-sm:  0 1px 3px rgba(15,23,42,0.07), 0 1px 2px rgba(15,23,42,0.04);
+  --cl-shadow:     0 2px 8px rgba(15,23,42,0.08);
+  --cl-shadow-md:  0 4px 12px rgba(15,23,42,0.10);
+  --cl-shadow-lg:  0 8px 24px rgba(15,23,42,0.12);
+
+  /* ── Navbar ─────────────────────────────────────────────── */
+  --cl-nav-height: 52px;
+  --cl-nav-bg:     #F0F1F4;    /* soft gray navbar, NOT bright white */
+  --cl-nav-border: #D5D9E0;
+  --cl-nav-text:   #3D4256;
+  --cl-nav-hover:  #E4E6EB;
+
+  /* ── Transitions ────────────────────────────────────────── */
+  --cl-transition: 150ms ease;
+
+  /* ── Comfort Level (used by JS to shift base) ──────────── */
+  --cl-brightness-filter: none;
+}
+
+/* ============================================================================
+   SECTION 1b — COMFORT PRESETS (user-selectable via body class)
+   ============================================================================ */
+
+/* BRIGHT mode — closer to original white */
+body.comfort-bright {
+  --cl-canvas:         #F1F3F6;
+  --cl-surface:        #FAFBFC;
+  --cl-surface-alt:    #F2F4F7;
+  --cl-border:         #DEE2E8;
+  --cl-border-light:   #EDF0F4;
+  --cl-divider:        #E0E3E9;
+  --cl-nav-bg:         #F8F9FB;
+  --cl-nav-border:     #DEE2E8;
+  --cl-nav-hover:      #EDF0F4;
+}
+
+/* DIM mode — deeper gray, very easy on eyes */
+body.comfort-dim {
+  --cl-canvas:         #D8DBE3;
+  --cl-surface:        #E4E6EB;
+  --cl-surface-alt:    #DCDFE6;
+  --cl-border:         #C4C9D4;
+  --cl-border-light:   #D0D4DD;
+  --cl-divider:        #CBD0DA;
+  --cl-nav-bg:         #DFE1E8;
+  --cl-nav-border:     #C4C9D4;
+  --cl-nav-hover:      #D0D4DD;
+  --cl-text-muted:     #7A8196;
+}
+
+/* ============================================================================
+   SECTION 2 — DARK THEME TOKENS
+   ============================================================================ */
+body.theme-dark {
+  --cl-canvas:         #0F172A;
+  --cl-surface:        #1E293B;
+  --cl-surface-alt:    #162033;
+  --cl-border:         #334155;
+  --cl-border-light:   #1E293B;
+  --cl-divider:        #334155;
+  --cl-text-primary:   #F1F5F9;
+  --cl-text-secondary: #CBD5E1;
+  --cl-text-muted:     #64748B;
+  --cl-nav-bg:         #1E293B;
+  --cl-nav-border:     #334155;
+  --cl-nav-text:       #E2E8F0;
+  --cl-nav-hover:      #334155;
+  --cl-primary-light:  rgba(37,99,235,0.15);
+  --cl-success-light:  rgba(5,150,105,0.15);
+  --cl-success-text:   #6EE7B7;
+  --cl-warning-light:  rgba(217,119,6,0.15);
+  --cl-warning-text:   #FCD34D;
+  --cl-danger-light:   rgba(220,38,38,0.15);
+  --cl-danger-text:    #FCA5A5;
+  --cl-info-light:     rgba(37,99,235,0.15);
+  --cl-info-text:      #93C5FD;
+}
+
+/* ============================================================================
+   SECTION 3 — GLOBAL BASE
+   ============================================================================ */
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--cl-font) !important;
+  background-color: var(--cl-canvas) !important;
+  color: var(--cl-text-secondary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+}
+
+/* Remove the old pseudo-element dot pattern */
+body::before { display: none !important; }
+
+/* Text overrides */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  color: var(--cl-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.text-muted { color: var(--cl-text-muted) !important; }
+
+a { color: var(--cl-primary); text-decoration: none; }
+a:hover { color: var(--cl-primary-hover); }
+
+/* Utility: numeric data emphasis */
+.fw-data, .stat-value, .stats-info h3, .line-total,
+td.text-end, th.text-end { font-weight: 600 !important; }
+
+/* ============================================================================
+   SECTION 4 — TOP NAVIGATION BAR (Flat, Professional)
+   ============================================================================ */
+#globalNavBar {
+  background: var(--cl-nav-bg) !important;
+  border-bottom: 1px solid var(--cl-nav-border) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+  height: var(--cl-nav-height);
+  padding: 0 !important;
+  z-index: 1030;
+  transition: background var(--cl-transition), border var(--cl-transition);
+}
+
+#globalNavBar .container-fluid {
+  height: 100%;
+  align-items: center;
+}
+
+/* Keep right actions visible without clipping dropdown menus */
+#globalNavBar #globalNav {
+  min-width: 0;
+}
+
+#globalNavBar #globalNav .navbar-nav {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#globalNavBar .navbar-brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--cl-text-primary) !important;
+  padding: 0 0.5rem;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+#globalNavBar .navbar-brand i {
+  font-size: 1.1rem;
+  color: var(--cl-primary);
+}
+
+#globalNavBar .nav-link {
+  color: var(--cl-nav-text) !important;
+  font-weight: 500;
+  font-size: 0.84rem;
+  padding: 0.45rem 0.6rem !important;
+  border-radius: var(--cl-radius);
+  transition: background var(--cl-transition), color var(--cl-transition);
+  white-space: nowrap;
+}
+
+#globalNavBar .nav-link:hover,
+#globalNavBar .nav-link:focus {
+  background: var(--cl-nav-hover) !important;
+  color: var(--cl-primary) !important;
+}
+
+#globalNavBar .nav-link.active {
+  color: var(--cl-primary) !important;
+  background: var(--cl-primary-light) !important;
+  font-weight: 600;
+}
+
+/* ── Dropdown Menus (Clean) ───────────────────────────────── */
+#globalNavBar .dropdown-menu {
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-lg) !important;
+  background: var(--cl-surface) !important;
+  padding: var(--cl-space-sm) 0 !important;
+  min-width: 220px;
+  margin-top: 4px !important;
+  animation: cl-dropdown-in 120ms ease-out;
+}
+
+@keyframes cl-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+#globalNavBar .dropdown-item {
+  color: var(--cl-text-secondary) !important;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem !important;
+  transition: background var(--cl-transition), color var(--cl-transition);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0;
+}
+
+#globalNavBar .dropdown-item:hover,
+#globalNavBar .dropdown-item:focus {
+  background: var(--cl-primary-50) !important;
+  color: var(--cl-primary) !important;
+}
+
+body.theme-dark #globalNavBar .dropdown-item:hover,
+body.theme-dark #globalNavBar .dropdown-item:focus {
+  background: var(--cl-nav-hover) !important;
+  color: var(--cl-primary) !important;
+}
+
+#globalNavBar .dropdown-item.active {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+  font-weight: 600;
+}
+
+#globalNavBar .dropdown-item i {
+  width: 18px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--cl-text-muted);
+  transition: color var(--cl-transition);
+}
+
+#globalNavBar .dropdown-item:hover i,
+#globalNavBar .dropdown-item.active i {
+  color: var(--cl-primary);
+}
+
+/* ── Mega Menu ───────────────────────────────────────────── */
+#globalNavBar .dropdown-menu.cl-mega-menu {
+  min-width: 480px;
+  padding: var(--cl-space-lg) !important;
+}
+
+#globalNavBar .cl-mega-menu .cl-mega-col {
+  min-width: 200px;
+}
+
+#globalNavBar .cl-mega-menu .cl-mega-heading {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cl-text-muted);
+  padding: 0 0.5rem var(--cl-space-sm);
+  margin-bottom: var(--cl-space-xs);
+  border-bottom: 1px solid var(--cl-border-light);
+}
+
+#globalNavBar .cl-mega-menu .dropdown-item {
+  padding: 0.4rem 0.5rem !important;
+  border-radius: var(--cl-radius) !important;
+  font-size: 0.82rem;
+}
+
+/* ── Quick Create Button (Plus Icon) ──────────────────────── */
+.cl-quick-create {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0.4rem 0.45rem !important;
+  border-radius: 6px !important;
+  background: linear-gradient(135deg, var(--cl-primary) 0%, #7c3aed 100%) !important;
+  color: #fff !important;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none !important;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+}
+
+.cl-quick-create:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 3px 10px rgba(79, 70, 229, 0.35);
+}
+
+.cl-quick-create:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.2);
+}
+
+/* ── Compact Icon Buttons (Settings, User Profile) ─────────── */
+.cl-icon-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0.4rem 0.5rem !important;
+  border-radius: 6px !important;
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  color: var(--cl-text-secondary) !important;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.cl-icon-btn:hover {
+  background: var(--cl-surface-alt) !important;
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+  transform: translateY(-1px);
+}
+
+.cl-icon-btn:active {
+  transform: translateY(0);
+}
+
+body.theme-dark .cl-icon-btn {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+/* ── Global Search (Spotlight style) ──────────────────────── */
+.cl-global-search-trigger {
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-secondary) !important;
+  border-radius: var(--cl-radius) !important;
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.cl-global-search-trigger:hover {
+  background: var(--cl-nav-hover) !important;
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+}
+
+#globalNavBar .nav-actions {
+  gap: 0.3rem !important;
+  flex: 0 0 auto;
+  margin-left: 0.4rem;
+}
+
+#globalNavBar .navbar-toggler {
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius) !important;
+  color: var(--cl-text-secondary) !important;
+  padding: 0.3rem 0.45rem !important;
+}
+
+#globalNavBar .navbar-toggler:focus {
+  box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--cl-primary) 25%, transparent) !important;
+}
+
+#globalNavBar .navbar-toggler-icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+#globalNavBar .nav-actions .btn-outline-secondary {
+  border-color: var(--cl-border);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  min-width: 32px;
+  height: 32px;
+}
+
+#globalNavBar .nav-actions .btn-outline-secondary:hover {
+  background: var(--cl-surface);
+}
+
+.cl-global-search-kbd {
+  font-size: 0.68rem;
+  color: var(--cl-text-muted);
+  border: 1px solid var(--cl-border-light);
+  background: var(--cl-surface-alt);
+  border-radius: 6px;
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+}
+
+.cl-global-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.cl-global-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.cl-global-palette-panel {
+  position: relative;
+  width: min(760px, 92vw);
+  margin: clamp(72px, 10vh, 120px) auto 0;
+  border: 1px solid var(--cl-border);
+  border-radius: 14px;
+  background: var(--cl-surface);
+  box-shadow: var(--cl-shadow-lg);
+  overflow: hidden;
+}
+
+.cl-global-palette-inputwrap {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--cl-border-light);
+  padding: 0.6rem 0.75rem;
+}
+
+.cl-global-palette-inputwrap i {
+  color: var(--cl-text-muted);
+  font-size: 0.9rem;
+}
+
+.cl-global-palette-inputwrap .form-control {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: var(--cl-text-primary) !important;
+  font-size: 0.95rem;
+  padding: 0.35rem 0;
+}
+
+.cl-global-palette-close {
+  border: 1px solid var(--cl-border);
+  background: var(--cl-surface-alt);
+  color: var(--cl-text-muted);
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cl-global-palette-close:hover {
+  color: var(--cl-primary);
+  border-color: var(--cl-primary);
+}
+
+.cl-global-search-dropdown {
+  position: relative;
+  max-height: 420px;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--cl-surface);
+  box-shadow: none;
+}
+
+.cl-global-search-item {
+  display: block;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--cl-border-light);
+  color: var(--cl-text-secondary) !important;
+}
+
+.cl-global-search-item:hover {
+  background: var(--cl-primary-50);
+  color: var(--cl-primary) !important;
+}
+
+.cl-global-search-item.active {
+  background: var(--cl-primary-light);
+}
+
+.cl-global-search-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cl-global-search-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cl-text-primary);
+}
+
+.cl-global-search-module {
+  font-size: 0.68rem;
+  color: var(--cl-text-muted);
+  border: 1px solid var(--cl-border-light);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.cl-global-search-sub {
+  font-size: 0.74rem;
+  color: var(--cl-text-muted);
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-global-search-empty {
+  padding: 0.75rem;
+  color: var(--cl-text-muted);
+  font-size: 0.78rem;
+}
+
+.cl-global-search-all {
+  display: block;
+  text-align: center;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--cl-primary) !important;
+  background: var(--cl-surface-alt);
+}
+
+body.cl-global-search-open {
+  overflow: hidden;
+}
+
+/* ── Theme Toggle in Nav ──────────────────────────────────── */
+#globalNavBar .nav-actions .btn,
+#themeSwitchBtn {
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-secondary) !important;
+  border-radius: var(--cl-radius) !important;
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  transition: background var(--cl-transition), border-color var(--cl-transition);
+}
+
+#globalNavBar .nav-actions .btn:hover,
+#themeSwitchBtn:hover {
+  background: var(--cl-nav-hover) !important;
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+}
+
+/* ============================================================================
+   SECTION 5 — BREADCRUMB BAR
+   ============================================================================ */
+.cl-breadcrumb-bar {
+  background: var(--cl-surface);
+  border-bottom: 1px solid var(--cl-border);
+  padding: var(--cl-space-sm) var(--cl-space-xl);
+  font-size: 0.8rem;
+  color: var(--cl-text-muted);
+}
+
+.cl-breadcrumb-bar a {
+  color: var(--cl-text-muted);
+  text-decoration: none;
+  transition: color var(--cl-transition);
+}
+
+.cl-breadcrumb-bar a:hover { color: var(--cl-primary); }
+
+.cl-breadcrumb-bar .separator {
+  margin: 0 0.35rem;
+  opacity: 0.5;
+}
+
+/* Existing Bootstrap breadcrumbs */
+.breadcrumb {
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.breadcrumb-item a { color: var(--cl-text-muted); }
+.breadcrumb-item.active { color: var(--cl-text-secondary); }
+.breadcrumb-item + .breadcrumb-item::before { color: var(--cl-text-muted); }
+
+/* ============================================================================
+   SECTION 6 — CONTENT WRAPPER
+   ============================================================================ */
+.content-wrapper {
+  background-color: var(--cl-canvas) !important;
+  padding: var(--cl-space-lg) var(--cl-space-xl) !important;
+  margin-top: 0 !important;
+  min-height: calc(100vh - var(--cl-nav-height));
+}
+
+/* ============================================================================
+   SECTION 7 — CARD SYSTEM
+   ============================================================================ */
+.card {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+  transition: none !important;  /* NO hover lift */
+  color: var(--cl-text-secondary);
+}
+
+/* Disable hover lift everywhere */
+.card:hover {
+  box-shadow: var(--cl-shadow-xs) !important;
+  transform: none !important;
+}
+
+.card-header {
+  background: var(--cl-surface) !important;
+  border-bottom: 1px solid var(--cl-border) !important;
+  padding: var(--cl-space-md) var(--cl-space-lg) !important;
+  border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0 !important;
+}
+
+.card-body {
+  padding: var(--cl-space-lg) !important;
+}
+
+.card-header .section-title,
+.card-header h3,
+.card-header h4,
+.card-header h5 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--cl-text-primary);
+  margin: 0;
+}
+
+.card-header .section-sub,
+.card-header .text-muted {
+  font-size: 0.8rem;
+  color: var(--cl-text-muted) !important;
+}
+
+/* Section header gradient → flat */
+.section-header {
+  background: var(--cl-surface) !important;
+  border-bottom: 1px solid var(--cl-border) !important;
+}
+
+/* ── KPI / Stats Cards ────────────────────────────────────── */
+.stats-card {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  padding: var(--cl-space-lg) !important;
+  height: auto !important;
+  min-height: 100px;
+  color: var(--cl-text-primary) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+  border-top: 4px solid var(--cl-primary) !important;
+  transition: none !important;
+}
+
+.stats-card:hover {
+  transform: none !important;
+  box-shadow: var(--cl-shadow-sm) !important;
+}
+
+.stats-card .stats-icon {
+  font-size: 1.8rem;
+  opacity: 0.6;
+  color: var(--cl-text-muted) !important;
+}
+
+.stats-card .stats-info h3 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--cl-text-primary) !important;
+}
+
+.stats-card .stats-info p {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--cl-text-secondary) !important;
+  opacity: 1;
+}
+
+/* KPI accent colors via top border */
+.stats-card.bg-gradient-primary,
+.stats-card.bg-gradient-info  { background: var(--cl-surface) !important; border-top-color: var(--cl-primary) !important; }
+.stats-card.bg-gradient-success { background: var(--cl-surface) !important; border-top-color: var(--cl-success) !important; }
+.stats-card.bg-gradient-warning { background: var(--cl-surface) !important; border-top-color: var(--cl-warning) !important; }
+.stats-card.bg-gradient-danger  { background: var(--cl-surface) !important; border-top-color: var(--cl-danger) !important; }
+
+/* Stat cards from custom.css */
+.stat-card {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-left: 4px solid var(--cl-primary) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+}
+
+.stat-card:hover {
+  transform: none !important;
+  box-shadow: var(--cl-shadow-sm) !important;
+}
+
+.stat-value { font-size: 1.75rem; font-weight: 700; color: var(--cl-text-primary); }
+.stat-label { font-size: 0.8rem; font-weight: 500; color: var(--cl-text-secondary); }
+
+/* ============================================================================
+   SECTION 8 — PAGE HEADERS (Unified Pattern)
+   ============================================================================ */
+/* Standard page header: icon + title + subtitle, right-aligned actions */
+.page-header,
+.d-flex.justify-content-between.align-items-center.mb-4,
+.d-flex.justify-content-between.align-items-center.mb-3 {
+  margin-bottom: var(--cl-space-lg) !important;
+}
+
+.page-title,
+.h3.mb-0,
+h1.h3.mb-0,
+h2.mb-0 {
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  color: var(--cl-text-primary) !important;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================================
+   SECTION 9 — DATA TABLES (Professional Grade)
+   ============================================================================ */
+.table {
+  margin-bottom: 0;
+  font-size: 0.875rem;
+  color: var(--cl-text-secondary);
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100% !important;
+}
+
+/* ── Sticky Header ────────────────────────────────────────── */
+.table thead th {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-muted) !important;
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  padding: var(--cl-space-sm) var(--cl-space-md) !important;
+  border-top: none !important;
+  border-bottom: 2px solid var(--cl-border) !important;
+  white-space: nowrap;
+}
+
+/* Unified list-shell pattern (RFQ/PO-like base for all list pages) */
+.cl-list-page {
+  width: 100%;
+}
+
+.cl-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--cl-space-md);
+  margin-bottom: var(--cl-space-lg);
+}
+
+.cl-list-filters {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  padding: var(--cl-space-md) !important;
+  margin-bottom: var(--cl-space-lg);
+}
+/* When cl-list-filters wraps a Bootstrap card, let card-body handle padding */
+.card.cl-list-filters {
+  padding: 0 !important;
+}
+
+.cl-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--cl-space-sm);
+  margin-bottom: var(--cl-space-md);
+}
+
+.cl-list-table-card {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+}
+
+.cl-list-table-card .card-body {
+  padding: 0 !important;
+}
+
+.cl-list-table-card .card-footer {
+  background: var(--cl-surface) !important;
+  border-top: 1px solid var(--cl-border) !important;
+}
+
+/* Scope sticky headers only where explicitly requested */
+.table-responsive.cl-sticky-head .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* ── Compact Row Padding ──────────────────────────────────── */
+.table tbody td {
+  padding: var(--cl-space-sm) var(--cl-space-md) !important;
+  border-top: none !important;
+  border-bottom: 1px solid var(--cl-border-light) !important;
+  vertical-align: middle !important;
+  color: var(--cl-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+/* ── Zebra Striping ───────────────────────────────────────── */
+/* Only apply to data tables, not summary/borderless tables */
+.table:not(.table-borderless) tbody tr:nth-child(even) {
+  background-color: var(--cl-surface-alt) !important;
+}
+
+.table:not(.table-borderless) tbody tr:nth-child(odd) {
+  background-color: var(--cl-surface) !important;
+}
+
+/* Override Bootstrap's .table-striped to match our pattern */
+.table-striped > tbody > tr:nth-of-type(even) > * {
+  --bs-table-bg-type: var(--cl-surface-alt);
+  background-color: var(--cl-surface-alt) !important;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-bg-type: var(--cl-surface);
+  background-color: var(--cl-surface) !important;
+}
+
+/* Totals/active rows (grand total) */
+.table-active > td,
+tr.table-active > td {
+  background-color: var(--cl-surface-alt) !important;
+  font-weight: 600 !important;
+  color: var(--cl-text-primary) !important;
+}
+
+/* ── Hover State ──────────────────────────────────────────── */
+.table tbody tr:hover,
+.table-hover tbody tr:hover,
+.table tbody tr:hover > td,
+.table-hover > tbody > tr:hover > * {
+  background-color: var(--cl-primary-light) !important;
+  --bs-table-hover-bg: var(--cl-primary-light);
+  cursor: default;
+}
+
+/* ── Table Inside Cards ───────────────────────────────────── */
+/* Tables fill their container naturally — NO negative-margin bleed (causes scrollbars) */
+.card-body .table {
+  margin: 0 !important;
+  width: 100% !important;
+}
+
+.card-body.p-0 .table {
+  margin: 0 !important;
+  width: 100% !important;
+}
+
+/* ── Action Column ────────────────────────────────────────── */
+.table .actions-col,
+.table th.actions-col,
+.table .tt-actions {
+  white-space: nowrap;
+  width: 1%;
+  text-align: right;
+}
+
+.actions-col .btn,
+.actions-col button,
+.tt-actions .btn,
+.tt-actions button {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.85rem !important;
+  border-radius: var(--cl-radius) !important;
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-secondary) !important;
+  transition: all var(--cl-transition);
+}
+
+.actions-col .btn:hover,
+.actions-col button:hover,
+.tt-actions .btn:hover {
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+  background: var(--cl-primary-50) !important;
+}
+
+.actions-col .btn + .btn,
+.tt-actions .btn + .btn { margin-left: 4px; }
+
+/* RFQ/PO special: text buttons allowed */
+.rfqpo-table .actions-col .btn,
+.rfqpo-table .actions-col button {
+  width: auto !important;
+  height: auto !important;
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.82rem !important;
+}
+
+/* ── Empty State ──────────────────────────────────────────── */
+.table tbody td[colspan] {
+  text-align: center;
+  padding: var(--cl-space-2xl) var(--cl-space-lg) !important;
+  color: var(--cl-text-muted);
+  font-style: italic;
+}
+
+/* ── Table Responsive ─────────────────────────────────────── */
+.table-responsive {
+  border-radius: var(--cl-radius-lg);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Small/auto-width tables (totals panels, summaries) should NOT scroll */
+.table-responsive .table.w-auto,
+.table-responsive .table.table-borderless.w-auto {
+  overflow: visible;
+}
+
+/* Prevent double scrollbar nesting */
+.table-responsive .table-responsive {
+  overflow-x: visible;
+  border-radius: 0;
+}
+
+/* ── Table Compact Utility ────────────────────────────────── */
+.table-compact th,
+.table-compact td {
+  padding: 0.3rem 0.5rem !important;
+  font-size: 0.82rem !important;
+}
+
+/* ============================================================================
+   SECTION 10 — STATUS BADGES (Desaturated Semantic)
+   ============================================================================ */
+.badge {
+  font-size: 0.7rem !important;
+  font-weight: 500 !important;
+  padding: 0.3em 0.7em !important;
+  border-radius: var(--cl-radius-pill) !important;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  border: none !important;
+}
+
+/* Semantic badge colors */
+.badge.bg-success,
+.badge.text-bg-success {
+  background: var(--cl-success-light) !important;
+  color: var(--cl-success-text) !important;
+}
+
+.badge.bg-warning,
+.badge.text-bg-warning {
+  background: var(--cl-warning-light) !important;
+  color: var(--cl-warning-text) !important;
+}
+
+.badge.bg-danger,
+.badge.text-bg-danger {
+  background: var(--cl-danger-light) !important;
+  color: var(--cl-danger-text) !important;
+}
+
+.badge.bg-info,
+.badge.text-bg-info {
+  background: var(--cl-info-light) !important;
+  color: var(--cl-info-text) !important;
+}
+
+.badge.bg-primary,
+.badge.text-bg-primary {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+}
+
+.badge.bg-secondary,
+.badge.text-bg-secondary {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-secondary) !important;
+  border: 1px solid var(--cl-border) !important;
+}
+
+.badge.bg-light,
+.badge.text-bg-light {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-secondary) !important;
+  border: 1px solid var(--cl-border) !important;
+}
+
+/* Status specific */
+.status-badge { border-radius: var(--cl-radius-pill); }
+.status-active, .status-completed { background: var(--cl-success-light) !important; color: var(--cl-success-text) !important; }
+.status-pending { background: var(--cl-warning-light) !important; color: var(--cl-warning-text) !important; }
+.status-cancelled { background: var(--cl-danger-light) !important; color: var(--cl-danger-text) !important; }
+.status-in-progress { background: var(--cl-info-light) !important; color: var(--cl-info-text) !important; }
+.status-on-hold { background: var(--cl-surface-alt) !important; color: var(--cl-text-secondary) !important; }
+
+/* Tree-table badges */
+.tt-badge {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-secondary) !important;
+  border: 1px solid var(--cl-border) !important;
+  font-size: 0.7rem;
+  border-radius: var(--cl-radius-pill);
+  padding: 0.15rem 0.5rem;
+}
+
+.tt-status { border-radius: var(--cl-radius-pill); padding: 0.15rem 0.5rem; font-size: 0.7rem; }
+.tt-s-plan { background: var(--cl-warning-light) !important; color: var(--cl-warning-text) !important; border-color: transparent !important; }
+.tt-s-inprog { background: var(--cl-info-light) !important; color: var(--cl-info-text) !important; border-color: transparent !important; }
+.tt-s-done { background: var(--cl-success-light) !important; color: var(--cl-success-text) !important; border-color: transparent !important; }
+
+/* ============================================================================
+   SECTION 11 — BUTTONS
+   ============================================================================ */
+.btn {
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--cl-radius) !important;
+  padding: 0.4rem 0.85rem;
+  transition: all var(--cl-transition);
+  letter-spacing: 0;
+}
+
+.btn-sm {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.65rem;
+}
+
+.btn-lg {
+  font-size: 0.95rem;
+  padding: 0.55rem 1.25rem;
+}
+
+.btn-primary {
+  background: var(--cl-primary) !important;
+  border-color: var(--cl-primary) !important;
+  color: #fff !important;
+}
+.btn-primary:hover, .btn-primary:focus {
+  background: var(--cl-primary-hover) !important;
+  border-color: var(--cl-primary-hover) !important;
+}
+
+.btn-outline-primary {
+  color: var(--cl-primary) !important;
+  border-color: var(--cl-primary) !important;
+  background: transparent !important;
+}
+.btn-outline-primary:hover {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary-hover) !important;
+}
+
+.btn-outline-secondary {
+  color: var(--cl-text-secondary) !important;
+  border-color: var(--cl-border) !important;
+  background: transparent !important;
+}
+.btn-outline-secondary:hover {
+  background: var(--cl-surface-alt) !important;
+  border-color: var(--cl-text-muted) !important;
+}
+
+.btn-success {
+  background: var(--cl-success) !important;
+  border-color: var(--cl-success) !important;
+}
+
+.btn-warning {
+  background: var(--cl-warning) !important;
+  border-color: var(--cl-warning) !important;
+  color: #fff !important;
+}
+
+.btn-danger {
+  background: var(--cl-danger) !important;
+  border-color: var(--cl-danger) !important;
+}
+
+.btn-outline-danger {
+  color: var(--cl-danger) !important;
+  border-color: var(--cl-danger) !important;
+}
+.btn-outline-danger:hover {
+  background: var(--cl-danger-light) !important;
+}
+
+.btn-outline-info {
+  color: var(--cl-info) !important;
+  border-color: var(--cl-info) !important;
+}
+.btn-outline-info:hover {
+  background: var(--cl-info-light) !important;
+}
+
+.btn-outline-success {
+  color: var(--cl-success) !important;
+  border-color: var(--cl-success) !important;
+}
+.btn-outline-success:hover {
+  background: var(--cl-success-light) !important;
+}
+
+.btn-outline-warning {
+  color: var(--cl-warning) !important;
+  border-color: var(--cl-warning) !important;
+}
+.btn-outline-warning:hover {
+  background: var(--cl-warning-light) !important;
+}
+
+.btn-outline-light {
+  color: var(--cl-text-secondary) !important;
+  border-color: var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+}
+.btn-outline-light:hover {
+  background: var(--cl-nav-hover) !important;
+}
+
+/* Icon-only button helper */
+.btn-icon {
+  min-width: auto !important;
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.9rem !important;
+}
+
+/* ============================================================================
+   SECTION 12 — FORM CONTROLS
+   ============================================================================ */
+.form-control,
+.form-select {
+  font-size: 0.875rem;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  padding: 0.45rem 0.75rem;
+  background: var(--cl-surface);
+  color: var(--cl-text-primary);
+  transition: border-color var(--cl-transition), box-shadow var(--cl-transition);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--cl-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  outline: none;
+}
+
+.form-control-sm,
+.form-select-sm {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--cl-text-secondary);
+  margin-bottom: 0.3rem;
+}
+
+.form-label.small,
+.form-label.fw-bold {
+  font-weight: 600 !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+/* Dark theme form controls */
+body.theme-dark .form-control,
+body.theme-dark .form-select {
+  background: var(--cl-canvas) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .form-control::placeholder {
+  color: var(--cl-text-muted) !important;
+}
+
+/* ============================================================================
+   SECTION 13 — FILTER / SEARCH TOOLBAR
+   ============================================================================ */
+/* Filters inside cards */
+.card .card-body form.row.g-3,
+.card .card-body form.row.g-2 {
+  align-items: flex-end;
+}
+
+.filters-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: var(--cl-space-sm);
+}
+
+.filters-panel {
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-lg);
+  padding: var(--cl-space-md);
+  background: var(--cl-surface);
+}
+
+/* ── Filter Tabs (like RFQ/PO) ────────────────────────────── */
+.nav-tabs {
+  border-bottom: 1px solid var(--cl-border) !important;
+  gap: 0 !important;
+}
+
+.nav-tabs .nav-link {
+  font-size: 0.82rem !important;
+  font-weight: 500;
+  color: var(--cl-text-secondary) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  padding: 0.5rem 0.85rem !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  transition: color var(--cl-transition), border-color var(--cl-transition);
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--cl-primary) !important;
+  border-bottom-color: var(--cl-primary) !important;
+  background: transparent !important;
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--cl-primary) !important;
+  font-weight: 600;
+  border-bottom-color: var(--cl-primary) !important;
+  background: transparent !important;
+}
+
+/* Tab count badges */
+.nav-tabs .nav-link .badge,
+.nav-tabs .nav-link .count-badge {
+  font-size: 0.65rem !important;
+  padding: 0.15em 0.45em !important;
+  vertical-align: middle;
+}
+
+/* ============================================================================
+   SECTION 14 — PAGINATION
+   ============================================================================ */
+.pagination {
+  gap: 4px;
+  margin: var(--cl-space-lg) 0 0;
+}
+
+.page-link {
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: var(--cl-radius) !important;
+  border: 1px solid var(--cl-border);
+  color: var(--cl-text-secondary);
+  padding: 0.35rem 0.65rem;
+  background: var(--cl-surface);
+  transition: all var(--cl-transition);
+}
+
+.page-link:hover {
+  background: var(--cl-primary-light);
+  border-color: var(--cl-primary);
+  color: var(--cl-primary);
+}
+
+.page-item.active .page-link {
+  background: var(--cl-primary) !important;
+  border-color: var(--cl-primary) !important;
+  color: #fff !important;
+}
+
+.page-item.disabled .page-link {
+  background: var(--cl-surface-alt);
+  color: var(--cl-text-muted);
+  border-color: var(--cl-border);
+}
+
+/* ============================================================================
+   SECTION 15 — ALERTS
+   ============================================================================ */
+.alert {
+  font-size: 0.875rem;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  padding: var(--cl-space-md) var(--cl-space-lg) !important;
+}
+
+.alert-success {
+  background: var(--cl-success-light) !important;
+  color: var(--cl-success-text) !important;
+  border-color: var(--cl-success) !important;
+}
+
+.alert-danger {
+  background: var(--cl-danger-light) !important;
+  color: var(--cl-danger-text) !important;
+  border-color: var(--cl-danger) !important;
+}
+
+.alert-warning {
+  background: var(--cl-warning-light) !important;
+  color: var(--cl-warning-text) !important;
+  border-color: var(--cl-warning) !important;
+}
+
+.alert-info {
+  background: var(--cl-info-light) !important;
+  color: var(--cl-info-text) !important;
+  border-color: var(--cl-info) !important;
+}
+
+/* ============================================================================
+   SECTION 16 — MODALS
+   ============================================================================ */
+.modal-content {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-xl) !important;
+  box-shadow: var(--cl-shadow-lg) !important;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--cl-border) !important;
+  padding: var(--cl-space-lg) !important;
+}
+
+.modal-body { padding: var(--cl-space-lg) !important; }
+
+.modal-footer {
+  border-top: 1px solid var(--cl-border) !important;
+  padding: var(--cl-space-md) var(--cl-space-lg) !important;
+}
+
+.modal-title { font-size: 1rem; font-weight: 600; color: var(--cl-text-primary); }
+
+/* ============================================================================
+   SECTION 17 — DROPDOWN MENUS (Global)
+   ============================================================================ */
+.dropdown-menu {
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-md) !important;
+  background: var(--cl-surface) !important;
+  padding: var(--cl-space-xs) 0 !important;
+  font-size: 0.875rem;
+  animation: cl-dropdown-in 120ms ease-out;
+}
+
+.dropdown-item {
+  color: var(--cl-text-secondary) !important;
+  font-weight: 500;
+  padding: 0.45rem 1rem !important;
+  font-size: 0.85rem;
+  transition: background var(--cl-transition);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background: var(--cl-primary-50) !important;
+  color: var(--cl-primary) !important;
+}
+
+.dropdown-item.active {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+}
+
+.dropdown-item i {
+  width: 18px;
+  text-align: center;
+  color: var(--cl-text-muted);
+}
+
+.dropdown-item:hover i { color: var(--cl-primary); }
+.dropdown-divider { border-color: var(--cl-border) !important; }
+
+/* ============================================================================
+   SECTION 18 — PROGRESS BARS
+   ============================================================================ */
+.progress {
+  height: 6px;
+  border-radius: var(--cl-radius-pill);
+  background: var(--cl-surface-alt);
+}
+
+.progress-bar {
+  border-radius: var(--cl-radius-pill);
+}
+
+/* ============================================================================
+   SECTION 19 — SELECT2 OVERRIDES
+   ============================================================================ */
+.select2-container .select2-selection--single {
+  height: calc(1.5em + 0.9rem) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius) !important;
+  background: var(--cl-surface) !important;
+}
+
+.select2-container .select2-selection__rendered {
+  line-height: calc(1.5em + 0.9rem) !important;
+  color: var(--cl-text-primary) !important;
+  font-size: 0.875rem;
+}
+
+.select2-dropdown {
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-md) !important;
+  background: var(--cl-surface) !important;
+}
+
+.select2-results__option--highlighted {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+}
+
+body.theme-dark .select2-container .select2-selection--single,
+body.theme-dark .select2-container .select2-selection--multiple {
+  background: var(--cl-canvas) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .select2-container .select2-selection__rendered {
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .select2-dropdown {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .select2-results__option--highlighted {
+  background: var(--cl-nav-hover) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+/* ============================================================================
+   SECTION 20 — UTILITY CLASSES
+   ============================================================================ */
+/* Override bg-white in dark theme */
+body.theme-dark .bg-white {
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .card-header.bg-white {
+  background: var(--cl-surface) !important;
+  border-bottom: 1px solid var(--cl-border) !important;
+}
+
+/* Section icon utility */
+.section-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--cl-radius);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.section-accent-primary { background: var(--cl-primary-light); color: var(--cl-primary); }
+.section-accent-amber { background: var(--cl-warning-light); color: var(--cl-warning-text); }
+.section-accent-green { background: var(--cl-success-light); color: var(--cl-success-text); }
+
+/* Truncation */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   SECTION 21 — SCROLLBAR STYLING
+   ============================================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--cl-text-muted);
+  border-radius: var(--cl-radius-pill);
+  opacity: 0.5;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--cl-text-secondary); }
+
+/* ============================================================================
+   SECTION 22 — RFQPO VIEW SPECIFIC (Preserve Functionality)
+   ============================================================================ */
+#rfqpoPage .card { border: 1px solid var(--cl-border) !important; }
+#rfqpoPage .section-header {
+  background: var(--cl-surface) !important;
+  border-bottom: 1px solid var(--cl-border) !important;
+}
+#rfqpoPage .line-header-row {
+  background: var(--cl-surface-alt);
+  border: 1px solid var(--cl-border);
+}
+#rfqpoPage .line-header-row .h {
+  color: var(--cl-text-muted);
+}
+
+/* ============================================================================
+   SECTION 23 — MOBILE MENU OVERRIDES
+   ============================================================================ */
+.mobile-fullmenu {
+  background: rgba(15, 23, 42, 0.97) !important;
+}
+
+.mobile-fullmenu .menu-section a {
+  font-weight: 500 !important;
+  padding: 0.5rem 0 !important;
+}
+
+/* ============================================================================
+   SECTION 24 — ACCOUNTING VIEWS
+   ============================================================================ */
+/* Chart of Accounts, Journals, etc. inherit table styles automatically.
+   Just ensure accordion headers match. */
+.accordion-button {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: var(--cl-space-md) var(--cl-space-lg);
+  background: var(--cl-surface);
+  color: var(--cl-text-primary);
+  border: none;
+}
+
+.accordion-button:not(.collapsed) {
+  background: var(--cl-primary-light);
+  color: var(--cl-primary);
+  box-shadow: none;
+}
+
+.accordion-item {
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-lg) !important;
+  overflow: hidden;
+  margin-bottom: var(--cl-space-sm);
+}
+
+/* ============================================================================
+   SECTION 25 — DELIVERY ORDERS (Card Layout View)
+   ============================================================================ */
+/* Cards in grid layouts should also respect the flat style */
+.card.h-100 {
+  transition: none !important;
+}
+.card.h-100:hover {
+  transform: none !important;
+  box-shadow: var(--cl-shadow-sm) !important;
+}
+
+/* ============================================================================
+   SECTION 26 — DARK THEME COMPREHENSIVE OVERRIDES
+   ============================================================================ */
+body.theme-dark .card {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+
+body.theme-dark .card-header {
+  background: var(--cl-surface) !important;
+  border-bottom-color: var(--cl-border) !important;
+}
+
+body.theme-dark .section-header {
+  background: var(--cl-surface) !important;
+  border-bottom-color: var(--cl-border) !important;
+}
+
+body.theme-dark .table thead th {
+  background: var(--cl-canvas) !important;
+  color: var(--cl-text-muted) !important;
+  border-bottom-color: var(--cl-border) !important;
+}
+
+body.theme-dark .table tbody td {
+  border-bottom-color: var(--cl-border) !important;
+  color: var(--cl-text-secondary);
+}
+
+body.theme-dark .table:not(.table-borderless) tbody tr:nth-child(even) {
+  background-color: var(--cl-canvas) !important;
+}
+
+body.theme-dark .table:not(.table-borderless) tbody tr:nth-child(odd) {
+  background-color: var(--cl-surface) !important;
+}
+
+body.theme-dark .table:not(.table-borderless) tbody tr:hover,
+body.theme-dark .table:not(.table-borderless) tbody tr:hover > td {
+  background-color: var(--cl-primary-light) !important;
+}
+
+body.theme-dark .dropdown-menu {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .dropdown-item {
+  color: var(--cl-text-secondary) !important;
+}
+
+body.theme-dark .dropdown-item:hover {
+  background: var(--cl-nav-hover) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .modal-content {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .modal-header,
+body.theme-dark .modal-footer {
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .badge.bg-secondary,
+body.theme-dark .badge.text-bg-secondary,
+body.theme-dark .badge.bg-light,
+body.theme-dark .badge.text-bg-light {
+  background: var(--cl-canvas) !important;
+  color: var(--cl-text-secondary) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .actions-col .btn,
+body.theme-dark .tt-actions .btn {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+body.theme-dark .actions-col .btn:hover,
+body.theme-dark .tt-actions .btn:hover {
+  background: var(--cl-primary-light) !important;
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+}
+
+body.theme-dark .page-link {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  color: var(--cl-text-secondary);
+}
+
+body.theme-dark .page-link:hover {
+  background: var(--cl-primary-light);
+  color: var(--cl-primary);
+}
+
+/* ============================================================================
+   SECTION 27 — PRINT STYLES (Keep Functional)
+   ============================================================================ */
+@media print {
+  #globalNavBar,
+  .cl-breadcrumb-bar,
+  .sidebar,
+  .top-header,
+  .mobile-fullmenu { display: none !important; }
+  
+  .content-wrapper {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+}
+
+/* ============================================================================
+   SECTION 28 — RESPONSIVE FINE-TUNING
+   ============================================================================ */
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: var(--cl-space-md) !important;
+  }
+  
+  .card-body {
+    padding: var(--cl-space-md) !important;
+  }
+  
+  .table thead th,
+  .table tbody td {
+    padding: var(--cl-space-xs) var(--cl-space-sm) !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .stats-card {
+    min-height: 80px;
+    padding: var(--cl-space-md) !important;
+  }
+  
+  .stats-card .stats-info h3 {
+    font-size: 1.35rem;
+  }
+  
+  h2.mb-0, .h3.mb-0, h1.h3.mb-0, .page-title {
+    font-size: 1.1rem !important;
+  }
+}
+
+@media (max-width: 1199.98px) {
+  #globalNavBar {
+    height: auto;
+    min-height: var(--cl-nav-height);
+  }
+
+  #globalNavBar .container-fluid {
+    height: auto;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    position: relative;
+  }
+
+  #globalNavBar #globalNav {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    z-index: 1029;
+    background: var(--cl-nav-bg);
+    border-top: 1px solid var(--cl-nav-border);
+    border-bottom: 1px solid var(--cl-nav-border);
+    box-shadow: var(--cl-shadow-md);
+    padding: var(--cl-space-sm) var(--cl-space-md);
+  }
+
+  #globalNavBar #globalNav .navbar-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.2rem;
+    margin-bottom: var(--cl-space-sm) !important;
+  }
+
+  #globalNavBar .nav-link {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  #globalNavBar .nav-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+    padding-top: var(--cl-space-sm);
+    border-top: 1px solid var(--cl-border-light);
+  }
+
+  #globalNavBar .dropdown-menu.cl-mega-menu {
+    min-width: 100%;
+  }
+
+  #globalNavBar .cl-mega-menu .d-flex {
+    flex-direction: column;
+    gap: var(--cl-space-sm) !important;
+  }
+}
+
+@media (max-width: 576px) {
+  #globalNavBar .nav-link {
+    padding: 0.4rem 0.5rem !important;
+    font-size: 0.8rem;
+  }
+}
+
+/* ============================================================================
+   SECTION 29 — TRANSITION SMOOTHING
+   ============================================================================ */
+body,
+.content-wrapper,
+.card,
+.card-header {
+  transition: background-color 200ms ease,
+              color 200ms ease,
+              border-color 200ms ease !important;
+}
+
+/* ============================================================================
+   SECTION 30 — QUICK-CREATE POPOVER MENU
+   ============================================================================ */
+.cl-quick-menu {
+  min-width: 200px !important;
+  padding: var(--cl-space-sm) !important;
+}
+
+.cl-quick-menu .dropdown-item {
+  border-radius: var(--cl-radius) !important;
+  padding: 0.45rem 0.75rem !important;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cl-quick-menu .dropdown-item i {
+  font-size: 0.9rem;
+  width: 20px;
+  text-align: center;
+}
+
+.cl-quick-menu .dropdown-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cl-text-muted);
+  padding: 0.35rem 0.75rem 0.2rem;
+}
+
+/* ============================================================================
+   SECTION 31 — RFQ/PO VIEW INLINE STYLE OVERRIDES
+   Forces the RFQ/PO inline styles to match our theme instead of dark mode vars
+   ============================================================================ */
+/* Override the dark-themed inline vars used by RFQ/PO */
+#rfqpoPage .card-body {
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+#rfqpoPage .section-header {
+  background: var(--cl-surface) !important;
+}
+
+/* Fix the tabs section */
+#rfqpoPage #listTabs {
+  border-bottom: 1px solid var(--cl-border) !important;
+  gap: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+#rfqpoPage #listTabs .nav-link {
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  color: var(--cl-text-secondary) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  padding: 0.5rem 0.85rem !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  margin-bottom: -1px !important;
+  transition: color var(--cl-transition), border-color var(--cl-transition);
+}
+
+#rfqpoPage #listTabs .nav-link:hover {
+  color: var(--cl-primary) !important;
+  border-bottom-color: var(--cl-primary) !important;
+}
+
+#rfqpoPage #listTabs .nav-link.active {
+  color: var(--cl-primary) !important;
+  font-weight: 600 !important;
+  border-bottom-color: var(--cl-primary) !important;
+  background: transparent !important;
+}
+
+/* Fix the search bar area */
+#rfqpoPage #rfqpoSearch {
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-primary) !important;
+  border-radius: var(--cl-radius) !important;
+}
+
+#rfqpoPage #rfqpoSearch::placeholder {
+  color: var(--cl-text-muted) !important;
+}
+
+#rfqpoPage #searchListBtn {
+  background: var(--cl-primary) !important;
+  border-color: var(--cl-primary) !important;
+  color: #fff !important;
+  border-radius: var(--cl-radius) !important;
+  font-weight: 500 !important;
+}
+
+#rfqpoPage #searchListBtn:hover {
+  background: var(--cl-primary-hover) !important;
+}
+
+#rfqpoPage #clearListBtn {
+  background: transparent !important;
+  border: 1px solid var(--cl-border) !important;
+  color: var(--cl-text-secondary) !important;
+  border-radius: var(--cl-radius) !important;
+}
+
+#rfqpoPage #clearListBtn:hover {
+  background: var(--cl-surface-alt) !important;
+}
+
+/* Fix the table header that uses dark bg inline */
+#rfqpoPage .table-sm thead {
+  background-color: var(--cl-surface-alt) !important;
+}
+
+#rfqpoPage .table-sm thead th {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-muted) !important;
+  border-bottom: 2px solid var(--cl-border) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Fix hover row */
+#rfqpoPage .table-hover tbody tr:hover {
+  background-color: var(--cl-primary-light) !important;
+}
+
+/* Fix line header row for form */
+#rfqpoPage .line-header-row {
+  background: var(--cl-surface-alt) !important;
+  border: 1px solid var(--cl-border) !important;
+}
+
+#rfqpoPage .line-header-row .h {
+  color: var(--cl-text-muted) !important;
+}
+
+/* Fix form inputs inside RFQ that use dark-themed rgba values */
+#rfqpoPage .lines-row .form-control-sm {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+#rfqpoPage .lines-row .form-control-sm::placeholder {
+  color: var(--cl-text-muted) !important;
+}
+
+#rfqpoPage .lines-row .form-control-sm:focus {
+  border-color: var(--cl-primary) !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
+}
+
+/* Fix totals panel */
+#rfqpoPage .totals-panel {
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface-alt) !important;
+}
+
+#rfqpoPage .totals-panel .small-label {
+  color: var(--cl-text-muted) !important;
+}
+
+#rfqpoPage .totals-panel .value,
+#rfqpoPage .totals-panel .grand {
+  color: var(--cl-text-primary) !important;
+}
+
+#rfqpoPage .totals-grid hr {
+  border-color: var(--cl-border) !important;
+}
+
+/* Fix add line button */
+#rfqpoPage .add-line-btn {
+  color: var(--cl-text-secondary) !important;
+  border-color: var(--cl-border) !important;
+  background: transparent !important;
+}
+
+#rfqpoPage .add-line-btn:hover {
+  background: var(--cl-surface-alt) !important;
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+}
+
+/* Fix remove button */
+#rfqpoPage .removeBtn {
+  color: var(--cl-danger) !important;
+  border-color: var(--cl-border) !important;
+  background: transparent !important;
+}
+
+/* Autocomplete dropdown */
+#rfqpoPage .autocomplete-list {
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-primary) !important;
+  border: 1px solid var(--cl-border) !important;
+  box-shadow: var(--cl-shadow-lg) !important;
+}
+
+/* ============================================================================
+   SECTION 33 — JOURNAL VIEWS INLINE STYLE OVERRIDES
+   ============================================================================ */
+/* Override the gradient/fancy styles from journal inline CSS */
+
+/* Modern card — make it match our flat system */
+.modern-card {
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+  overflow: visible !important;
+}
+
+/* Compact header — flat, no gradient */
+.compact-header {
+  background: var(--cl-surface) !important;
+  border-bottom: 1px solid var(--cl-border) !important;
+  padding: var(--cl-space-md) var(--cl-space-lg) !important;
+}
+
+/* Header icon — theme-aware */
+.header-icon {
+  width: 32px !important;
+  height: 32px !important;
+  background: var(--cl-warning-light) !important;
+  color: var(--cl-warning-text) !important;
+  border-radius: var(--cl-radius) !important;
+  box-shadow: none !important;
+}
+
+/* Section icon — flat */
+.section-icon {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+  box-shadow: none !important;
+}
+
+.section-accent-amber.section-icon,
+.section-accent-amber {
+  background: var(--cl-warning-light) !important;
+  color: var(--cl-warning-text) !important;
+}
+
+.section-accent-green.section-icon,
+.section-accent-green {
+  background: var(--cl-success-light) !important;
+  color: var(--cl-success-text) !important;
+}
+
+.section-accent-primary.section-icon {
+  background: var(--cl-primary-light) !important;
+  color: var(--cl-primary) !important;
+}
+
+/* Entry ID badge — softer, not gradient */
+.entry-id-badge {
+  background: var(--cl-primary) !important;
+  color: #fff !important;
+  padding: 0.2rem 0.6rem !important;
+  border-radius: var(--cl-radius-pill) !important;
+  font-weight: 600 !important;
+  font-size: 0.72rem !important;
+}
+
+/* Amount display — use theme text, not bright green */
+.amount-value {
+  color: var(--cl-text-primary) !important;
+  font-weight: 700 !important;
+  font-size: 0.95rem !important;
+}
+
+/* Balance pills — softer */
+.balance-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  padding: 0.15rem 0.5rem !important;
+  border-radius: var(--cl-radius-pill) !important;
+  font-size: 0.7rem !important;
+  font-weight: 500 !important;
+}
+
+.balance-status.balanced {
+  background: var(--cl-success-light) !important;
+  color: var(--cl-success-text) !important;
+  border: 1px solid transparent !important;
+}
+
+.balance-status.unbalanced {
+  background: var(--cl-danger-light) !important;
+  color: var(--cl-danger-text) !important;
+  border: 1px solid transparent !important;
+}
+
+/* Journal row hover — flat, no gradient */
+.journal-row {
+  transition: background 150ms ease !important;
+  border-bottom: 1px solid var(--cl-border-light) !important;
+  background: var(--cl-surface) !important;
+}
+
+.journal-row:hover {
+  background: var(--cl-primary-light) !important;
+  box-shadow: none !important;
+}
+
+/* Modern table container */
+.modern-table-container {
+  border-radius: var(--cl-radius-lg) !important;
+  overflow: hidden !important;
+  border: 1px solid var(--cl-border) !important;
+}
+
+/* Modern table headers — flat, no gradient */
+.modern-table thead th,
+table.modern-table thead th {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-muted) !important;
+  border-bottom: 2px solid var(--cl-border) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  padding: var(--cl-space-sm) var(--cl-space-md) !important;
+}
+
+/* Lines container — flat, no gradient */
+.lines-container {
+  background: var(--cl-surface-alt) !important;
+  border-top: 1px solid var(--cl-border) !important;
+}
+
+/* Lines table header — flat */
+.lines-table thead th {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-muted) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  border: none !important;
+  padding: var(--cl-space-sm) var(--cl-space-md) !important;
+}
+
+/* Lines table */
+.lines-table {
+  background: var(--cl-surface) !important;
+  box-shadow: var(--cl-shadow-xs) !important;
+}
+
+/* Debit/credit amounts — softer colors */
+.amount-debit {
+  color: var(--cl-danger) !important;
+  font-weight: 600 !important;
+}
+
+.amount-credit {
+  color: var(--cl-success) !important;
+  font-weight: 600 !important;
+}
+
+.amount-empty {
+  color: var(--cl-text-muted) !important;
+}
+
+/* Filter bar — flat, match theme */
+.filter-bar {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: var(--cl-space-md) !important;
+}
+
+.filter-bar input,
+.filter-bar select {
+  background: var(--cl-surface-alt) !important;
+  border: 1px solid var(--cl-border) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+.filter-bar input:focus,
+.filter-bar select:focus {
+  border-color: var(--cl-primary) !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
+}
+
+/* Date display */
+.date-main {
+  font-weight: 600 !important;
+  color: var(--cl-text-primary) !important;
+  font-size: 0.85rem !important;
+}
+
+.date-year {
+  font-size: 0.72rem !important;
+  color: var(--cl-text-muted) !important;
+}
+
+/* Description */
+.desc-main {
+  color: var(--cl-text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+}
+
+.desc-sub {
+  color: var(--cl-text-muted) !important;
+  font-size: 0.78rem !important;
+}
+
+/* Modern btn — no transform */
+.modern-btn {
+  transition: all var(--cl-transition) !important;
+}
+
+.modern-btn:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Journal lite form: badge amounts — use theme instead of raw bg-success */
+.badge.bg-success.fs-6 {
+  background: var(--cl-success-light) !important;
+  color: var(--cl-success-text) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+/* Journal lite totals bar */
+.totals-bar {
+  background: var(--cl-surface-alt) !important;
+  border: 1px solid var(--cl-border) !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+/* Actions group inline */
+.actions-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  justify-content: flex-end !important;
+}
+
+.actions-group .btn-icon {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.82rem !important;
+  border-radius: var(--cl-radius) !important;
+  border: 1px solid var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-secondary) !important;
+}
+
+.actions-group .btn-icon:hover {
+  border-color: var(--cl-primary) !important;
+  color: var(--cl-primary) !important;
+  background: var(--cl-primary-50) !important;
+}
+
+/* ============================================================================
+   SECTION 34 — PO / SO DETAIL VIEW FIXES
+   ============================================================================ */
+/* Stop the totals/summary tables from growing a scrollbar */
+.so-lines-table,
+.po-lines-table {
+  table-layout: auto !important;
+  width: 100% !important;
+}
+
+/* Totals summary panels — never need horizontal scroll */
+.table.table-borderless.w-auto {
+  min-width: 0 !important;
+  width: auto !important;
+}
+
+.d-flex.justify-content-end .table-responsive {
+  overflow-x: visible !important;
+}
+
+/* Ensure the totals wrapper doesn't overflow its column */
+.col-md-6 .table-responsive,
+.col-12 .table-responsive {
+  max-width: 100%;
+}
+
+/* Fix the receipt summary / totals row layout */
+.col-md-6 .table.table-borderless {
+  white-space: nowrap;
+}
+
+/* PO / SO page: prevent card-body content overflow */
+#poContainer .table-responsive,
+#soContainer .table-responsive {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Totals table nested inside PO/SO container - no scrollbar */
+#poContainer .d-flex.justify-content-end .table-responsive,
+#soContainer .d-flex.justify-content-end .table-responsive {
+  overflow: visible !important;
+}
+
+/* ============================================================================
+   SECTION 34b — PRODUCT ATTRIBUTES VIEW FIXES
+   ============================================================================ */
+/* Tags with × buttons */
+.badge .btn-close,
+.badge [data-dismiss],
+.tag-value {
+  font-size: 0.82rem;
+}
+
+/* ============================================================================
+   SECTION 35 — GENERAL INLINE STYLE OVERRIDES (catch-all)
+   ============================================================================ */
+/* Override Bootstrap's --bs-gray-800 used by some inline table headers */
+.table-sm thead,
+thead.table-light {
+  background: var(--cl-surface-alt) !important;
+}
+
+thead.table-light th,
+.table-sm thead th {
+  background: var(--cl-surface-alt) !important;
+  color: var(--cl-text-muted) !important;
+}
+
+/* Override bg-white / bg-light that produce pure white */
+.bg-white {
+  background-color: var(--cl-surface) !important;
+}
+
+.bg-light {
+  background-color: var(--cl-surface-alt) !important;
+}
+
+/* Table secondary footer */
+.table-secondary,
+.table-secondary > td,
+.table-secondary > th,
+tr.table-secondary > td {
+  background-color: var(--cl-surface-alt) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+/* Fix container-fluid bg if any view sets it */
+.container-fluid {
+  color: var(--cl-text-secondary);
+}
+
+/* Trial balance specific — group header rows */
+tr td[colspan] em,
+tr td[colspan] i:not(.bi) {
+  color: var(--cl-text-muted);
+}
+
+/* Fix code elements used in financial views */
+.font-monospace,
+.code-pill {
+  font-family: var(--cl-font-mono) !important;
+  font-size: 0.82rem !important;
+}
+
+/* Ensure no pure-white backgrounds leak through */
+.card-body {
+  background: var(--cl-surface) !important;
+}
+
+/* Fix the "tile" styles from journal inline CSS */
+.tile.small-tile {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+}
+
+.tile.small-tile .label {
+  color: var(--cl-text-muted) !important;
+}
+
+.filterbar {
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-lg) !important;
+}
+
+/* ============================================================================
+   SECTION 36 — DARK THEME OVERRIDES FOR NEW ELEMENTS
+   ============================================================================ */
+body.theme-dark .entry-id-badge {
+  background: var(--cl-primary) !important;
+}
+
+body.theme-dark .amount-value {
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .journal-row {
+  background: var(--cl-surface) !important;
+  border-bottom-color: var(--cl-border) !important;
+}
+
+body.theme-dark .journal-row:hover {
+  background: var(--cl-primary-light) !important;
+}
+
+body.theme-dark .lines-container {
+  background: var(--cl-canvas) !important;
+}
+
+body.theme-dark .lines-table {
+  background: var(--cl-surface) !important;
+}
+
+body.theme-dark .lines-table thead th {
+  background: var(--cl-canvas) !important;
+  color: var(--cl-text-muted) !important;
+}
+
+body.theme-dark .modern-table-container {
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .filter-bar {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+}
+
+body.theme-dark .filter-bar input,
+body.theme-dark .filter-bar select {
+  background: var(--cl-canvas) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .date-main {
+  color: var(--cl-text-primary) !important;
+}
+
+body.theme-dark .desc-main {
+  color: var(--cl-text-primary) !important;
+}
+
+/* Dark mode comfort presets */
+body.theme-dark.comfort-bright {
+  --cl-canvas:       #131B2E;
+  --cl-surface:      #1F293D;
+  --cl-surface-alt:  #1A2436;
+  --cl-border:       #2D3B50;
+  --cl-nav-bg:       #1C2638;
+  --cl-nav-border:   #2D3B50;
+  --cl-nav-hover:    #2D3B50;
+}
+
+body.theme-dark.comfort-dim {
+  --cl-canvas:       #080C14;
+  --cl-surface:      #111825;
+  --cl-surface-alt:  #0D1320;
+  --cl-border:       #1E2A3C;
+  --cl-nav-bg:       #0E1520;
+  --cl-nav-border:   #1E2A3C;
+  --cl-nav-hover:    #1A2535;
+}

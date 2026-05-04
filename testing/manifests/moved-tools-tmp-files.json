@@ -1,0 +1,214 @@
+﻿[
+    {
+        "from":  "tools/add_country_name_column.php",
+        "to":  "testing/tools/add_country_name_column.php"
+    },
+    {
+        "from":  "tools/apply_migration.php",
+        "to":  "testing/tools/apply_migration.php"
+    },
+    {
+        "from":  "tools/aria_repair.log",
+        "to":  "testing/tools/aria_repair.log"
+    },
+    {
+        "from":  "tools/auto_workflow_test.php",
+        "to":  "testing/tools/auto_workflow_test.php"
+    },
+    {
+        "from":  "tools/backfill_invoice_lines.php",
+        "to":  "testing/tools/backfill_invoice_lines.php"
+    },
+    {
+        "from":  "tools/check_cache.php",
+        "to":  "testing/tools/check_cache.php"
+    },
+    {
+        "from":  "tools/check_customers_table.php",
+        "to":  "testing/tools/check_customers_table.php"
+    },
+    {
+        "from":  "tools/check_db_tables.php",
+        "to":  "testing/tools/check_db_tables.php"
+    },
+    {
+        "from":  "tools/check_js_balance.js",
+        "to":  "testing/tools/check_js_balance.js"
+    },
+    {
+        "from":  "tools/check_product_categories.php",
+        "to":  "testing/tools/check_product_categories.php"
+    },
+    {
+        "from":  "tools/check_table.php",
+        "to":  "testing/tools/check_table.php"
+    },
+    {
+        "from":  "tools/convert_rfq.php",
+        "to":  "testing/tools/convert_rfq.php"
+    },
+    {
+        "from":  "tools/count_workorder_data.php",
+        "to":  "testing/tools/count_workorder_data.php"
+    },
+    {
+        "from":  "tools/customers_create.sql",
+        "to":  "testing/tools/customers_create.sql"
+    },
+    {
+        "from":  "tools/db_check.php",
+        "to":  "testing/tools/db_check.php"
+    },
+    {
+        "from":  "tools/db_diagnostics.php",
+        "to":  "testing/tools/db_diagnostics.php"
+    },
+    {
+        "from":  "tools/debug_add_log_mysqli.php",
+        "to":  "testing/tools/debug_add_log_mysqli.php"
+    },
+    {
+        "from":  "tools/debug_add_log_stepwise.php",
+        "to":  "testing/tools/debug_add_log_stepwise.php"
+    },
+    {
+        "from":  "tools/debug_item_processes.php",
+        "to":  "testing/tools/debug_item_processes.php"
+    },
+    {
+        "from":  "tools/debug_receivables.php",
+        "to":  "testing/tools/debug_receivables.php"
+    },
+    {
+        "from":  "tools/delete_batch_direct.php",
+        "to":  "testing/tools/delete_batch_direct.php"
+    },
+    {
+        "from":  "tools/describe_products.php",
+        "to":  "testing/tools/describe_products.php"
+    },
+    {
+        "from":  "tools/describe_work_orders.php",
+        "to":  "testing/tools/describe_work_orders.php"
+    },
+    {
+        "from":  "tools/describe_work_order_items.php",
+        "to":  "testing/tools/describe_work_order_items.php"
+    },
+    {
+        "from":  "tools/dump_invoice_lines.php",
+        "to":  "testing/tools/dump_invoice_lines.php"
+    },
+    {
+        "from":  "tools/fix_migrations.php",
+        "to":  "testing/tools/fix_migrations.php"
+    },
+    {
+        "from":  "tools/fix_next_numbers.php",
+        "to":  "testing/tools/fix_next_numbers.php"
+    },
+    {
+        "from":  "tools/fix_vendor_contacts_ai.php",
+        "to":  "testing/tools/fix_vendor_contacts_ai.php"
+    },
+    {
+        "from":  "tools/get_rfq.php",
+        "to":  "testing/tools/get_rfq.php"
+    },
+    {
+        "from":  "tools/import_worldcities.php",
+        "to":  "testing/tools/import_worldcities.php"
+    },
+    {
+        "from":  "tools/insert_po_test.php",
+        "to":  "testing/tools/insert_po_test.php"
+    },
+    {
+        "from":  "tools/insert_test_batch.php",
+        "to":  "testing/tools/insert_test_batch.php"
+    },
+    {
+        "from":  "tools/inspect_contacts.php",
+        "to":  "testing/tools/inspect_contacts.php"
+    },
+    {
+        "from":  "tools/list_batches.php",
+        "to":  "testing/tools/list_batches.php"
+    },
+    {
+        "from":  "tools/list_users.php",
+        "to":  "testing/tools/list_users.php"
+    },
+    {
+        "from":  "tools/odoo_pull_full.log",
+        "to":  "testing/tools/odoo_pull_full.log"
+    },
+    {
+        "from":  "tools/odoo_refresh.log",
+        "to":  "testing/tools/odoo_refresh.log"
+    },
+    {
+        "from":  "tools/print_table_columns.php",
+        "to":  "testing/tools/print_table_columns.php"
+    },
+    {
+        "from":  "tools/query_po.php",
+        "to":  "testing/tools/query_po.php"
+    },
+    {
+        "from":  "tools/repair_shipped_stock.php",
+        "to":  "testing/tools/repair_shipped_stock.php"
+    },
+    {
+        "from":  "tools/reset_admin_password.php",
+        "to":  "testing/tools/reset_admin_password.php"
+    },
+    {
+        "from":  "tools/run_odoo_refresh.php",
+        "to":  "testing/tools/run_odoo_refresh.php"
+    },
+    {
+        "from":  "tools/run_odoo_refresh_full.php",
+        "to":  "testing/tools/run_odoo_refresh_full.php"
+    },
+    {
+        "from":  "tools/show_columns.php",
+        "to":  "testing/tools/show_columns.php"
+    },
+    {
+        "from":  "tools/show_columns_table.php",
+        "to":  "testing/tools/show_columns_table.php"
+    },
+    {
+        "from":  "tools/show_create_customers.php",
+        "to":  "testing/tools/show_create_customers.php"
+    },
+    {
+        "from":  "tools/show_pos.php",
+        "to":  "testing/tools/show_pos.php"
+    },
+    {
+        "from":  "tools/smoke_test_logs.php",
+        "to":  "testing/tools/smoke_test_logs.php"
+    },
+    {
+        "from":  "tools/smoke_test_logs_simple.php",
+        "to":  "testing/tools/smoke_test_logs_simple.php"
+    },
+    {
+        "from":  "tools/test_concat_parse.js",
+        "to":  "testing/tools/test_concat_parse.js"
+    },
+    {
+        "from":  "tools/test_http_ajax.php",
+        "to":  "testing/tools/test_http_ajax.php"
+    },
+    {
+        "from":  "tools/worldcities.csv",
+        "to":  "testing/tools/worldcities.csv"
+    },
+    {
+        "from":  "tmp/describe_tables.php",
+        "to":  "testing/tmp/describe_tables.php"
+    }
+]
