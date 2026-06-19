@@ -10,30 +10,44 @@
     function n(v){ var x = parseFloat(v); return isFinite(x) ? x : 0; }
     function updateTotals(){
       try {
-        var subtotal = 0, taxTotal = 0;
+        var subtotal = 0, lineDiscountTotal = 0, taxTotal = 0;
         var rows = table ? table.querySelectorAll('tr.quote-line') : [];
         Array.prototype.forEach.call(rows, function(r){
           var qty = n((r.querySelector('.line-qty')||{}).value);
           var price = n((r.querySelector('.line-price')||{}).value);
-          var discPct = n((r.querySelector('.line-discount')||{}).value);
-          var taxPct = n((r.querySelector('.line-tax')||{}).value);
+          var discVal = n((r.querySelector('.line-discount')||{}).value);
+          var discType = ((r.querySelector('.line-discount-type')||{}).value || 'percent').toLowerCase();
+          var taxType = ((r.querySelector('.line-tax-type')||{}).value || 'percent').toLowerCase();
+          var taxVal = n((r.querySelector('.line-tax')||{}).value);
           var raw = qty * price;
-          var discAmt = raw * (discPct/100);
+          var discAmt = discType === 'fixed' ? discVal : (raw * (discVal/100));
+          discAmt = Math.min(raw, Math.max(0, discAmt));
           var taxable = Math.max(0, raw - discAmt);
-          var taxAmt = taxable * (taxPct/100);
+          var taxAmt = taxType === 'fixed' ? taxVal : (taxable * (taxVal/100));
           var lineTotal = taxable + taxAmt;
           subtotal += raw;
+          lineDiscountTotal += discAmt;
           taxTotal += taxAmt;
           var cell = r.querySelector('.line-total');
           if (cell) cell.textContent = lineTotal.toFixed(2);
         });
         var ship = shippingInput ? n(shippingInput.value) : 0;
-        var grand = (subtotal - 0 + taxTotal + ship);
+        var lineNet = Math.max(0, subtotal - lineDiscountTotal);
+        var docType = ((document.getElementById('document_discount_type')||{}).value || 'fixed').toLowerCase();
+        var docVal = n((document.getElementById('document_discount_value')||{}).value);
+        var excludeShipping = ((document.getElementById('discount_exclude_shipping')||{}).checked === true);
+        var docBase = lineNet + taxTotal + (excludeShipping ? 0 : ship);
+        var docDiscount = docType === 'percent' ? (docBase * (docVal/100)) : docVal;
+        docDiscount = Math.min(Math.max(0, docDiscount), docBase);
+        var totalDiscount = lineDiscountTotal + docDiscount;
+        var grand = (lineNet + taxTotal + ship - docDiscount);
         var elSub = document.getElementById('subtotal');
+        var elDisc = document.getElementById('discount-total');
         var elTax = document.getElementById('tax');
         var elShip = document.getElementById('shipping-total');
         var elGrand = document.getElementById('grand-total');
         if (elSub) elSub.textContent = subtotal.toFixed(2);
+        if (elDisc) elDisc.textContent = totalDiscount.toFixed(2);
         if (elTax) elTax.textContent = taxTotal.toFixed(2);
         if (elShip) elShip.textContent = ship.toFixed(2);
         if (elGrand) elGrand.textContent = grand.toFixed(2);
@@ -43,7 +57,10 @@
     }
 
     function bindRow(row){
-  row.querySelectorAll('input, select').forEach(function(el){ el.addEventListener('change', updateTotals); });
+  row.querySelectorAll('input, select').forEach(function(el){
+        el.addEventListener('change', updateTotals);
+        el.addEventListener('input', updateTotals);
+      });
       row.querySelector('.btn-remove-line').addEventListener('click', function(){
         if (table.querySelectorAll('tr.quote-line').length > 1){ row.remove(); updateTotals(); }
       });
@@ -63,6 +80,12 @@
       });
       newRow.querySelector('.line-qty').value = '1';
       newRow.querySelector('.line-price').value = '0.00';
+      var newDiscType = newRow.querySelector('.line-discount-type');
+      if (newDiscType) newDiscType.value = 'percent';
+      var newTaxType = newRow.querySelector('.line-tax-type');
+      if (newTaxType) newTaxType.value = 'percent';
+      var newTaxValue = newRow.querySelector('.line-tax');
+      if (newTaxValue) newTaxValue.value = '0';
       // Reset display cells/meta
       var totalCell = newRow.querySelector('.line-total');
       if (totalCell) totalCell.textContent = '0.00';
@@ -164,6 +187,25 @@
       shippingInput.addEventListener('input', updateTotals);
       shippingInput.addEventListener('change', updateTotals);
     }
+    var docTypeInput = document.getElementById('document_discount_type');
+    var docValueInput = document.getElementById('document_discount_value');
+    var docExcludeInput = document.getElementById('discount_exclude_shipping');
+    var toggleDiscTax = document.getElementById('toggle-discount-tax');
+    var quoteLines = document.getElementById('quote-lines-table');
+    function syncDiscTaxVisibility(){
+      if (!quoteLines || !toggleDiscTax) return;
+      quoteLines.classList.toggle('show-discount-tax', toggleDiscTax.checked);
+    }
+    if (toggleDiscTax) {
+      toggleDiscTax.addEventListener('change', syncDiscTaxVisibility);
+      syncDiscTaxVisibility();
+    }
+    if (docTypeInput) docTypeInput.addEventListener('change', updateTotals);
+    if (docValueInput) {
+      docValueInput.addEventListener('input', updateTotals);
+      docValueInput.addEventListener('change', updateTotals);
+    }
+    if (docExcludeInput) docExcludeInput.addEventListener('change', updateTotals);
 
   updateTotals();
   });
@@ -356,7 +398,7 @@
               window.location = base + '/quotations/view/' + json.id;
               return;
             }
-            if (json && json.errors){ if (json.errors.customer_id){ var el = document.getElementById('error-customer'); if (el) el.textContent = json.errors.customer_id; var cs = document.getElementById('customer_search'); if (cs) cs.classList.add('is-invalid'); } if (json.errors.lines && Array.isArray(json.errors.lines)){ json.errors.lines.forEach(function(lineErr, idx){ if (!lineErr) return; var rows = document.querySelectorAll('tr.quote-line'); var row = rows[idx]; if (row){ var container = row.querySelector('.line-errors'); var msgs = []; if (lineErr.quantity) msgs.push(lineErr.quantity); if (lineErr.unit_price) msgs.push(lineErr.unit_price); if (lineErr.description) msgs.push(lineErr.description); if (lineErr.general) msgs.push(lineErr.general); if (container) container.textContent = msgs.join(' • '); } }); } if (!json.errors.customer_id && (!json.errors.lines || json.errors.lines.length===0)) { alert('Failed to create quotation: '+(json.message||'validation error')); } } else { alert('Failed to create quotation: ' + (json && json.message ? json.message : 'server error')); } })
+            if (json && json.errors){ if (json.errors.customer_id){ var el = document.getElementById('error-customer'); if (el) el.textContent = json.errors.customer_id; var cs = document.getElementById('customer_search'); if (cs) cs.classList.add('is-invalid'); } if (json.errors.lines && Array.isArray(json.errors.lines)){ json.errors.lines.forEach(function(lineErr, idx){ if (!lineErr) return; var rows = document.querySelectorAll('tr.quote-line'); var row = rows[idx]; if (row){ var container = row.querySelector('.line-errors'); var msgs = []; if (lineErr.quantity) msgs.push(lineErr.quantity); if (lineErr.unit_price) msgs.push(lineErr.unit_price); if (lineErr.description) msgs.push(lineErr.description); if (lineErr.general) msgs.push(lineErr.general); if (container) container.textContent = msgs.join(' • '); } }); } if (!json.errors.customer_id && (!json.errors.lines || json.errors.lines.length===0)) { alert('Failed to save quotation: '+(json.error||json.message||'validation error')); } } else { alert('Failed to save quotation: ' + (json && (json.error || json.message) ? (json.error || json.message) : 'server error')); } })
           .catch(function(err){ console.error('Quotation create AJAX failed', err); var debugEl = document.getElementById('quote-debug-output'); if (debugEl && debugEl.textContent){ debugEl.style.border = '1px solid #ff6b6b'; }
             // If we received a Non-JSON response, attempt the JSON API fallback automatically
             try {

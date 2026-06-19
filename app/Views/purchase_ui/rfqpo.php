@@ -683,6 +683,8 @@ RFQ / PO
       linesContainer.querySelectorAll('.row').forEach((d)=>{
         console.log('Processing line row', d);
         const pid = (d.querySelector('.product-id') || {}).value;
+        const pvid = (d.querySelector('.product-variant-id') || {}).value;
+        const parsedVariantId = parseInt(pvid || '', 10);
         const qty = parseFloat((d.querySelector('.line-qty') || {}).value) || 0;
         const up = parseFloat((d.querySelector('.line-price') || {}).value) || 0;
         const desc = (d.querySelector('.line-desc') || {}).value || null;
@@ -701,6 +703,7 @@ RFQ / PO
 
         data.lines.push({
           product_id: pid ? parseInt(pid,10):null,
+          product_variant_id: (Number.isFinite(parsedVariantId) && parsedVariantId > 0) ? parsedVariantId : null,
           qty: qty,
           unit_price: up,
           discount_percent: discPct,
@@ -826,6 +829,7 @@ RFQ / PO
     html += '</tr></thead><tbody>';
 
     rows.forEach((r, idx) => {
+      const viewUrl = r.type === 'RFQ' ? `<?= site_url('purchases/rfq/') ?>${r.id}` : `<?= site_url('purchases/po/') ?>${r.id}`;
       html += `<tr>`;
       // # serial
       html += `<td class="text-center" style="font-size:.68rem;color:var(--cl-text-muted,#64748b);font-variant-numeric:tabular-nums">${idx+1}</td>`;
@@ -901,29 +905,28 @@ RFQ / PO
       html += `<td>${statusHtml}</td>`;
       
       // Actions
-      const viewUrl = r.type === 'RFQ' ? `<?= site_url('purchases/rfq/') ?>${r.id}` : `<?= site_url('purchases/po/') ?>${r.id}`;
-      html += `<td style="text-align:right;white-space:nowrap;overflow:visible">`;
-      html += `<a href="${viewUrl}" class="pl-list-act" title="View"><i class="bi bi-eye"></i></a>`;
+      html += `<td style="text-align:right;white-space:nowrap;overflow:visible" onclick="event.stopPropagation()">`;
+      html += `<a href="${viewUrl}" class="pl-list-act" title="View" onclick="event.stopPropagation()"><i class="bi bi-eye"></i></a>`;
       html += `<div class="dropdown" style="display:inline-block;position:relative">`;
-      html += `<button class="pl-list-act ms-1" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>`;
+      html += `<button class="pl-list-act ms-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" onclick="event.stopPropagation()"><i class="bi bi-three-dots-vertical"></i></button>`;
       html += `<ul class="dropdown-menu dropdown-menu-end" style="font-size:.78rem;min-width:120px;">`;
       if (r.type === 'RFQ') {
-        if (r.state === 'draft' || r.state === 'sent') html += `<li><button class="dropdown-item convertRfqBtn" data-id="${r.id}" style="color:#28a745;font-weight:500"><i class="bi bi-arrow-right-circle me-1"></i>RFQ to PO</button></li>`;
+        if (r.state === 'draft' || r.state === 'sent') html += `<li><button class="dropdown-item convertRfqBtn" data-id="${r.id}" style="color:#28a745;font-weight:500" onclick="event.stopPropagation()"><i class="bi bi-arrow-right-circle me-1"></i>RFQ to PO</button></li>`;
         if (r.state === 'draft') {
-          html += `<li><button class="dropdown-item editBtn" data-id="${r.id}"><i class="bi bi-pencil me-1"></i>Edit</button></li>`;
+          html += `<li><button class="dropdown-item editBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-pencil me-1"></i>Edit</button></li>`;
           html += `<li><hr class="dropdown-divider"></li>`;
-          html += `<li><button class="dropdown-item text-danger deleteBtn" data-id="${r.id}"><i class="bi bi-trash me-1"></i>Delete</button></li>`;
+          html += `<li><button class="dropdown-item text-danger deleteBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-trash me-1"></i>Delete</button></li>`;
         }
-        if (r.state !== 'cancelled') html += `<li><button class="dropdown-item text-danger cancelBtn" data-id="${r.id}"><i class="bi bi-x-circle me-1"></i>Cancel</button></li>`;
+        if (r.state !== 'cancelled') html += `<li><button class="dropdown-item text-danger cancelBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-x-circle me-1"></i>Cancel</button></li>`;
       }
       if (r.type === 'PO') {
         if (r.state === 'draft' || r.state === 'pending') {
-          html += `<li><button class="dropdown-item editPoBtn" data-id="${r.id}"><i class="bi bi-pencil me-1"></i>Edit</button></li>`;
-          html += `<li><button class="dropdown-item confirmPoBtn" data-id="${r.id}"><i class="bi bi-check2-square me-1"></i>Confirm</button></li>`;
+          html += `<li><button class="dropdown-item editPoBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-pencil me-1"></i>Edit</button></li>`;
+          html += `<li><button class="dropdown-item confirmPoBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-check2-square me-1"></i>Confirm</button></li>`;
           html += `<li><hr class="dropdown-divider"></li>`;
-          html += `<li><button class="dropdown-item text-danger deletePoBtn" data-id="${r.id}"><i class="bi bi-trash me-1"></i>Delete</button></li>`;
+          html += `<li><button class="dropdown-item text-danger deletePoBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-trash me-1"></i>Delete</button></li>`;
         }
-        if (r.state !== 'cancelled') html += `<li><button class="dropdown-item text-danger cancelPoBtn" data-id="${r.id}"><i class="bi bi-x-circle me-1"></i>Cancel</button></li>`;
+        if (r.state !== 'cancelled') html += `<li><button class="dropdown-item text-danger cancelPoBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-x-circle me-1"></i>Cancel</button></li>`;
       }
       html += `</ul></div></td>`;
       html += `</tr>`;
@@ -939,7 +942,7 @@ RFQ / PO
   function escHtml(s){ const d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
 
   function wireUpTableEvents(){
-    // Delegate clicks for view-more lines modal
+    // Delegate clicks for view-more lines modal (only "+X more" link shows modal)
     combinedList.addEventListener('click', async function(ev){
       const a = ev.target.closest && ev.target.closest('.view-more-lines');
       if (!a) return;
@@ -1048,7 +1051,9 @@ RFQ / PO
           const row = linesContainer.children[idx];
           if (!row) return;
           (row.querySelector('.product-id')||{}).value = ln.product_id || '';
-          (row.querySelector('.product-variant-id')||{}).value = ln.product_variant_id || ln.variant_id || '';
+          const loadPvid = parseInt((ln.product_variant_id ?? ''), 10) || 0;
+          const loadVid = parseInt((ln.variant_id ?? ''), 10) || 0;
+          (row.querySelector('.product-variant-id')||{}).value = loadPvid > 0 ? loadPvid : (loadVid > 0 ? loadVid : '');
           
           // Load variant code if available, otherwise product code
           const variantCode = ln.variant_code || ln.variant_art_number || '';
@@ -1467,7 +1472,9 @@ RFQ / PO
         const row = linesContainer.children[idx];
         if (!row) return;
         (row.querySelector('.product-id')||{}).value = ln.product_id || '';
-        (row.querySelector('.product-variant-id')||{}).value = ln.product_variant_id || '';
+        const loadPvid = parseInt((ln.product_variant_id ?? ''), 10) || 0;
+        const loadVid = parseInt((ln.variant_id ?? ''), 10) || 0;
+        (row.querySelector('.product-variant-id')||{}).value = loadPvid > 0 ? loadPvid : (loadVid > 0 ? loadVid : '');
         (row.querySelector('.product-code')||{}).value = ln.product_code || '';
         const pname = (ln.product_name || '').toString();
         const pdesc = (ln.description || '').toString();
@@ -1539,7 +1546,9 @@ RFQ / PO
         
         // Set product IDs
         (row.querySelector('.product-id')||{}).value = ln.product_id || '';
-        (row.querySelector('.product-variant-id')||{}).value = ln.product_variant_id || ln.variant_id || '';
+        const loadPvid = parseInt((ln.product_variant_id ?? ''), 10) || 0;
+        const loadVid = parseInt((ln.variant_id ?? ''), 10) || 0;
+        (row.querySelector('.product-variant-id')||{}).value = loadPvid > 0 ? loadPvid : (loadVid > 0 ? loadVid : '');
         
         // Set product code - prefer variant code if available
         const variantCode = ln.variant_code || ln.variant_art_number || '';

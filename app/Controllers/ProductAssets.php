@@ -8,6 +8,7 @@ use App\Models\ProductAssetGroupModel;
 use App\Models\ProductAssetListingModel;
 use App\Models\ProductAssetModel;
 use App\Models\ProductModel;
+use Config\Database;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class ProductAssets extends BaseController
@@ -15,7 +16,10 @@ class ProductAssets extends BaseController
     private const DEFAULT_FINAL_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
     private const DEFAULT_SOURCE_FORMATS = ['psd', 'ai', 'cdr', 'pdf', 'svg', 'eps'];
     private const DEFAULT_RAW_IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'tif', 'tiff'];
-    private const DEFAULT_FINAL_MAX_MB = 50;
+    private const DEFAULT_RAW_VIDEO_FORMATS = ['mp4', 'mov', 'webm', 'm4v', 'avi', 'mkv'];
+    private const DEFAULT_FINAL_MAX_MB = 500;
+    private const DEFAULT_RAW_MAX_MB = 1000;
+    private const DEFAULT_CHANNEL_MAX_MB = 2500;
     private const COMMON_GROUP_NAME = '__COMMON__';
     private const COMMON_GROUP_DESCRIPTION = 'System group for common raw/final assets.';
     private const LEGACY_DEFAULT_BRAND_NAME = 'Master Assets';
@@ -40,7 +44,7 @@ class ProductAssets extends BaseController
     public function index($productIdentifier = null)
     {
         $this->requireAuth();
-        $this->requirePermission('products.view');
+        $this->requireAssetPermission('read');
 
         $product = $this->resolveProductOrFail($productIdentifier);
 
@@ -50,7 +54,7 @@ class ProductAssets extends BaseController
     public function hub()
     {
         $this->requireAuth();
-        $this->requirePermission('products.view');
+        $this->requireAssetPermission('read');
 
         if (! $this->ensureModuleTablesReady(false)) {
             return $this->response->setStatusCode(500)->setBody('Product Assets tables are missing. Please run migration or schema setup.');
@@ -128,7 +132,7 @@ class ProductAssets extends BaseController
     {
         try {
             $this->requireAuth();
-            $this->requirePermission('products.view');
+            $this->requireAssetPermission('read');
 
             if (! $this->ensureModuleTablesReady(false)) {
                 return $this->response->setStatusCode(500)->setJSON([
@@ -165,10 +169,9 @@ class ProductAssets extends BaseController
                 ->where('product_id', $productId);
 
             if ($filters['variant_id'] > 0) {
-                $assetGroupBuilder->groupStart()
-                    ->where('variant_id', $filters['variant_id'])
-                    ->orWhere('name', self::COMMON_GROUP_NAME)
-                    ->groupEnd();
+                // Variant scope must be isolated. Do not include common product assets here,
+                // otherwise variant pages appear to share uploaded assets across all variants.
+                $assetGroupBuilder->where('variant_id', $filters['variant_id']);
             }
 
             $assetGroups = $assetGroupBuilder->findAll();
@@ -238,7 +241,6 @@ class ProductAssets extends BaseController
                     'assets' => $assets,
                     'listings' => $listings,
                     'can_manage' => $this->canManageAssets(),
-                    'is_designer' => $this->isDesigner(),
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -440,6 +442,8 @@ class ProductAssets extends BaseController
 
         $groupId = (int) ($this->request->getPost('asset_group_id') ?? 0);
         $channelId = (int) ($this->request->getPost('channel_id') ?? 0);
+        $variantIdRaw = $this->request->getPost('variant_id');
+        $variantId = is_numeric($variantIdRaw) && (int) $variantIdRaw > 0 ? (int) $variantIdRaw : null;
         $type = trim((string) ($this->request->getPost('type') ?? 'final'));
         $sectionKey = trim((string) ($this->request->getPost('section_key') ?? ''));
         $sourceFile = $this->request->getFile('source_file');
@@ -453,7 +457,7 @@ class ProductAssets extends BaseController
 
         $isCommonSection = in_array($sectionKey, ['raw_images', 'final_plain'], true);
         if ($isCommonSection && $groupId <= 0) {
-            $groupId = $this->getOrCreateCommonGroup($productId);
+            $groupId = $this->getOrCreateCommonGroup($productId, $variantId);
         }
 
         if ($groupId <= 0) {
@@ -463,6 +467,12 @@ class ProductAssets extends BaseController
         $group = $this->groupModel->where('id', $groupId)->where('product_id', $productId)->first();
         if (! $group) {
             return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Asset group not found']);
+        }
+        if ($variantId !== null && (int) ($group['variant_id'] ?? 0) !== $variantId) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Asset group does not belong to this variant']);
+        }
+        if ($variantId === null && !empty($group['variant_id'])) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Variant-scoped group requires variant context']);
         }
 
         $channel = null;
@@ -476,6 +486,9 @@ class ProductAssets extends BaseController
         if (!$isCommonSection && $channelId <= 0) {
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Channel is required for channel-specific uploads']);
         }
+
+        // Common sections remain product-level assets even if a channel is selected in the UI.
+        $persistChannelId = $isCommonSection ? 0 : $channelId;
 
         $rules = $channel ? $this->getChannelRules($channel) : $this->getDefaultRules();
         $sectionOptions = $this->buildSectionOptions($rules);
@@ -531,7 +544,9 @@ class ProductAssets extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Too many files in one request (max 50)']);
         }
 
-        $requestCap = 250 * 1024 * 1024; // 250MB total payload cap for this endpoint.
+        $globalLimits = $this->getGlobalUploadLimits();
+        $requestCap = (int) ($globalLimits['channel_max_bytes'] ?? (self::DEFAULT_CHANNEL_MAX_MB * 1024 * 1024));
+        $requestCapMb = max(1, (int) round($requestCap / 1024 / 1024));
         $totalBytes = 0;
         foreach ($files as $f) {
             if ($f && $f->isValid() && !$f->hasMoved()) {
@@ -541,7 +556,7 @@ class ProductAssets extends BaseController
         if ($totalBytes > $requestCap) {
             return $this->response->setStatusCode(422)->setJSON([
                 'success' => false,
-                'message' => 'Total upload exceeds endpoint limit of 250MB per request.',
+                'message' => 'Total upload exceeds endpoint limit of ' . $requestCapMb . 'MB per request.',
             ]);
         }
 
@@ -550,18 +565,20 @@ class ProductAssets extends BaseController
         $allowedFormats = $type === 'source'
             ? (array) ($rules['source']['formats'] ?? [])
             : (array) ($rules['final']['formats'] ?? []);
-        $maxBytes = (int) ($rules['final']['max_file_size_bytes'] ?? (self::DEFAULT_FINAL_MAX_MB * 1024 * 1024));
+        $maxBytes = (int) ($globalLimits['channel_max_bytes'] ?? (self::DEFAULT_CHANNEL_MAX_MB * 1024 * 1024));
 
         // Common raw images are product-level references and should not be blocked by strict final output rules.
         if ($isCommonRawImages) {
-            $allowedFormats = self::DEFAULT_RAW_IMAGE_FORMATS;
-            $maxBytes = 100 * 1024 * 1024; // 100MB per raw image
+            $allowedFormats = array_values(array_unique(array_merge(self::DEFAULT_RAW_IMAGE_FORMATS, self::DEFAULT_RAW_VIDEO_FORMATS)));
+            $maxBytes = (int) ($globalLimits['raw_max_bytes'] ?? (self::DEFAULT_RAW_MAX_MB * 1024 * 1024));
+        } elseif ($isCommonSection) {
+            $maxBytes = (int) ($globalLimits['final_max_bytes'] ?? (self::DEFAULT_FINAL_MAX_MB * 1024 * 1024));
         }
 
         if ($type === 'source') {
             $existingSource = (int) $this->assetModel
                 ->where('asset_group_id', $groupId)
-                ->where('channel_id', $channelId)
+                ->where('channel_id', $persistChannelId)
                 ->where('type', 'source')
                 ->countAllResults();
             if ($existingSource > 0) {
@@ -607,7 +624,7 @@ class ProductAssets extends BaseController
 
             $sourceRow = [
                 'asset_group_id' => $groupId,
-                'channel_id' => $channelId > 0 ? $channelId : null,
+                'channel_id' => $persistChannelId > 0 ? $persistChannelId : null,
                 'type' => 'source',
                 'section_key' => 'source',
                 'section_label' => 'Source Files',
@@ -673,7 +690,7 @@ class ProductAssets extends BaseController
                 continue;
             }
 
-            if (! $this->isMimeAllowedForAssetType($finfoMime, $ext, $type)) {
+            if (! $isCommonRawImages && ! $this->isMimeAllowedForAssetType($finfoMime, $ext, $type)) {
                 $errors[] = $clientName . ': file type is not allowed for asset type ' . $type;
                 continue;
             }
@@ -707,7 +724,7 @@ class ProductAssets extends BaseController
             if ($isPrimary) {
                 $this->assetModel
                     ->where('asset_group_id', $groupId)
-                    ->where('channel_id', $channelId)
+                    ->where('channel_id', $persistChannelId)
                     ->where('type', $type)
                     ->set(['is_primary' => 0])
                     ->update();
@@ -715,7 +732,7 @@ class ProductAssets extends BaseController
 
             $row = [
                 'asset_group_id' => $groupId,
-                'channel_id' => $channelId > 0 ? $channelId : null,
+                'channel_id' => $persistChannelId > 0 ? $persistChannelId : null,
                 'type' => $type,
                 'section_key' => $sectionKey,
                 'section_label' => (string) ($selectedSection['label'] ?? $sectionKey),
@@ -749,7 +766,7 @@ class ProductAssets extends BaseController
 
         AuditLogModel::record('product_assets_uploaded', (int) ($this->session->get('user_id') ?? 0), 'products', $productId, [
             'group_id' => $groupId,
-            'channel_id' => $channelId,
+            'channel_id' => $persistChannelId,
             'type' => $type,
             'uploaded_count' => count($inserted),
             'errors' => $errors,
@@ -926,11 +943,14 @@ class ProductAssets extends BaseController
         $allowedFormats = $type === 'source'
             ? (array) ($rules['source']['formats'] ?? [])
             : (array) ($rules['final']['formats'] ?? []);
-        $maxBytes = (int) ($rules['final']['max_file_size_bytes'] ?? (self::DEFAULT_FINAL_MAX_MB * 1024 * 1024));
+        $globalLimits = $this->getGlobalUploadLimits();
+        $maxBytes = (int) ($globalLimits['channel_max_bytes'] ?? (self::DEFAULT_CHANNEL_MAX_MB * 1024 * 1024));
 
         if ($isCommonRawImages) {
-            $allowedFormats = self::DEFAULT_RAW_IMAGE_FORMATS;
-            $maxBytes = 100 * 1024 * 1024;
+            $allowedFormats = array_values(array_unique(array_merge(self::DEFAULT_RAW_IMAGE_FORMATS, self::DEFAULT_RAW_VIDEO_FORMATS)));
+            $maxBytes = (int) ($globalLimits['raw_max_bytes'] ?? (self::DEFAULT_RAW_MAX_MB * 1024 * 1024));
+        } elseif ($sectionKey === 'final_plain') {
+            $maxBytes = (int) ($globalLimits['final_max_bytes'] ?? (self::DEFAULT_FINAL_MAX_MB * 1024 * 1024));
         }
 
         if ($type !== 'source' && $size > $maxBytes) {
@@ -941,7 +961,7 @@ class ProductAssets extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'File format is not allowed']);
         }
 
-        if (! $this->isMimeAllowedForAssetType($finfoMime, $ext, $type)) {
+        if (! $isCommonRawImages && ! $this->isMimeAllowedForAssetType($finfoMime, $ext, $type)) {
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'File type is not allowed for this asset']);
         }
 
@@ -1213,15 +1233,43 @@ class ProductAssets extends BaseController
 
     private function canManageAssets(): bool
     {
+        if ($this->hasPermission('product_assets.edit') || $this->hasPermission('product_assets.write')) {
+            return true;
+        }
+
         if ($this->hasPermission('products.edit')) {
             return true;
         }
 
-        if ($this->isDesigner() && $this->hasPermission('products.view')) {
+        return false;
+    }
+
+    private function canViewAssets(): bool
+    {
+        if ($this->hasPermission('product_assets.read') || $this->hasPermission('product_assets.view')) {
+            return true;
+        }
+
+        if ($this->hasPermission('products.edit')) {
             return true;
         }
 
         return false;
+    }
+
+    private function requireAssetPermission(string $level = 'read'): void
+    {
+        $allowed = $level === 'read' ? $this->canViewAssets() : $this->canManageAssets();
+        if ($allowed) {
+            return;
+        }
+
+        if ($level === 'read') {
+            $this->response->setStatusCode(403)->setBody('You do not have permission to access product assets.')->send();
+            exit;
+        }
+
+        $this->ensureCanManageAssets();
     }
 
     private function ensureCanManageAssets(): void
@@ -1257,18 +1305,6 @@ class ProductAssets extends BaseController
             'message' => 'CSRF validation failed.',
         ])->send();
         exit;
-    }
-
-    private function isDesigner(): bool
-    {
-        $roles = (array) ($this->session->get('role_slugs') ?? []);
-        $legacy = (string) ($this->session->get('role') ?? '');
-        if ($legacy !== '') {
-            $roles[] = $legacy;
-        }
-
-        $roles = array_map(static fn($r) => strtolower((string) $r), $roles);
-        return in_array('designer', $roles, true);
     }
 
     private function nullableInt($value): ?int
@@ -1344,10 +1380,9 @@ class ProductAssets extends BaseController
             $sourceFormats = self::DEFAULT_SOURCE_FORMATS;
         }
 
-        $finalMaxMb = (int) ($this->request->getPost('final_max_file_size_mb') ?? self::DEFAULT_FINAL_MAX_MB);
-        if ($finalMaxMb <= 0) {
-            $finalMaxMb = self::DEFAULT_FINAL_MAX_MB;
-        }
+        $globalLimits = $this->getGlobalUploadLimits();
+        $finalMaxBytes = (int) ($globalLimits['channel_max_bytes'] ?? (self::DEFAULT_CHANNEL_MAX_MB * 1024 * 1024));
+        $rawMaxBytes = (int) ($globalLimits['raw_max_bytes'] ?? (self::DEFAULT_RAW_MAX_MB * 1024 * 1024));
 
         $enableFinalWatermark = $this->request->getPost('enable_final_watermark') !== null;
         $enableFinalTemplate = $this->request->getPost('enable_final_template') !== null;
@@ -1384,13 +1419,16 @@ class ProductAssets extends BaseController
         }
 
         $rules = [
+            'raw' => [
+                'max_file_size_bytes' => $rawMaxBytes,
+            ],
             'source' => [
                 'formats' => array_values(array_unique($sourceFormats)),
                 'max_files' => 1,
             ],
             'final' => [
                 'formats' => array_values(array_unique($finalFormats)),
-                'max_file_size_bytes' => $finalMaxMb * 1024 * 1024,
+                'max_file_size_bytes' => $finalMaxBytes,
             ],
             'sections' => $sections,
         ];
@@ -1422,6 +1460,9 @@ class ProductAssets extends BaseController
     private function getChannelRules(array $channel): array
     {
         $defaults = [
+            'raw' => [
+                'max_file_size_bytes' => self::DEFAULT_RAW_MAX_MB * 1024 * 1024,
+            ],
             'source' => [
                 'formats' => self::DEFAULT_SOURCE_FORMATS,
                 'max_files' => 1,
@@ -1455,10 +1496,9 @@ class ProductAssets extends BaseController
             $finalFormats = $defaults['final']['formats'];
         }
 
-        $finalMax = (int) ($decoded['final']['max_file_size_bytes'] ?? ($channel['max_file_size'] ?? 0));
-        if ($finalMax <= 0) {
-            $finalMax = $defaults['final']['max_file_size_bytes'];
-        }
+        $globalLimits = $this->getGlobalUploadLimits();
+        $finalMax = (int) ($globalLimits['channel_max_bytes'] ?? $defaults['final']['max_file_size_bytes']);
+        $rawMax = (int) ($globalLimits['raw_max_bytes'] ?? $defaults['raw']['max_file_size_bytes']);
 
         $sections = $decoded['sections'] ?? null;
         if (!is_array($sections) || empty($sections)) {
@@ -1468,6 +1508,9 @@ class ProductAssets extends BaseController
         }
 
         return [
+            'raw' => [
+                'max_file_size_bytes' => $rawMax,
+            ],
             'source' => [
                 'formats' => array_values(array_unique(array_map(static fn($v) => strtolower(trim((string) $v)), $sourceFormats))),
                 'max_files' => 1,
@@ -1569,6 +1612,24 @@ class ProductAssets extends BaseController
                 return true;
             }
             if ($a === 'ai' && ($ext === 'ai' || str_contains($mime, 'postscript') || str_contains($mime, 'illustrator'))) {
+                return true;
+            }
+            if ($a === 'mp4' && ($ext === 'mp4' || $mime === 'video/mp4')) {
+                return true;
+            }
+            if ($a === 'mov' && ($ext === 'mov' || $mime === 'video/quicktime')) {
+                return true;
+            }
+            if ($a === 'webm' && ($ext === 'webm' || $mime === 'video/webm')) {
+                return true;
+            }
+            if ($a === 'm4v' && ($ext === 'm4v' || $mime === 'video/x-m4v' || $mime === 'video/mp4')) {
+                return true;
+            }
+            if ($a === 'avi' && ($ext === 'avi' || $mime === 'video/x-msvideo')) {
+                return true;
+            }
+            if ($a === 'mkv' && ($ext === 'mkv' || $mime === 'video/x-matroska')) {
                 return true;
             }
         }
@@ -1849,7 +1910,7 @@ class ProductAssets extends BaseController
         }
     }
 
-    private function getOrCreateCommonGroup(int $productId): int
+    private function getOrCreateCommonGroup(int $productId, ?int $variantId = null): int
     {
         if ($productId <= 0) {
             return 0;
@@ -1858,6 +1919,7 @@ class ProductAssets extends BaseController
         $existing = $this->groupModel
             ->where('product_id', $productId)
             ->where('name', self::COMMON_GROUP_NAME)
+            ->where('variant_id', $variantId)
             ->first();
         if ($existing) {
             return (int) ($existing['id'] ?? 0);
@@ -1865,7 +1927,7 @@ class ProductAssets extends BaseController
 
         $ok = $this->groupModel->insert([
             'product_id' => $productId,
-            'variant_id' => null,
+            'variant_id' => $variantId,
             'name' => self::COMMON_GROUP_NAME,
             'description' => self::COMMON_GROUP_DESCRIPTION,
             'created_by' => (int) ($this->session->get('user_id') ?? 0) ?: null,
@@ -1920,10 +1982,15 @@ class ProductAssets extends BaseController
             return ['success' => false, 'errors' => ['name' => 'Brand name is required']];
         }
 
-        $productIds = array_values(array_filter(array_map(
-            static fn(array $row): int => (int) ($row['id'] ?? 0),
-            $this->productModel->select('id')->findAll()
-        )));
+        $productIds = [];
+        if ($variantId !== null) {
+            $productIds = [$targetProductId];
+        } else {
+            $productIds = array_values(array_filter(array_map(
+                static fn(array $row): int => (int) ($row['id'] ?? 0),
+                $this->productModel->select('id')->findAll()
+            )));
+        }
 
         if (empty($productIds)) {
             return ['success' => false, 'errors' => ['products' => 'No products available']];
@@ -1976,14 +2043,18 @@ class ProductAssets extends BaseController
 
     private function getDefaultRules(): array
     {
+        $globalLimits = $this->getGlobalUploadLimits();
         return [
+            'raw' => [
+                'max_file_size_bytes' => (int) ($globalLimits['raw_max_bytes'] ?? (self::DEFAULT_RAW_MAX_MB * 1024 * 1024)),
+            ],
             'source' => [
                 'formats' => self::DEFAULT_SOURCE_FORMATS,
                 'max_files' => 1,
             ],
             'final' => [
                 'formats' => self::DEFAULT_FINAL_FORMATS,
-                'max_file_size_bytes' => self::DEFAULT_FINAL_MAX_MB * 1024 * 1024,
+                'max_file_size_bytes' => (int) ($globalLimits['channel_max_bytes'] ?? (self::DEFAULT_CHANNEL_MAX_MB * 1024 * 1024)),
             ],
             'sections' => [
                 ['key' => 'raw_images', 'label' => 'Raw Images', 'type' => 'final', 'max_files' => null],
@@ -1993,6 +2064,60 @@ class ProductAssets extends BaseController
                 ['key' => 'final_template', 'label' => 'Final With Template', 'type' => 'template', 'max_files' => null],
             ],
         ];
+    }
+
+    private function getGlobalUploadLimits(): array
+    {
+        static $cached = null;
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $rawMb = self::DEFAULT_RAW_MAX_MB;
+        $finalMb = self::DEFAULT_FINAL_MAX_MB;
+        $channelMb = self::DEFAULT_CHANNEL_MAX_MB;
+
+        try {
+            $db = Database::connect();
+            if ($db->tableExists('system_settings')) {
+                $rows = $db->table('system_settings')
+                    ->select('setting_key, setting_value')
+                    ->whereIn('setting_key', [
+                        'product_assets_raw_max_mb',
+                        'product_assets_final_max_mb',
+                        'product_assets_channel_max_mb',
+                    ])
+                    ->get()->getResultArray();
+
+                foreach ($rows as $row) {
+                    $key = (string) ($row['setting_key'] ?? '');
+                    $value = (int) ($row['setting_value'] ?? 0);
+                    if ($value <= 0) {
+                        continue;
+                    }
+                    if ($key === 'product_assets_raw_max_mb') {
+                        $rawMb = $value;
+                    } elseif ($key === 'product_assets_final_max_mb') {
+                        $finalMb = $value;
+                    } elseif ($key === 'product_assets_channel_max_mb') {
+                        $channelMb = $value;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'ProductAssets::getGlobalUploadLimits failed: ' . $e->getMessage());
+        }
+
+        $cached = [
+            'raw_max_mb' => $rawMb,
+            'raw_max_bytes' => $rawMb * 1024 * 1024,
+            'final_max_mb' => $finalMb,
+            'final_max_bytes' => $finalMb * 1024 * 1024,
+            'channel_max_mb' => $channelMb,
+            'channel_max_bytes' => $channelMb * 1024 * 1024,
+        ];
+
+        return $cached;
     }
 
     private function hasSourceAssetColumn(): bool

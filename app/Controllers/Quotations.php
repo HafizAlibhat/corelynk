@@ -7,6 +7,7 @@ use App\Services\QuotationService;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use App\Models\CompanySettingsModel;
 use App\Models\Accounting\CurrencyModel;
+use App\Services\InventoryAvailabilityService;
 use App\Libraries\DocumentLogger;
 use App\Libraries\InvoicePdfGenerator;
 use App\Libraries\RoleDataAccess;
@@ -46,6 +47,38 @@ class Quotations extends BaseController
         }
         return 'USD';
     }
+
+    /**
+     * Check if a date value is valid (not empty, not zero-date, not zero-datetime)
+     */
+    private function isValidDate(?string $d): bool
+    {
+        $d = trim((string)($d ?? ''));
+        return $d !== '' && $d !== '0000-00-00' && $d !== '0000-00-00 00:00:00';
+    }
+
+    /**
+     * Resolve the best available quotation date for PDF output.
+     * Priority: issue_date -> quote_date (legacy) -> created_at -> today.
+     */
+    private function resolveQuotationPdfDate(array $quote): string
+    {
+        $candidates = [
+            $quote['issue_date'] ?? '',
+            $quote['quote_date'] ?? '',
+            $quote['created_at'] ?? '',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim((string)$candidate);
+            if ($this->isValidDate($candidate) && strtotime($candidate) !== false) {
+                return $candidate;
+            }
+        }
+
+        return date('Y-m-d');
+    }
+
 
     public function __construct()
     {
@@ -155,7 +188,7 @@ class Quotations extends BaseController
             'lines' => []
         ];
 
-        $allowedLineKeys = ['product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate','unit_weight','weight','weight_unit'];
+        $allowedLineKeys = ['product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate'];
         if (isset($post['lines']) && is_array($post['lines'])) {
             $cleanLines = [];
             foreach ($post['lines'] as $ln) {
@@ -336,7 +369,7 @@ class Quotations extends BaseController
             // If policy check fails, continue without blocking to avoid false-deny on legacy installs.
         }
 
-        $lines = $this->enrichViewLines($quote['lines'] ?? []);
+        $lines = $this->enrichQuotationPdfLines($quote['lines'] ?? []);
         // Load customer for display (name + contact + address)
         $customer = null;
         try { $customer = (new \App\Models\CustomerModel())->find((int)($quote['customer_id'] ?? 0)); } catch (\Throwable $_) { $customer = null; }
@@ -352,7 +385,7 @@ class Quotations extends BaseController
         } catch (\Throwable $_) { $address = null; }
 
         $logEntries = [];
-        try { $logEntries = \App\Libraries\DocumentLogger::getForDocument(\App\Libraries\DocumentLogger::TYPE_QUOTATION, (int)$id); } catch (\Throwable $_) { }
+        try { $logEntries = \App\Libraries\DocumentLogger::getForDocument(\App\Libraries\DocumentLogger::TYPE_QUOTATION, (int)($quote['id'] ?? 0)); } catch (\Throwable $_) { }
 
         return view('quotations/view', [
             'quote' => $quote,
@@ -401,6 +434,7 @@ class Quotations extends BaseController
             try {
                 $customerAddress = (new \App\Models\CustomerAddressModel())
                     ->where('customer_id', $customerId)
+                    ->orderBy('is_default', 'DESC')
                     ->orderBy('is_billing', 'DESC')
                     ->orderBy('is_shipping', 'DESC')
                     ->orderBy('id', 'ASC')
@@ -437,7 +471,7 @@ class Quotations extends BaseController
             $invoiceLike = [
                 'id' => $quote['id'] ?? null,
                 'invoice_number' => $quote['quote_number'] ?? ('Q' . $quoteId),
-                'issue_date' => $quote['issue_date'] ?? date('Y-m-d'),
+                'issue_date' => $this->resolveQuotationPdfDate($quote),
                 'currency' => $quote['quote_currency'] ?? ($quote['currency'] ?? ''),
                 'subtotal' => (float)($quote['subtotal'] ?? 0),
                 'discount' => (float)($quote['discount'] ?? 0),
@@ -481,74 +515,258 @@ class Quotations extends BaseController
         }
     }
 
-    private function enrichViewLines(array $lines): array
+    public function warehousePdf($identifier = null)
     {
+        $quote = null;
+        $isNumeric = is_numeric($identifier);
+
+        if ($isNumeric) {
+            $quote = $this->quotationModel->getWithLines((int)$identifier);
+        }
+
+        if (!$quote && !$isNumeric) {
+            $db = \Config\Database::connect();
+            $row = $db->table('quotations')->where('public_id', $identifier)->get()->getRowArray();
+            if ($row) {
+                $quote = $this->quotationModel->getWithLines((int)$row['id']);
+            }
+        }
+
+        if (!$quote) {
+            return redirect()->back()->with('error', 'Quotation not found');
+        }
+
+        if (!empty($quote['converted_to_sales_order_id'])) {
+            return redirect()->to(site_url('sales-orders/warehouse-document/' . (int)$quote['converted_to_sales_order_id']));
+        }
+
+        try {
+            $quoteId = (int)($quote['id'] ?? 0);
+            $lines = $this->enrichWarehouseQuotationLines($quote['lines'] ?? []);
+
+            $company = [];
+            try {
+                $company = (new CompanySettingsModel())->orderBy('id', 'DESC')->first() ?? [];
+            } catch (\Throwable $_) {
+                $company = [];
+            }
+
+            $invoiceLike = [
+                'id' => $quote['id'] ?? null,
+                'invoice_number' => $quote['quote_number'] ?? ('Q' . $quoteId),
+                'issue_date' => $this->resolveQuotationPdfDate($quote),
+                'currency' => $quote['quote_currency'] ?? ($quote['currency'] ?? ''),
+                'notes' => $quote['notes'] ?? null,
+            ];
+
+            // Resolve customer number only (no name/address) for the warehouse header
+            $warehouseCustomerNumber = '';
+            try {
+                $whCustomer = (new \App\Models\CustomerModel())->select('customer_code')->find((int)($quote['customer_id'] ?? 0));
+                $warehouseCustomerNumber = trim((string)($whCustomer['customer_code'] ?? ''));
+            } catch (\Throwable $_) {}
+
+            $pdf = (new InvoicePdfGenerator())->generate([
+                'invoice' => $invoiceLike,
+                'lines' => $lines,
+                'company' => $company,
+                'document_title' => 'Warehouse Pick List',
+                'document_number_label' => 'Quotation #',
+                'document_date_label' => 'Date:',
+                'document_prefix' => '',
+                'party_label' => 'Warehouse Use',
+                'warehouse_customer_number' => $warehouseCustomerNumber,
+                'pdf_show_header_address' => 0,
+                'pdf_show_footer' => (int)($company['pdf_quote_show_footer'] ?? 1),
+                'pdf_template' => 'warehouse_picklist',
+            ], 'warehouse_picklist');
+
+            if (is_array($pdf) && !empty($pdf['path']) && is_file($pdf['path'])) {
+                $quoteNumber = trim((string)($quote['quote_number'] ?? ('Q' . $quoteId)));
+                $safeNumber = preg_replace('/[^A-Za-z0-9\-_]/', '_', $quoteNumber) ?: ('Q' . $quoteId);
+                if ($quoteId > 0) {
+                    DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $quoteId, DocumentLogger::ACTION_PDF_DOWNLOADED);
+                }
+                return $this->response->download($pdf['path'], null)
+                    ->setFileName('quotation_warehouse_' . $safeNumber . '.pdf')
+                    ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+                    ->setHeader('Pragma', 'no-cache')
+                    ->setHeader('Expires', '0');
+            }
+
+            return redirect()->back()->with('error', 'Failed to generate warehouse PDF');
+        } catch (\Throwable $e) {
+            log_message('error', 'Warehouse quotation PDF failed: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine());
+            return redirect()->back()->with('error', 'Failed to generate warehouse PDF: ' . $e->getMessage());
+        }
+    }
+
+    public function warehouseDocument($identifier = null)
+    {
+        $quote = null;
+        $isNumeric = is_numeric($identifier);
+
+        if ($isNumeric) {
+            $quote = $this->quotationModel->getWithLines((int)$identifier);
+        }
+
+        if (!$quote && !$isNumeric) {
+            $db = \Config\Database::connect();
+            $row = $db->table('quotations')->where('public_id', $identifier)->get()->getRowArray();
+            if ($row) {
+                $quote = $this->quotationModel->getWithLines((int)$row['id']);
+            }
+        }
+
+        if (!$quote) {
+            return redirect()->back()->with('error', 'Quotation not found');
+        }
+
+        if (!empty($quote['converted_to_sales_order_id'])) {
+            return redirect()->to(site_url('sales-orders/warehouse-print/' . (int)$quote['converted_to_sales_order_id']));
+        }
+
+        try {
+            $quoteId = (int)($quote['id'] ?? 0);
+            $lines = $this->enrichWarehouseQuotationLines($quote['lines'] ?? []);
+
+            $company = [];
+            try {
+                $company = (new CompanySettingsModel())->orderBy('id', 'DESC')->first() ?? [];
+            } catch (\Throwable $_) {
+                $company = [];
+            }
+
+            $invoiceLike = [
+                'id' => $quote['id'] ?? null,
+                'invoice_number' => $quote['quote_number'] ?? ('Q' . $quoteId),
+                'issue_date' => $this->resolveQuotationPdfDate($quote),
+                'currency' => $quote['quote_currency'] ?? ($quote['currency'] ?? ''),
+                'notes' => $quote['notes'] ?? null,
+            ];
+
+            $warehouseCustomerNumber = '';
+            try {
+                $whCustomer = (new \App\Models\CustomerModel())->select('customer_code')->find((int)($quote['customer_id'] ?? 0));
+                $warehouseCustomerNumber = trim((string)($whCustomer['customer_code'] ?? ''));
+            } catch (\Throwable $_) {}
+
+            return view('pdf/invoice_warehouse_picklist', [
+                'invoice' => $invoiceLike,
+                'lines' => $lines,
+                'company' => $company,
+                'document_title' => 'Warehouse Pick List',
+                'document_number_label' => 'Quotation #',
+                'document_date_label' => 'Date:',
+                'party_label' => 'Warehouse Use',
+                'warehouse_customer_number' => $warehouseCustomerNumber,
+                'show_print_toolbar' => true,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'Warehouse quotation document failed: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine());
+            return redirect()->back()->with('error', 'Failed to generate warehouse document: ' . $e->getMessage());
+        }
+    }
+
+    private function enrichWarehouseQuotationLines(array $lines): array
+    {
+        $lines = $this->enrichQuotationPdfLines($lines);
         if (empty($lines)) {
             return $lines;
         }
 
         $db = \Config\Database::connect();
 
-        // Collect product and variant IDs that have no stored image URL
+        $keys = [];
         $productIds = [];
-        $variantIds = [];
         foreach ($lines as $line) {
-            if (empty($line['product_image_url'])) {
-                if (!empty($line['product_id'])) $productIds[] = (int)$line['product_id'];
-                if (!empty($line['product_variant_id'])) $variantIds[] = (int)$line['product_variant_id'];
+            $productId = (int)($line['product_id'] ?? 0);
+            $variantId = (int)($line['product_variant_id'] ?? 0);
+            if ($productId <= 0) {
+                continue;
             }
+            $key = $productId . '|' . $variantId;
+            $keys[$key] = true;
+            $productIds[$productId] = $productId;
         }
-        $productIds = array_values(array_unique($productIds));
-        $variantIds = array_values(array_unique($variantIds));
 
-        $pImgMap = [];
+        $locationsByKey = [];
         if (!empty($productIds)) {
             try {
-                $productCols = $db->getFieldNames('products');
-                $select = ['id'];
-                foreach (['image', 'images'] as $col) {
-                    if (in_array($col, $productCols, true)) $select[] = $col;
-                }
-                $products = $db->table('products')->select(implode(', ', $select))->whereIn('id', $productIds)->get()->getResultArray();
-                foreach ($products as $p) {
-                    $pid = (int)($p['id'] ?? 0);
-                    $raw = (string)($p['image'] ?? '');
-                    if ($raw === '' && !empty($p['images'])) {
-                        $arr = is_string($p['images']) ? json_decode($p['images'], true) : $p['images'];
-                        if (is_array($arr) && !empty($arr[0])) {
-                            $raw = is_array($arr[0]) ? ($arr[0]['url'] ?? $arr[0]['path'] ?? '') : (string)$arr[0];
-                        }
-                    }
-                    if ($raw !== '') {
-                        $pImgMap[$pid] = $this->resolveProductImageUrl($raw);
-                    }
-                }
-            } catch (\Throwable $_) {}
-        }
+                $rows = $db->table('stock_balances sb')
+                    ->select('sb.product_id, sb.variant_id, sb.warehouse_id, sb.location_id, SUM(sb.quantity) AS qty, wl.name AS location_name, w.name AS warehouse_name, w.code AS warehouse_code')
+                    ->join('warehouse_locations wl', 'wl.id = sb.location_id', 'left')
+                    ->join('warehouses w', 'w.id = sb.warehouse_id', 'left')
+                    ->whereIn('sb.product_id', array_values($productIds))
+                    ->where('sb.quantity >', 0)
+                    ->groupBy('sb.product_id, sb.variant_id, sb.warehouse_id, sb.location_id, wl.name, w.name, w.code')
+                    ->orderBy('w.name', 'ASC')
+                    ->orderBy('wl.name', 'ASC')
+                    ->get()
+                    ->getResultArray();
 
-        $vImgMap = [];
-        if (!empty($variantIds)) {
-            try {
-                $variants = $db->table('product_variants')->select('id, image')->whereIn('id', $variantIds)->get()->getResultArray();
-                foreach ($variants as $v) {
-                    $vid = (int)($v['id'] ?? 0);
-                    $raw = (string)($v['image'] ?? '');
-                    if ($raw !== '') {
-                        $vImgMap[$vid] = $this->resolveProductImageUrl($raw);
+                foreach ($rows as $row) {
+                    $productId = (int)($row['product_id'] ?? 0);
+                    $variantId = (int)($row['variant_id'] ?? 0);
+                    if ($productId <= 0) {
+                        continue;
                     }
+                    $key = $productId . '|' . $variantId;
+                    if (!isset($keys[$key])) {
+                        $fallbackKey = $productId . '|0';
+                        if (!isset($keys[$fallbackKey])) {
+                            continue;
+                        }
+                        $key = $fallbackKey;
+                    }
+
+                    $warehouseName = trim((string)($row['warehouse_name'] ?? ''));
+                    $warehouseCode = trim((string)($row['warehouse_code'] ?? ''));
+                    $locationName = trim((string)($row['location_name'] ?? ''));
+                    $qty = (float)($row['qty'] ?? 0);
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $parts = [];
+                    if ($warehouseName !== '') {
+                        $parts[] = $warehouseName;
+                    } elseif ($warehouseCode !== '') {
+                        $parts[] = $warehouseCode;
+                    }
+                    if ($locationName !== '') {
+                        $parts[] = $locationName;
+                    }
+                    $label = !empty($parts) ? implode(' / ', $parts) : ('Warehouse #' . (int)($row['warehouse_id'] ?? 0));
+                    $locationsByKey[$key][] = $label . ' (' . rtrim(rtrim(number_format($qty, 2), '0'), '.') . ')';
                 }
-            } catch (\Throwable $_) {}
+            } catch (\Throwable $_) {
+                // best effort location enrichment
+            }
         }
 
         foreach ($lines as &$line) {
-            if (!empty($line['product_image_url'])) continue;
-            $vid = isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
-            $pid = !empty($line['product_id']) ? (int)$line['product_id'] : 0;
-            if ($vid && isset($vImgMap[$vid])) {
-                $line['product_image_url'] = $vImgMap[$vid];
-            } elseif ($pid && isset($pImgMap[$pid])) {
-                $line['product_image_url'] = $pImgMap[$pid];
+            $productId = (int)($line['product_id'] ?? 0);
+            $variantId = (int)($line['product_variant_id'] ?? 0);
+            $key = $productId . '|' . $variantId;
+            if ($productId <= 0) {
+                $line['warehouse_required_qty'] = (float)($line['quantity'] ?? 0);
+                $line['warehouse_locations'] = [];
+                $line['warehouse_locations_text'] = 'Not in stock';
+                $line['warehouse_status'] = 'Not in Stock';
+                continue;
             }
+
+            $line['warehouse_required_qty'] = (float)($line['quantity'] ?? 0);
+
+            $locations = $locationsByKey[$key] ?? [];
+            $line['warehouse_locations'] = $locations;
+            $line['warehouse_locations_text'] = !empty($locations)
+                ? implode(', ', array_values(array_unique($locations)))
+                : 'Not in stock';
+            // Status based purely on whether physical stock exists in any location,
+            // not on net available qty (which can be 0 when other orders have reservations).
+            $line['warehouse_status'] = !empty($locations) ? 'In Stock' : 'Not in Stock';
         }
         unset($line);
 
@@ -565,6 +783,9 @@ class Quotations extends BaseController
         $productIds = array_values(array_unique(array_filter(array_map('intval', array_column($lines, 'product_id')))));
         $variantIds = array_values(array_unique(array_filter(array_map(function ($ln) {
             return isset($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : null;
+        }, $lines))));
+        $variantCodes = array_values(array_unique(array_filter(array_map(function ($ln) {
+            return trim((string)($ln['product_code'] ?? ($ln['code'] ?? ($ln['sku'] ?? ''))));
         }, $lines))));
 
         $pMap = [];
@@ -617,13 +838,39 @@ class Quotations extends BaseController
         }
 
         $vMap = [];
-        if (!empty($variantIds)) {
+        $vMapByCode = [];
+        if (!empty($variantIds) || !empty($variantCodes)) {
             try {
+                // PRODUCTION PATCH: schema-safe variant select (some prod DBs do not have product_variants.image).
+                $variantCols = [];
+                try {
+                    $variantCols = $db->getFieldNames('product_variants');
+                } catch (\Throwable $_) {
+                    $variantCols = [];
+                }
+                $variantSelect = ['id'];
+                foreach (['name', 'art_number', 'image', 'attributes'] as $col) {
+                    if (in_array($col, $variantCols, true)) {
+                        $variantSelect[] = $col;
+                    }
+                }
+
                 $variants = $db->table('product_variants')
-                    ->select('id, name, art_number, image, attributes')
-                    ->whereIn('id', $variantIds)
-                    ->get()
-                    ->getResultArray();
+                    ->select(implode(', ', $variantSelect));
+
+                if (!empty($variantIds) && in_array('art_number', $variantCols, true) && !empty($variantCodes)) {
+                    $variants = $variants
+                        ->groupStart()
+                            ->whereIn('id', $variantIds)
+                            ->orWhereIn('art_number', $variantCodes)
+                        ->groupEnd();
+                } elseif (!empty($variantIds)) {
+                    $variants = $variants->whereIn('id', $variantIds);
+                } elseif (in_array('art_number', $variantCols, true) && !empty($variantCodes)) {
+                    $variants = $variants->whereIn('art_number', $variantCodes);
+                }
+
+                $variants = $variants->get()->getResultArray();
 
                 foreach ($variants as $variant) {
                     $vid = (int)($variant['id'] ?? 0);
@@ -633,14 +880,46 @@ class Quotations extends BaseController
                     $attrs = [];
                     if (!empty($variant['attributes'])) {
                         $decoded = json_decode($variant['attributes'], true);
-                        if (is_array($decoded)) $attrs = $decoded;
+                        if (is_array($decoded)) {
+                            // PRODUCTION PATCH: normalize both object-shaped and list-shaped attribute payloads.
+                            $isList = array_keys($decoded) === range(0, count($decoded) - 1);
+                            if ($isList) {
+                                foreach ($decoded as $item) {
+                                    if (!is_array($item)) {
+                                        continue;
+                                    }
+                                    $k = trim((string)($item['name'] ?? ($item['attribute'] ?? ($item['key'] ?? ''))));
+                                    $v = trim((string)($item['value'] ?? ''));
+                                    if ($k !== '' && $v !== '') {
+                                        $attrs[$k] = $v;
+                                    }
+                                }
+                            } else {
+                                foreach ($decoded as $k => $v) {
+                                    $key = trim((string)$k);
+                                    if ($key === '') {
+                                        continue;
+                                    }
+                                    $val = is_scalar($v) ? trim((string)$v) : trim((string)json_encode($v));
+                                    if ($val !== '') {
+                                        $attrs[$key] = $val;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    $vMap[$vid] = [
+                    $variantData = [
+                        'id' => $vid,
                         'variant_code' => $variant['art_number'] ?? null,
                         'variant_name' => $variant['name'] ?? null,
                         'variant_image_path' => $this->resolvePdfImagePath((string)($variant['image'] ?? ''), 'variants'),
                         'variant_attrs' => $attrs,
                     ];
+                    $vMap[$vid] = $variantData;
+                    $variantCodeKey = strtoupper(trim((string)($variant['art_number'] ?? '')));
+                    if ($variantCodeKey !== '') {
+                        $vMapByCode[$variantCodeKey] = $variantData;
+                    }
                 }
             } catch (\Throwable $_) {
                 // best effort
@@ -652,7 +931,11 @@ class Quotations extends BaseController
             $vid = isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
 
             if (!empty($line['product_image_url']) && empty($line['product_image_path'])) {
-                $line['product_image_path'] = $this->resolvePdfImagePath((string)$line['product_image_url'], 'products');
+                $rawLineImage = (string)$line['product_image_url'];
+                $imageFolder = (stripos($rawLineImage, '/variants/') !== false || stripos($rawLineImage, '\\variants\\') !== false)
+                    ? 'variants'
+                    : 'products';
+                $line['product_image_path'] = $this->resolvePdfImagePath($rawLineImage, $imageFolder);
             }
 
             if ($pid && isset($pMap[$pid])) {
@@ -666,18 +949,32 @@ class Quotations extends BaseController
                 }
             }
 
+            $variantData = null;
             if ($vid && isset($vMap[$vid])) {
-                if (!empty($vMap[$vid]['variant_code'])) {
-                    $line['product_code'] = $vMap[$vid]['variant_code'];
+                $variantData = $vMap[$vid];
+            } else {
+                // PRODUCTION PATCH: recover variant info when legacy rows lost product_variant_id but kept variant code.
+                $lineCode = strtoupper(trim((string)($line['product_code'] ?? ($line['code'] ?? ($line['sku'] ?? '')))));
+                if ($lineCode !== '' && isset($vMapByCode[$lineCode])) {
+                    $variantData = $vMapByCode[$lineCode];
+                    if (empty($line['product_variant_id']) && !empty($variantData['id'])) {
+                        $line['product_variant_id'] = (int)$variantData['id'];
+                    }
                 }
-                if (!empty($vMap[$vid]['variant_name'])) {
-                    $line['variant_name'] = $vMap[$vid]['variant_name'];
+            }
+
+            if (!empty($variantData)) {
+                if (!empty($variantData['variant_code'])) {
+                    $line['product_code'] = $variantData['variant_code'];
                 }
-                if (!empty($vMap[$vid]['variant_image_path'])) {
-                    $line['product_image_path'] = $vMap[$vid]['variant_image_path'];
+                if (!empty($variantData['variant_name'])) {
+                    $line['variant_name'] = $variantData['variant_name'];
                 }
-                if (!empty($vMap[$vid]['variant_attrs'])) {
-                    $line['variant_attrs'] = $vMap[$vid]['variant_attrs'];
+                if (!empty($variantData['variant_image_path'])) {
+                    $line['product_image_path'] = $variantData['variant_image_path'];
+                }
+                if (!empty($variantData['variant_attrs'])) {
+                    $line['variant_attrs'] = $variantData['variant_attrs'];
                 }
             }
         }
@@ -756,7 +1053,8 @@ class Quotations extends BaseController
             return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Quotation not found']);
         }
 
-        $allowedLineKeys = ['id','product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate','unit_weight','weight','weight_unit'];
+        // PRODUCTION PATCH: keep variant linkage on update so PDFs can resolve variant image/attributes.
+        $allowedLineKeys = ['id','product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate'];
         $lines = [];
         if (isset($post['lines']) && is_array($post['lines'])) {
             foreach ($post['lines'] as $ln) {
@@ -767,6 +1065,7 @@ class Quotations extends BaseController
                 }
                 if (isset($cl['id']) && $cl['id'] !== '') $cl['id'] = (int)$cl['id'];
                 if (isset($cl['product_id']) && $cl['product_id'] !== '') $cl['product_id'] = (int)$cl['product_id'];
+                if (isset($cl['product_variant_id']) && $cl['product_variant_id'] !== '') $cl['product_variant_id'] = (int)$cl['product_variant_id'];
                 if (isset($cl['quantity'])) $cl['quantity'] = (float)$cl['quantity'];
                 if (isset($cl['unit_price'])) $cl['unit_price'] = (float)$cl['unit_price'];
                 if (isset($cl['discount_value'])) $cl['discount_value'] = (float)$cl['discount_value'];
@@ -779,12 +1078,23 @@ class Quotations extends BaseController
     $shippingAmount = isset($post['shipping_amount']) ? (float)$post['shipping_amount'] : 0.0;
         $status = strtolower($post['status'] ?? ($quote['status'] ?? 'draft'));
         $status = in_array($status, ['draft','sent','accepted','rejected']) ? $status : 'draft';
-        $currency = strtoupper(trim((string)($post['currency'] ?? ($quote['quote_currency'] ?? ($quote['currency'] ?? ($quote['base_currency'] ?? ''))))));
+        $currency = strtoupper(trim((string)($post['currency'] ?? ($quote['currency'] ?? ''))));
         if ($currency === '') $currency = $this->getDefaultSalesCurrency();
 
         $db = \Config\Database::connect();
     $lineModel = new QuotationLineModel();
     $svc = new QuotationService();
+
+    $currentCustomerId = (int) ($quote['customer_id'] ?? 0);
+    $requestedCustomerId = (int) ($post['customer_id'] ?? 0);
+    $hasExistingLines = (int) $lineModel->where('quotation_id', $id)->countAllResults() > 0;
+
+    if ($requestedCustomerId > 0 && $requestedCustomerId !== $currentCustomerId && $hasExistingLines) {
+        return $this->response->setStatusCode(422)->setJSON([
+            'success' => false,
+            'error' => 'Customer cannot be changed after lines are added. Create a new quotation for a different customer.',
+        ]);
+    }
 
     try { $cols = $db->getFieldNames($this->quotationModel->table); } catch (\Throwable $_) { $cols = $this->quotationModel->allowedFields; }
 
@@ -793,19 +1103,16 @@ class Quotations extends BaseController
 
             // header update
             $headerUpd = [
-                'customer_id' => $post['customer_id'] ?? ($quote['customer_id'] ?? null),
+                'customer_id' => $currentCustomerId,
                 'issue_date' => $this->normalizeDate($issueDateRaw),
                 'notes' => $post['notes'] ?? ($quote['notes'] ?? null),
                 'status' => $status,
             ];
+            if (!$hasExistingLines && $requestedCustomerId > 0) {
+                $headerUpd['customer_id'] = $requestedCustomerId;
+            }
             if (in_array('currency', $cols)) {
                 $headerUpd['currency'] = $currency;
-            }
-            if (in_array('quote_currency', $cols)) {
-                $headerUpd['quote_currency'] = $currency;
-            }
-            if (in_array('base_currency', $cols) && empty($quote['base_currency'])) {
-                $headerUpd['base_currency'] = $currency;
             }
             // shipping_amount is managed only via createQuotation and updateShipping; do not overwrite here.
             // (removed debugging log per deterministic fix request)
@@ -896,7 +1203,7 @@ class Quotations extends BaseController
                 throw new \RuntimeException('Transaction failed');
             }
 
-            // Write activity logs (outside transaction — these are immutable)
+            // Write activity logs (outside transaction â€” these are immutable)
             if ($quote['status'] !== $status) {
                 DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $id, DocumentLogger::ACTION_STATUS_CHANGED, [
                     'from' => $quote['status'], 'to' => $status,
@@ -1029,7 +1336,6 @@ class Quotations extends BaseController
                 'unit'          => $p['unit'] ?? 'pcs',
                 'unit_weight'   => (float)$unitWeight,
                 'weight'        => (float)$unitWeight, // explicit alias for clients expecting weight
-                'weight_unit'   => strtoupper(trim((string)($p['weight_unit'] ?? 'KG'))),
                 'sale_price'    => isset($p['sale_price']) ? (float)$p['sale_price'] : 0.0,
                 'special_price' => isset($p['special_price']) ? (float)$p['special_price'] : null,
                 'tax_rate'      => isset($p['tax_rate']) ? (float)$p['tax_rate'] : (isset($p['tax']) ? (float)$p['tax'] : 0.0),
@@ -1250,6 +1556,24 @@ class Quotations extends BaseController
         }
 
         try {
+            $quote = $this->quotationModel->find($id);
+            if ($quote) {
+                $customerName = null;
+                try {
+                    $cust = (new \App\Models\CustomerModel())->find((int) ($quote['customer_id'] ?? 0));
+                    $customerName = $cust['name'] ?? ($cust['company_name'] ?? null);
+                } catch (\Throwable $_) {
+                    $customerName = null;
+                }
+
+                DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $id, DocumentLogger::ACTION_DELETED, [
+                    'quote_number' => (string) ($quote['quote_number'] ?? ''),
+                    'customer_id' => (int) ($quote['customer_id'] ?? 0),
+                    'customer_name' => $customerName,
+                    'source' => 'quotations_controller',
+                ]);
+            }
+
             $deleted = $this->quotationModel->delete($id);
             if ($this->request->isAJAX()) {
                 return $this->response->setJSON(['success' => (bool)$deleted]);
@@ -1334,9 +1658,296 @@ class Quotations extends BaseController
             }
 
             return $this->response->setJSON(['success' => true, 'totals' => $totals]);
+
         } catch (\Throwable $e) {
             return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $e->getMessage()]);
         }
     }
+
+            public function printView($quoteId = null)
+            {
+                $quote = $this->quotationModel->findByPublicIdOrId($quoteId);
+                if (!$quote) {
+                    return redirect()->back()->with('error', 'Quotation not found');
+                }
+                $quoteId = (int)$quote['id'];
+
+                $db = \Config\Database::connect();
+                $customer = [];
+                try {
+                    $customer = $db->table('customers')->where('id', (int)($quote['customer_id'] ?? 0))->get()->getRowArray() ?: [];
+                } catch (\Throwable $_) {}
+
+                $lineModel = new \App\Models\QuotationLineModel();
+                $lines = $lineModel->where('quotation_id', $quoteId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
+
+                try {
+                    $productIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                        return isset($line['product_id']) ? (int) $line['product_id'] : null;
+                    }, $lines))));
+                    $variantIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                        if (isset($line['product_variant_id']) && $line['product_variant_id']) {
+                            return (int) $line['product_variant_id'];
+                        }
+                        return null;
+                    }, $lines))));
+
+                    $prodMap = [];
+                    $variantMap = [];
+
+                    if (!empty($productIds)) {
+                        $productModel = new \App\Models\ProductModel();
+                        $products = $productModel->whereIn('id', $productIds)->findAll();
+                        foreach ($products as $product) {
+                            $prodMap[(int) $product['id']] = $product;
+                        }
+                    }
+
+                    if (!empty($variantIds) && $db->tableExists('product_variants')) {
+                        try {
+                            $variants = $db->table('product_variants')
+                                ->select('id, product_id, art_number, name, image')
+                                ->whereIn('id', $variantIds)
+                                ->get()
+                                ->getResultArray();
+                            foreach ($variants as $variant) {
+                                $variantMap[(int) $variant['id']] = $variant;
+                            }
+
+                            // Some lines only keep variant_id; backfill missing product rows via variant->product_id.
+                            $variantProductIds = [];
+                            foreach ($variantMap as $variantRow) {
+                                $variantPid = isset($variantRow['product_id']) ? (int) $variantRow['product_id'] : 0;
+                                if ($variantPid > 0 && !isset($prodMap[$variantPid])) {
+                                    $variantProductIds[] = $variantPid;
+                                }
+                            }
+                            $variantProductIds = array_values(array_unique($variantProductIds));
+                            if (!empty($variantProductIds)) {
+                                $extraProducts = $productModel->whereIn('id', $variantProductIds)->findAll();
+                                foreach ($extraProducts as $product) {
+                                    $prodMap[(int) $product['id']] = $product;
+                                }
+                            }
+                        } catch (\Throwable $_) {}
+                    }
+
+                    foreach ($lines as &$line) {
+                        $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
+                        $variantId = isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : null;
+
+                        if ((!$productId || $productId <= 0) && $variantId && isset($variantMap[$variantId])) {
+                            $productId = isset($variantMap[$variantId]['product_id']) ? (int) $variantMap[$variantId]['product_id'] : null;
+                            if ($productId) {
+                                $line['product_id'] = $productId;
+                            }
+                        }
+
+                        if ($productId && isset($prodMap[$productId])) {
+                            $product = $prodMap[$productId];
+                            $line['product_name'] = $product['name'] ?? null;
+                            $line['product_code'] = $product['code'] ?? ($product['sku'] ?? null);
+                            $line['product_unit'] = $product['unit'] ?? null;
+                            $line['product_image'] = $product['image'] ?? null;
+                            $line['product_images'] = $product['images'] ?? null;
+                        }
+
+                        if ($variantId && isset($variantMap[$variantId])) {
+                            $variant = $variantMap[$variantId];
+                            $line['variant_code'] = $variant['art_number'] ?? null;
+                            $line['variant_name'] = $variant['name'] ?? null;
+                            $line['variant_image'] = $variant['image'] ?? null;
+                        }
+                    }
+                    unset($line);
+                } catch (\Throwable $_) {}
+
+                $company = (new CompanySettingsModel())->orderBy('id', 'DESC')->first() ?: [];
+                $printLines = [];
+                foreach ($lines as $line) {
+                    if (isset($line['display_type']) && $line['display_type'] === 'section') {
+                        continue;
+                    }
+                    $qty = (float) ($line['quantity'] ?? ($line['qty'] ?? 0));
+                    $price = (float) ($line['unit_price'] ?? 0);
+                    $storedTotal = isset($line['line_total']) ? (float) $line['line_total'] : 0.0;
+                    $total = $storedTotal > 0 ? $storedTotal : ($qty * $price);
+                    $code = trim((string) ($line['variant_code'] ?? ($line['product_code'] ?? '')));
+                    $lineDescription = trim((string) ($line['description'] ?? ''));
+                    $lineProductName = trim((string) ($line['product_name'] ?? ($line['name'] ?? '')));
+                    $lineVariantName = trim((string) ($line['variant_name'] ?? ''));
+                    if ($lineDescription !== '' && $lineProductName !== '') {
+                        $desc = stripos($lineDescription, $lineProductName) !== false
+                            ? $lineDescription
+                            : ($lineProductName . ' - ' . $lineDescription);
+                    } else {
+                        $desc = $lineProductName !== ''
+                            ? $lineProductName
+                            : ($lineDescription !== '' ? $lineDescription : $lineVariantName);
+                    }
+                    $unit = trim((string) ($line['product_unit'] ?? ($line['unit'] ?? '')));
+
+                    $imgSrc = '';
+                    $imageCandidates = [];
+                    foreach ([
+                        $line['variant_image'] ?? '',
+                        $line['product_image'] ?? '',
+                    ] as $imgRaw) {
+                        $imgRaw = trim((string) $imgRaw);
+                        if ($imgRaw === '') {
+                            continue;
+                        }
+                        $norm = ltrim($imgRaw, '/\\');
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $norm);
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'variants' . DIRECTORY_SEPARATOR . basename($norm);
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+                    }
+                    if (empty($imageCandidates) && !empty($line['product_images'])) {
+                        $images = is_string($line['product_images']) ? json_decode($line['product_images'], true) : $line['product_images'];
+                        if (is_array($images) && !empty($images[0])) {
+                            $norm = ltrim((string) $images[0], '/\\');
+                            $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+                        }
+                    }
+                    foreach (array_unique($imageCandidates) as $abs) {
+                        if (!is_file($abs)) {
+                            continue;
+                        }
+                        $raw = @file_get_contents($abs);
+                        if ($raw === false) {
+                            continue;
+                        }
+                        $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+                        $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'][$ext] ?? 'image/jpeg';
+                        $imgSrc = 'data:' . $mime . ';base64,' . base64_encode($raw);
+                        break;
+                    }
+
+                    $printLines[] = compact('code', 'desc', 'imgSrc', 'qty', 'price', 'total', 'unit');
+                }
+
+                $currency = strtoupper(trim((string) ($quote['currency'] ?? $this->getDefaultSalesCurrency())));
+                $symbols = ['USD' => '$', 'EUR' => '€', 'GBP' => '£', 'PKR' => '₨', 'INR' => '₹'];
+                $sym = $symbols[$currency] ?? $currency;
+                $fmt = fn($value) => $sym . ' ' . number_format((float) $value, 2);
+
+                $subtotal = (float) ($quote['subtotal'] ?? 0);
+                $shipping = (float) ($quote['shipping_amount'] ?? 0);
+                $total = (float) ($quote['total'] ?? 0);
+                $quoteNumber = esc($quote['quote_number'] ?? ('QT-' . $quoteId));
+                $quoteDate = '';
+                $rawDate = trim((string) ($quote['issue_date'] ?? ($quote['quote_date'] ?? ($quote['created_at'] ?? ''))));
+                if ($rawDate && strpos($rawDate, '0000') === false) {
+                    $ts = strtotime($rawDate);
+                    if ($ts) {
+                        $quoteDate = date('d-m-Y', $ts);
+                    }
+                }
+                $customerName = esc($customer['name'] ?? 'Customer');
+                $companyName = esc($company['name'] ?? '');
+
+                ob_start();
+                ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <title>Quotation <?= $quoteNumber ?></title>
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0}
+          body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;background:#f8fafc;padding:24px}
+          .grn-doc{max-width:1100px;margin:0 auto}
+          .grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border-radius:.75rem .75rem 0 0;padding:1.6rem 2rem 1.4rem;color:#fff;position:relative;overflow:hidden}
+          .grn-hero::after{content:'QUOTATION';position:absolute;right:-1rem;top:50%;transform:translateY(-50%);font-size:5.5rem;font-weight:900;opacity:.04;pointer-events:none;user-select:none;line-height:1}
+          .grn-doc-type{display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:2rem;padding:.22rem .8rem;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:.55rem}
+          .grn-hero-num{font-size:1.85rem;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:.25rem}
+          .grn-hero-sub{font-size:.82rem;color:rgba(255,255,255,.72)}
+          .grn-hero-actions{position:absolute;top:1.05rem;right:1.1rem;display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;max-width:56%}
+          .grn-hero-btn{display:inline-flex;align-items:center;gap:.34rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.24);border-radius:.42rem;padding:.34rem .7rem;font-size:.75rem;font-weight:700;color:rgba(255,255,255,.88);text-decoration:none;transition:background .15s,border-color .15s;cursor:pointer}
+          .grn-hero-btn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.42);color:#fff}
+          .grn-facts{background:#fff;border:1px solid #dee2e6;border-top:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+          .grn-fact{padding:.75rem 1rem;border-right:1px solid #dee2e6}.grn-fact:last-child{border-right:none}
+          .grn-fact-lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700;margin-bottom:.18rem}
+          .grn-fact-val{font-size:.95rem;font-weight:700;color:#1e293b}
+          .grn-sec{background:#fff;border:1px solid #dee2e6;border-top:none}
+          .grn-sec-hd{padding:.7rem 1.3rem;border-bottom:1px solid #dee2e6;display:flex;align-items:center;gap:.55rem;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6c757d}
+          .grn-sec-badge{margin-left:auto;background:#e0e7ff;color:#3730a3;border-radius:2rem;padding:.08rem .5rem;font-size:.68rem;font-weight:700}
+          .grn-body{padding:0 1.1rem 1rem}.grn-tbl{width:100%;border-collapse:collapse}
+          .grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:2px solid #dbe5f0;padding:.72rem .65rem;text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+          .grn-tbl tbody td{padding:.75rem .65rem;border-bottom:1px solid #eef2f7;vertical-align:middle;font-size:.84rem}.grn-tbl .r{text-align:right}
+          .prod-code{display:inline-flex;align-items:center;padding:.15rem .45rem;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:.72rem;font-weight:700}
+          .prod-thumb{width:42px;height:42px;object-fit:contain;border:1px solid #dbe5f0;border-radius:.35rem;background:#fff}
+          .no-img{font-size:.68rem;color:#94a3b8;border:1px dashed #cbd5e1;padding:.18rem .35rem;border-radius:.25rem;display:inline-block}
+          .desc-main{font-weight:700;color:#1e293b;line-height:1.45}
+          .totals{padding:1rem 1.1rem 1.2rem;display:flex;justify-content:flex-end;background:#fff;border:1px solid #dee2e6;border-top:none;border-radius:0 0 .75rem .75rem}
+          .totals table{width:280px;border-collapse:collapse}.totals td{padding:.33rem .2rem}.totals .lbl{color:#64748b;text-align:right;padding-right:.8rem}.totals .val{text-align:right}.totals .grand td{font-size:1.08rem;font-weight:700;border-top:2px solid #1e293b;padding-top:.55rem;color:#111827}
+          @media print{*{color-adjust:exact!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm;background:#fff!important;color:#1e293b!important}.no-print,.grn-hero-actions{display:none!important}.grn-doc{max-width:1100px!important;margin:0 auto!important}.grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)!important;border-radius:.75rem!important;color:#fff!important;border:1px solid #0a0f1a!important;page-break-inside:avoid!important}.grn-hero-num,.grn-hero-sub,.grn-doc-type{color:#fff!important}.grn-doc-type{background:rgba(255,255,255,.12)!important;border:1px solid rgba(255,255,255,.18)!important;color:#93c5fd!important}.grn-facts{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important;page-break-inside:avoid!important}.grn-fact{border-right:1px solid #dee2e6!important;background:#fff!important}.grn-fact-lbl{color:#64748b!important}.grn-fact-val{color:#1e293b!important}.grn-sec{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important}.grn-sec-hd{background:#f8fafc!important;color:#6c757d!important;border-bottom:1px solid #dee2e6!important}.grn-sec-badge{background:#e0e7ff!important;color:#3730a3!important;border-radius:2rem!important}.grn-body{background:#fff!important}.grn-tbl{width:100%!important;border-collapse:collapse!important;page-break-inside:avoid!important}.grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)!important;border-bottom:2px solid #dbe5f0!important;color:#64748b!important;text-align:left!important}.grn-tbl tbody td{border-bottom:1px solid #eef2f7!important;color:#1e293b!important;background:#fff!important}.grn-tbl tbody tr{background:#fff!important;page-break-inside:avoid!important}.prod-code{background:#eff6ff!important;border:1px solid #bfdbfe!important;color:#1d4ed8!important;border-radius:999px!important}.prod-thumb{border:1px solid #dbe5f0!important;background:#fff!important}.no-img{color:#94a3b8!important;border:1px dashed #cbd5e1!important;background:#fff!important}.desc-main{color:#1e293b!important;font-weight:700!important}.totals{background:#fff!important;border:1px solid #dee2e6!important;border-radius:.75rem!important;display:flex!important;justify-content:flex-end!important;page-break-inside:avoid!important}.totals table{border-collapse:collapse!important;width:280px!important}.totals td{color:#1e293b!important}.totals .lbl{color:#64748b!important}.totals .grand td{color:#111827!important;border-top:2px solid #1e293b!important;font-weight:700!important}table,thead,tbody,tr,td,th{page-break-inside:avoid!important;break-inside:avoid!important}}
+          @media(max-width:768px){body{padding:12px}.grn-hero{padding:1rem 1rem .9rem}.grn-hero-num{font-size:1.3rem}.grn-hero-actions{position:static;max-width:100%;margin-top:.7rem;justify-content:flex-start}.grn-facts{grid-template-columns:1fr 1fr}.grn-fact{padding:.5rem .6rem}.grn-body{padding:0}.grn-tbl{display:block;overflow-x:auto}}
+        </style>
+        </head>
+        <body>
+        <div class="grn-doc">
+          <div class="grn-hero">
+            <div class="grn-doc-type">Sales Quotation</div>
+            <div class="grn-hero-num"><?= $quoteNumber ?></div>
+            <div class="grn-hero-sub"><?= $companyName ?></div>
+            <div class="grn-hero-actions no-print">
+              <button type="button" class="grn-hero-btn" onclick="window.print()">Print</button>
+              <button type="button" class="grn-hero-btn" onclick="window.close()">Close</button>
+            </div>
+          </div>
+
+          <div class="grn-facts">
+            <div class="grn-fact"><div class="grn-fact-lbl">Customer</div><div class="grn-fact-val"><?= $customerName ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Quote Date</div><div class="grn-fact-val"><?= esc($quoteDate ?: '-') ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Currency</div><div class="grn-fact-val"><?= esc($currency) ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Lines</div><div class="grn-fact-val"><?= number_format(count($printLines), 0) ?></div></div>
+          </div>
+
+          <div class="grn-sec">
+            <div class="grn-sec-hd">Quotation Lines<span class="grn-sec-badge"><?= number_format(count($printLines), 0) ?></span></div>
+            <div class="grn-body">
+              <table class="grn-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:13%">Code</th>
+                    <th style="width:8%">Image</th>
+                    <th>Description</th>
+                    <th style="width:8%">Unit</th>
+                    <th class="r" style="width:8%">Qty</th>
+                    <th class="r" style="width:12%">Unit Price</th>
+                    <th class="r" style="width:12%">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($printLines as $line): ?>
+                  <tr>
+                    <td><span class="prod-code"><?= esc($line['code'] !== '' ? $line['code'] : '-') ?></span></td>
+                    <td><?php if ($line['imgSrc']): ?><img class="prod-thumb" src="<?= $line['imgSrc'] ?>" alt=""><?php else: ?><span class="no-img">No Img</span><?php endif ?></td>
+                    <td><div class="desc-main"><?= esc($line['desc'] !== '' ? $line['desc'] : '-') ?></div></td>
+                    <td><?= esc($line['unit'] !== '' ? $line['unit'] : '-') ?></td>
+                    <td class="r"><?= number_format($line['qty'], 2) ?></td>
+                    <td class="r"><?= esc($fmt($line['price'])) ?></td>
+                    <td class="r"><?= esc($fmt($line['total'])) ?></td>
+                  </tr>
+                  <?php endforeach ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="totals">
+            <table>
+              <tr><td class="lbl">Subtotal</td><td class="val"><?= esc($fmt($subtotal > 0 ? $subtotal : $total)) ?></td></tr>
+                            <tr><td class="lbl">Shipping</td><td class="val"><?= esc($fmt($shipping)) ?></td></tr>
+              <tr class="grand"><td class="lbl">Total</td><td class="val"><?= esc($fmt($total)) ?></td></tr>
+            </table>
+          </div>
+        </div>
+        </body>
+        </html>
+                <?php
+                return $this->response->setBody(ob_get_clean())->setHeader('Content-Type', 'text/html; charset=utf-8');
+            }
 
 }

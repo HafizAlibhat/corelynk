@@ -17,6 +17,8 @@
         'category' => $current_category ?? '',
         'status' => $current_status ?? '',
         'type' => $current_type ?? '',
+        'has_assets' => $current_has_assets ?? '',
+        'sort_by' => $current_sort_by ?? 'recent',
         'per_page' => $per_page ?? 20
     ], fn($v) => $v !== '' && $v !== null);
     
@@ -34,29 +36,29 @@
     $pgBase    = base_url('/products') . '?' . http_build_query($pgParams) . '&page=';
     $attributeOptions = $attribute_options ?? [];
     $matchedVariantsByProduct = $matched_variants_by_product ?? [];
+    $allAttributeValues = [];
+    foreach ($attributeOptions as $__vals) {
+        if (!is_array($__vals)) {
+            continue;
+        }
+        foreach ($__vals as $__v) {
+            $__v = trim((string) $__v);
+            if ($__v !== '') {
+                $allAttributeValues[$__v] = true;
+            }
+        }
+    }
+    $allAttributeValues = array_keys($allAttributeValues);
+    sort($allAttributeValues, SORT_NATURAL | SORT_FLAG_CASE);
 ?>
 
 <style>
     .pl-wrap { padding: .75rem 1rem; }
-    .pl-card { border: 1px solid var(--cl-border); border-radius: 6px; overflow: hidden; box-shadow: var(--cl-shadow-xs); background: var(--cl-surface); }
+    .pl-card { border: 1px solid var(--cl-border); border-radius: 6px; overflow: visible; box-shadow: var(--cl-shadow-xs); background: var(--cl-surface); }
+    .pl-card .table-responsive { overflow-x: auto; }
     .pl-card-header { display: flex; align-items: center; justify-content: space-between; padding: .45rem .75rem; border-bottom: 1px solid var(--cl-border); gap: .5rem; }
     .pl-card-header-title { font-size: .82rem; font-weight: 700; color: var(--cl-text-primary); line-height: 1; }
     .pl-card-header-sub { font-size: .66rem; color: var(--cl-text-muted); margin-top: .1rem; }
-    .pl-filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; padding: .4rem .75rem; border-bottom: 1px solid var(--cl-border); background: var(--cl-surface); }
-    .pl-filter-bar .form-control, .pl-filter-bar .form-select { font-size: .74rem; padding: .18rem .45rem; height: 26px; border-radius: 4px; }
-    .pl-search-wrap { position: relative; flex: 1; min-width: 140px; max-width: 220px; }
-    .pl-search-wrap .bi-search { position: absolute; left: .45rem; top: 50%; transform: translateY(-50%); font-size: .7rem; color: var(--cl-text-muted); pointer-events: none; }
-    .pl-search-wrap .form-control { padding-left: 1.55rem; }
-    .pl-filter-bar .form-select { padding-right: 1.6rem; }
-    .pl-filter-bar select.pl-cat { width: 130px; }
-    .pl-filter-bar select.pl-status { width: 100px; }
-    .pl-filter-bar select.pl-type { width: 110px; }
-    .pl-filter-bar select.pl-pp { width: 68px; }
-    .pl-filter-bar .pl-tag { width: 150px; }
-    .pl-filter-bar .pl-attr-name { width: 170px; }
-    .pl-filter-bar .pl-attr-value { width: 180px; }
-    .pl-filter-hint { width: 100%; font-size: .63rem; color: var(--cl-text-muted); margin-top: .08rem; }
-    body.theme-dark .pl-filter-hint { color: #94a3b8; }
     .pl-btn { display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 .55rem; font-size: .72rem; border-radius: 4px; border: 1px solid var(--cl-border); background: var(--cl-surface); color: var(--cl-text-secondary); cursor: pointer; gap: .28rem; text-decoration: none; white-space: nowrap; transition: all .12s; }
     .pl-btn:hover { border-color: var(--cl-primary); color: var(--cl-primary); background: var(--cl-primary-50); }
     .pl-btn.pl-btn-primary { background: var(--cl-primary); border-color: var(--cl-primary); color: #fff; }
@@ -69,12 +71,8 @@
     body.theme-dark .pl-table tbody tr:nth-child(even) td { background: #0f1a2b !important; }
     body.theme-dark .pl-table tbody tr:nth-child(odd) td  { background: #1a2740 !important; }
     body.theme-dark .pl-table tbody tr:hover td { background: rgba(37,99,235,.1) !important; }
-    .pl-thumb { width: 24px; height: 24px; border-radius: 3px; border: 1px solid var(--cl-border); object-fit: cover; flex-shrink: 0; cursor: default; }
+    .pl-thumb { width: 40px; height: 40px; border-radius: 4px; border: 1px solid var(--cl-border); object-fit: cover; flex-shrink: 0; cursor: zoom-in; }
     .pl-thumb-empty { width: 24px; height: 24px; border-radius: 3px; border: 1px solid var(--cl-border); background: var(--cl-surface-alt); display: inline-flex; align-items: center; justify-content: center; color: var(--cl-text-muted); font-size: .62rem; flex-shrink: 0; }
-    /* Image hover preview */
-    #plImgPreview { display:none; position:fixed; z-index:1080; pointer-events:none; padding:5px; background:var(--cl-surface); border:1px solid var(--cl-border); border-radius:8px; box-shadow:0 12px 32px rgba(15,23,42,.18),0 2px 8px rgba(15,23,42,.08); transition:opacity .12s; opacity:0; }
-    #plImgPreview.is-visible { display:block; opacity:1; }
-    #plImgPreview img { display:block; max-width:220px; max-height:220px; width:auto; height:auto; object-fit:contain; border-radius:5px; }
     .pl-name { font-size: .76rem; font-weight: 600; line-height: 1.1; }
     .pl-desc { font-size: .63rem; color: var(--cl-text-muted); margin-top: .05rem; line-height: 1.15; }
     /* ── Variant filter mode notice bar ─────────────────────────── */
@@ -111,7 +109,7 @@
     .pl-vr-indent { width: 28px; border-left: 3px solid rgba(37,99,235,.3) !important; padding: 0 !important; }
     body.theme-dark .pl-vr-indent { border-left-color: rgba(59,130,246,.45) !important; }
     .pl-vr-main { display: flex; align-items: center; gap: .45rem; min-width: 0; }
-    .pl-vr-thumb { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--cl-border); object-fit: cover; flex-shrink: 0; cursor: pointer; }
+    .pl-vr-thumb { width: 40px; height: 40px; border-radius: 4px; border: 1px solid var(--cl-border); object-fit: cover; flex-shrink: 0; cursor: zoom-in; }
     .pl-vr-thumb-empty { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--cl-border); background: var(--cl-surface-alt); display: inline-flex; align-items: center; justify-content: center; color: var(--cl-text-muted); font-size: .6rem; flex-shrink: 0; }
     .pl-vr-art { font-family: var(--bs-font-monospace,'Menlo','Consolas',monospace); font-size: .92rem; font-weight: 700; color: #2563eb; background: rgba(37,99,235,.08); border: 1px solid rgba(37,99,235,.2); border-radius: 4px; padding: .2rem .58rem; white-space: nowrap; }
     body.theme-dark .pl-vr-art { background: rgba(37,99,235,.15); border-color: rgba(59,130,246,.38); color: #93c5fd; }
@@ -186,6 +184,202 @@
     .pl-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .3rem; padding: .35rem .75rem; border-top: 1px solid var(--cl-border); font-size: .72rem; color: var(--cl-text-muted); }
     .pl-footer .pagination { margin: 0; gap: 2px; }
     .pl-footer .page-link { padding: .15rem .42rem; font-size: .72rem; min-width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; }
+    .pl-filter-form {
+        padding: .6rem .65rem .55rem;
+        border-bottom: 1px solid var(--cl-border);
+        background:
+            radial-gradient(120% 120% at 100% -20%, rgba(16,185,129,.08) 0%, rgba(16,185,129,0) 55%),
+            linear-gradient(180deg, var(--cl-surface) 0%, var(--cl-surface) 100%);
+        margin: 0;
+    }
+    .pl-filter-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .45rem;
+        padding: .05rem .05rem .22rem;
+        border-bottom: 1px dashed var(--cl-border);
+        margin-bottom: .06rem;
+    }
+    .pl-filter-head-title {
+        display: inline-flex;
+        align-items: center;
+        gap: .38rem;
+        font-size: .72rem;
+        font-weight: 800;
+        letter-spacing: .01em;
+        color: var(--cl-text-secondary);
+    }
+    .pl-filter-head-title i {
+        color: #0f766e;
+        font-size: .8rem;
+    }
+    .pl-filter-head-sub {
+        font-size: .6rem;
+        font-weight: 600;
+        color: var(--cl-text-muted);
+        border: 1px solid var(--cl-border);
+        border-radius: 999px;
+        padding: .12rem .4rem;
+        background: var(--cl-surface-alt);
+        white-space: nowrap;
+    }
+    .pl-filter-label {
+        font-size: .62rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        margin-bottom: .15rem;
+        color: var(--cl-text-secondary);
+    }
+    .pl-filter-control {
+        min-height: 32px;
+        font-size: .74rem;
+        border-radius: 7px;
+        border-color: var(--cl-border);
+        box-shadow: none;
+        padding-top: .3rem;
+        padding-bottom: .3rem;
+    }
+    .pl-filter-control:focus {
+        border-color: #0f766e;
+        box-shadow: 0 0 0 .15rem rgba(15,118,110,.14);
+    }
+    .pl-filter-actions {
+        display: flex;
+        align-items: center;
+        justify-content: end;
+        gap: .28rem;
+        min-height: 32px;
+        flex-wrap: wrap;
+    }
+    .pl-filter-btn {
+        height: 32px;
+        font-size: .72rem;
+        border-radius: 7px;
+        font-weight: 700;
+        padding-inline: .56rem;
+    }
+    .btn-primary.pl-filter-btn {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        border: none;
+        box-shadow: 0 2px 8px rgba(37,99,235,.24);
+        transition: all .2s cubic-bezier(.4,0,.2,1);
+    }
+    .btn-primary.pl-filter-btn:hover {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+        box-shadow: 0 4px 12px rgba(37,99,235,.32);
+        transform: translateY(-1px);
+    }
+    .btn-primary.pl-filter-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 4px rgba(37,99,235,.16);
+    }
+    .pl-filter-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: .26rem;
+        padding: .18rem .4rem;
+        border: 1px solid var(--cl-border);
+        border-radius: 7px;
+        background: var(--cl-surface-alt);
+        font-size: .64rem;
+        font-weight: 700;
+        color: var(--cl-text-secondary);
+        margin-right: .05rem;
+        white-space: nowrap;
+    }
+    .pl-filter-toggle .form-check-input {
+        margin-top: 0;
+        width: .9rem;
+        height: .9rem;
+    }
+    .pl-filter-advanced {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+    }
+    .pl-filter-advanced-title {
+        display: none;
+    }
+    .pl-filter-tip {
+        font-size: .62rem;
+        color: var(--cl-text-muted);
+        margin-top: .14rem;
+    }
+    .pl-sort-hint {
+        font-size: .58rem;
+        color: var(--cl-text-muted);
+        margin-top: .08rem;
+        text-align: right;
+    }
+    #plAttrAddBtn {
+        height: 32px;
+        font-size: .72rem;
+        border-radius: 7px;
+        padding-inline: .58rem;
+    }
+    body.theme-dark .pl-filter-head-title i,
+    body.theme-dark .pl-filter-advanced-title {
+        color: #14b8a6;
+    }
+    body.theme-dark .pl-filter-head-sub {
+        background: #162033;
+        border-color: #334155;
+    }
+    /* Product Type Tabs */
+    .pl-tabs-bar {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        padding: .5rem .65rem;
+        border-bottom: 1px solid var(--cl-border);
+        background: var(--cl-surface);
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+    .pl-tab-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: .3rem;
+        padding: .35rem .6rem;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        background: none;
+        font-size: .74rem;
+        font-weight: 700;
+        color: var(--cl-text-muted);
+        cursor: pointer;
+        transition: all .2s ease;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .pl-tab-btn:hover {
+        color: var(--cl-text-secondary);
+        background: rgba(15,118,110,.06);
+    }
+    .pl-tab-btn.active {
+        color: #0f766e;
+        border-bottom-color: #0f766e;
+        background: transparent;
+    }
+    body.theme-dark .pl-tab-btn.active {
+        color: #14b8a6;
+        border-bottom-color: #14b8a6;
+    }
+    body.theme-dark .pl-tab-btn {
+        color: #94a3b8;
+    }
+    body.theme-dark .pl-tab-btn:hover {
+        color: #cbd5e1;
+        background: rgba(20,184,166,.08);
+    }
+    @media (max-width: 991px) {
+        .pl-sort-hint {
+            text-align: left;
+        }
+    }
 </style>
 
 <div class="pl-wrap container-fluid">
@@ -207,69 +401,123 @@
         <?php endif; ?>
     </div>
 
-    <!-- Filter Bar -->
-    <?= form_open('', ['method' => 'GET', 'class' => 'pl-filter-bar']) ?>
-        <div class="pl-search-wrap">
-            <i class="bi bi-search"></i>
-            <input type="text" class="form-control" name="search" value="<?= esc($current_search) ?>" placeholder="Name, SKUâ€¦">
+    <!-- Search & Filter -->
+    <form method="get" class="row g-2 align-items-end pl-filter-form">
+        <div class="col-12">
+            <div class="pl-filter-head">
+                <div class="pl-filter-head-title"><i class="bi bi-sliders"></i>Smart Product Filters</div>
+                <div class="pl-filter-head-sub">Sort and per-page changes apply instantly</div>
+            </div>
         </div>
-        <select class="form-select pl-cat" name="category">
-            <option value="">All Categories</option>
-            <?php foreach ($categories as $categoryId => $categoryName): ?>
-                <option value="<?= esc($categoryId) ?>" <?= $current_category == $categoryId ? 'selected' : '' ?>><?= esc($categoryName) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select class="form-select pl-status" name="status">
-            <option value="">All Status</option>
-            <option value="1" <?= ($current_status ?? '') === '1' ? 'selected' : '' ?>>Active</option>
-            <option value="0" <?= ($current_status ?? '') === '0' ? 'selected' : '' ?>>Inactive</option>
-        </select>
-        <select class="form-select pl-type" name="type">
-            <option value="">All Types</option>
-            <option value="storable"  <?= ($current_type ?? '') === 'storable'   ? 'selected' : '' ?>>Storable</option>
-            <option value="consumable" <?= ($current_type ?? '') === 'consumable' ? 'selected' : '' ?>>Consumable</option>
-            <option value="service"   <?= ($current_type ?? '') === 'service'    ? 'selected' : '' ?>>Service</option>
-        </select>
-        
-        <!-- Multi-Attribute Filter UI -->
-        <div style="display:flex; align-items:center; gap:.3rem; flex-wrap:wrap">
-            <select class="form-select pl-attr-name" id="plAttrNameSel" style="width:170px">
+
+        <div class="col-lg-2 col-md-4">
+            <label class="form-label pl-filter-label">Category</label>
+            <select class="form-select pl-filter-control" name="category">
+                <option value="">All Categories</option>
+                <?php foreach ($categories as $categoryId => $categoryName): ?>
+                    <option value="<?= esc($categoryId) ?>" <?= $current_category == $categoryId ? 'selected' : '' ?>><?= esc($categoryName) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-lg-1 col-md-2">
+            <label class="form-label pl-filter-label">Status</label>
+            <select class="form-select pl-filter-control" name="status">
+                <option value="">All</option>
+                <option value="1" <?= ($current_status ?? '') === '1' ? 'selected' : '' ?>>Active</option>
+                <option value="0" <?= ($current_status ?? '') === '0' ? 'selected' : '' ?>>Inactive</option>
+            </select>
+        </div>
+        <div class="col-lg-1 col-md-2">
+            <label class="form-label pl-filter-label">Type</label>
+            <select class="form-select pl-filter-control" name="type">
+                <option value="">All</option>
+                <option value="storable" <?= ($current_type ?? '') === 'storable' ? 'selected' : '' ?>>Storable</option>
+                <option value="consumable" <?= ($current_type ?? '') === 'consumable' ? 'selected' : '' ?>>Consumable</option>
+                <option value="service" <?= ($current_type ?? '') === 'service' ? 'selected' : '' ?>>Service</option>
+            </select>
+        </div>
+        <div class="col-lg-2 col-md-8">
+            <label class="form-label pl-filter-label">Product</label>
+            <input type="search" name="search" id="productSearch" list="productList" class="form-control pl-filter-control" placeholder="Name, code, SKU, variant code/name, attributes" value="<?= esc($current_search ?? '') ?>">
+            <datalist id="productList"></datalist>
+        </div>
+        <div class="col-lg-1 col-md-2">
+            <label class="form-label pl-filter-label">Per Page</label>
+            <select class="form-select pl-filter-control" id="plPerPageSel" name="per_page">
+                <option value="20" <?= (int)$per_page === 20 ? 'selected' : '' ?>>20</option>
+                <option value="50" <?= (int)$per_page === 50 ? 'selected' : '' ?>>50</option>
+                <option value="100" <?= (int)$per_page === 100 ? 'selected' : '' ?>>100</option>
+                <option value="200" <?= (int)$per_page === 200 ? 'selected' : '' ?>>200</option>
+            </select>
+        </div>
+        <div class="col-lg-1 col-md-2">
+            <label class="form-label pl-filter-label">Sort By</label>
+            <select class="form-select pl-filter-control" id="plSortBySel" name="sort_by">
+                <option value="recent" <?= ($current_sort_by ?? 'recent') === 'recent' ? 'selected' : '' ?>>Recently Added</option>
+                <option value="oldest" <?= ($current_sort_by ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest Added</option>
+                <option value="most_sold" <?= ($current_sort_by ?? '') === 'most_sold' ? 'selected' : '' ?>>Most Sold</option>
+                <option value="ready_stock" <?= ($current_sort_by ?? '') === 'ready_stock' ? 'selected' : '' ?>>Ready Stock</option>
+                <option value="most_purchased" <?= ($current_sort_by ?? '') === 'most_purchased' ? 'selected' : '' ?>>Most Purchased</option>
+                <option value="name_az" <?= ($current_sort_by ?? '') === 'name_az' ? 'selected' : '' ?>>Name A-Z</option>
+            </select>
+        </div>
+        <div class="col-lg-2 col-md-8 pl-filter-actions">
+            <label class="pl-filter-toggle" for="plHasAssets">
+                <input class="form-check-input" type="checkbox" id="plHasAssets" name="has_assets" value="1" <?= ($current_has_assets ?? '') === '1' ? 'checked' : '' ?>>
+                Has Assets
+            </label>
+            <button type="submit" class="btn btn-primary pl-filter-btn"><i class="bi bi-funnel-fill me-1"></i>Filter</button>
+            <a href="<?= base_url('/products') ?>" class="btn btn-link text-decoration-none" style="font-size:.7rem;font-weight:700;padding:0 .25rem;">Reset</a>
+            <button type="button" class="btn btn-outline-secondary pl-filter-btn" onclick="exportToCSV()"><i class="bi bi-download"></i></button>
+        </div>
+
+        <div class="col-lg-3 col-md-5">
+            <label class="form-label pl-filter-label">Attribute</label>
+            <select class="form-select pl-filter-control" id="plAttrNameSel">
                 <option value="">Select Attribute</option>
                 <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
                     <option value="<?= esc($attrName) ?>"><?= esc($attrName) ?></option>
                 <?php endforeach; ?>
             </select>
-            <input type="text" class="form-control" id="plAttrValueInp" list="plAttrValueList" placeholder="Attribute value" style="width:180px">
+        </div>
+        <div class="col-lg-4 col-md-5">
+            <label class="form-label pl-filter-label">Attribute Value</label>
+            <input type="text" class="form-control pl-filter-control" id="plAttrValueInp" list="plAttrValueList" placeholder="e.g. Curved">
             <datalist id="plAttrValueList"></datalist>
-            <button type="button" class="pl-btn" id="plAttrAddBtn" title="Add attribute filter" onclick="addAttributeFilter(event)">
-                <i class="bi bi-plus"></i> Add Filter
+        </div>
+        <div class="col-lg-2 col-md-2 d-flex align-items-end">
+            <button type="button" class="btn btn-outline-primary" id="plAttrAddBtn" style="height:32px;width:100%;" onclick="addAttributeFilter(event)">
+                <i class="bi bi-plus-lg"></i>
             </button>
         </div>
-        
-        <!-- Display selected attributes as tags/pills -->
-        <div id="plAttrTagsContainer" style="display:flex; flex-wrap:wrap; gap:.3rem; align-items:center; margin-top:.3rem; min-height:26px"></div>
-        
-        <!-- Hidden container for actual form inputs (submitted with form) -->
-        <div id="plAttrHiddenInputs" style="display:none"></div>
-        
-        <select class="form-select pl-pp" name="per_page">
-            <option value="20" <?= $per_page == 20 ? 'selected' : '' ?>>20</option>
-            <option value="50" <?= $per_page == 50 ? 'selected' : '' ?>>50</option>
-            <option value="100" <?= $per_page == 100 ? 'selected' : '' ?>>100</option>
-        </select>
-        <button type="submit" class="pl-btn"><i class="bi bi-search"></i></button>
-        <a href="<?= base_url('/products') ?>" class="pl-btn" title="Reset"><i class="bi bi-arrow-clockwise"></i></a>
-        <button type="button" class="pl-btn" onclick="exportToCSV()" title="Export CSV"><i class="bi bi-download"></i> CSV</button>
-        <?php if ($can_edit): ?>
-        <div class="ms-auto d-flex gap-1">
-            <button type="button" class="pl-btn" onclick="bulkAction('activate')" title="Activate selected"><i class="bi bi-check-circle"></i></button>
-            <button type="button" class="pl-btn" onclick="bulkAction('deactivate')" title="Deactivate selected"><i class="bi bi-x-circle"></i></button>
+
+        <div class="col-12">
+            <div id="plAttrTagsContainer" class="d-flex flex-wrap gap-2"></div>
+            <div id="plAttrHiddenInputs" style="display:none"></div>
+            <div class="pl-filter-tip">Pro tip: This search supports product code, variant code/name, and multiple attribute filters.</div>
         </div>
-        <?php endif; ?>
-        <div class="pl-filter-hint">
-            Pro tip: Search supports product code, variant code (art number), variant name, and attribute values. Use Attribute + Value for exact deep filtering.
-        </div>
-    <?= form_close() ?>
+    </form>
+
+    <?php
+        $tabBaseParams = $pgParams;
+        unset($tabBaseParams['type']);
+    ?>
+    <!-- Product Type Tabs -->
+    <div class="pl-tabs-bar">
+        <?php foreach ($product_type_tabs as $tabKey => $tabLabel): ?>
+            <?php
+                $tabParams = $tabBaseParams;
+                if ($tabKey !== 'all') {
+                    $tabParams['type'] = $tabKey;
+                }
+                $tabHref = base_url('/products' . (!empty($tabParams) ? '?' . http_build_query($tabParams) : ''));
+            ?>
+            <a href="<?= $tabHref ?>" class="pl-tab-btn <?= ($current_type === $tabKey || ($tabKey === 'all' && empty($current_type))) ? 'active' : '' ?>">
+                <span><?= esc($tabLabel) ?></span>
+                <span style="font-size:.65rem;background:rgba(15,118,110,.2);color:#0f766e;padding:.15rem .35rem;border-radius:3px;font-weight:700;min-width:1.8rem;text-align:center;"><?= (int)($product_type_counts[$tabKey] ?? 0) ?></span>
+            </a>
+        <?php endforeach; ?>
+    </div>
 
     <!-- Variant filter mode notice bar -->
     <?php if (!empty($current_attributes)): ?>
@@ -309,6 +557,9 @@
                     <th>Category</th>
                     <th>Unit</th>
                     <th class="text-end">Stock</th>
+                    <th class="text-end">Sold</th>
+                    <th class="text-end">Purchased</th>
+                    <th class="text-center">Assets</th>
                     <th>Status</th>
                     <th>Created</th>
                     <th class="text-end">Actions</th>
@@ -334,10 +585,12 @@
                     $vMatchCount = count($variantRows);
                     $vTotalCount = (int)($prod['variant_count'] ?? 0);
                     $vStock      = (float)($prod['variant_stock'] ?? 0);
+                    $vSold       = (float)($prod['sold_units'] ?? 0);
+                    $vPurchased  = (float)($prod['purchased_units'] ?? 0);
                     $vStockCls   = $vStock > 0 ? 'text-success' : ($vStock < 0 ? 'text-danger' : 'text-muted');
                 ?>
                 <tr class="pl-group-hdr">
-                    <td colspan="10">
+                    <td colspan="13">
                         <div class="pl-ghdr-inner">
                             <?php if ($pThumb): ?>
                                 <img src="<?= base_url('uploads/products/' . $pThumb) ?>" alt="" class="pl-ghdr-thumb">
@@ -359,6 +612,10 @@
                                     <?php endif; ?>
                                     <span class="pl-ghdr-sep">&bull;</span>
                                     <span>Stock: <strong class="<?= $vStockCls ?>"><?= number_format($vStock, 0) ?></strong></span>
+                                    <span class="pl-ghdr-sep">&bull;</span>
+                                    <span>Sold: <strong><?= number_format($vSold, 2) ?></strong></span>
+                                    <span class="pl-ghdr-sep">&bull;</span>
+                                    <span>Purchased: <strong><?= number_format($vPurchased, 2) ?></strong></span>
                                 </div>
                             </div>
                             <a href="<?= base_url('product-variants?product_id=' . $pid) ?>" class="pl-btn pl-ghdr-vbtn">
@@ -382,8 +639,8 @@
                         ?>
                         <div class="pl-vr-main">
                             <?php if ($vImgUrl !== ''): ?>
-                                <img src="<?= esc($vImgUrl) ?>" alt="" class="pl-vr-thumb"
-                                     data-preview="<?= esc($vImgUrl) ?>"
+                                  <img src="<?= esc($vImgUrl) ?>" alt="" class="pl-vr-thumb js-product-hover-thumb"
+                                      data-preview-src="<?= esc($vImgUrl) ?>"
                                      onclick="showImageModal('<?= esc($vImgUrl) ?>','<?= esc(addslashes($prod['name'] . ' - ' . ($mv['art_number'] ?: 'Variant'))) ?>')">
                             <?php else: ?>
                                 <span class="pl-vr-thumb-empty"><i class="bi bi-image"></i></span>
@@ -409,6 +666,13 @@
                     <td style="font-size:.71rem;color:var(--cl-text-muted)"><?= esc($prod['category_name'] ?? '—') ?></td>
                     <td style="font-size:.71rem;color:var(--cl-text-muted)"><?= esc($prod['unit'] ?? '—') ?></td>
                     <td class="text-end text-muted" style="font-size:.71rem">&mdash;</td>
+                    <td class="text-end text-muted" style="font-size:.71rem">&mdash;</td>
+                    <td class="text-end text-muted" style="font-size:.71rem">&mdash;</td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary" style="font-size:.65rem;cursor:pointer" onclick="viewProductAssets(<?= $prod['id'] ?>)" title="View assets">
+                            <?= (int)($prod['asset_count'] ?? 0) ?>
+                        </span>
+                    </td>
                     <td><?php if ($prod['is_active']): ?><span class="badge bg-success" style="font-size:.6rem">Active</span><?php else: ?><span class="badge bg-secondary" style="font-size:.6rem">Inactive</span><?php endif; ?></td>
                     <td></td>
                     <td class="text-end" style="white-space:nowrap">
@@ -423,8 +687,12 @@
                 <?php $rowNum = ($currentPage - 1) * $currentPerPage; foreach ($products['data'] as $product):
                     $rowNum++;
                     $productIdentifier = entityRouteIdentifier($product);
+                    $isVariantRow = !empty($product['_is_variant_row']) && !empty($product['_variant_id']);
+                    $variantViewUrl   = $isVariantRow ? base_url('product-variants/' . (int)$product['_variant_id'] . '/edit') : base_url('/products/' . $productIdentifier);
                     $images   = !empty($product['images']) ? json_decode($product['images'], true) : [];
                     $firstImg = !empty($images) ? $images[0] : null;
+                    // For promoted variant rows, prefer variant image (stored under uploads/variants/)
+                    $imgBaseDir = $isVariantRow ? 'uploads/variants/' : 'uploads/products/';
                     $isVar    = ($product['product_type'] ?? '') === 'variable';
                     $desc55   = !empty($product['description']) ? substr($product['description'], 0, 55) . (strlen($product['description']) > 55 ? '…' : '') : '';
                 ?>
@@ -435,21 +703,34 @@
                     <td>
                         <div class="d-flex align-items-center gap-2">
                             <?php if ($firstImg): ?>
-                                <img src="<?= base_url('uploads/products/' . $firstImg) ?>" alt="" class="pl-thumb"
-                                     data-preview="<?= base_url('uploads/products/' . $firstImg) ?>"
-                                     onclick="showImageModal('<?= base_url('uploads/products/' . $firstImg) ?>','<?= esc(addslashes($product['name'])) ?>')"
+                                  <img src="<?= base_url($imgBaseDir . $firstImg) ?>" alt="" class="pl-thumb js-product-hover-thumb"
+                                      data-preview-src="<?= base_url($imgBaseDir . $firstImg) ?>"
+                                     onclick="showImageModal('<?= base_url($imgBaseDir . $firstImg) ?>','<?= esc(addslashes($product['name'])) ?>')"
                                      style="cursor:pointer">
                             <?php else: ?>
                                 <span class="pl-thumb-empty"><i class="bi bi-image"></i></span>
                             <?php endif; ?>
                             <div>
-                                <a href="<?= base_url('/products/' . $productIdentifier) ?>" class="pl-name text-decoration-none">
+                                <a href="<?= $variantViewUrl ?>" class="pl-name text-decoration-none">
                                     <?= esc($product['name']) ?>
                                 </a>
-                                <?php if ($isVar): ?><span class="badge bg-primary ms-1" style="font-size:.55rem">Template</span><?php endif; ?>
+                                <?php if (!empty($product['_is_variant_row'])): ?>
+                                    <span class="badge bg-info ms-1" style="font-size:.55rem">Variant</span>
+                                    <?php if (!empty($product['_variant_name'])): ?>
+                                        <span class="badge bg-secondary ms-1" style="font-size:.52rem"><?= esc($product['_variant_name']) ?></span>
+                                    <?php endif; ?>
+                                <?php elseif ($isVar): ?>
+                                    <span class="badge bg-primary ms-1" style="font-size:.55rem">Template</span>
+                                <?php endif; ?>
                                 <?php if (($product['detailed_type'] ?? '') === 'service'): ?><span class="badge ms-1" style="font-size:.55rem;background:#0891b2">Service</span><?php endif; ?>
                                 <?php if (($product['detailed_type'] ?? '') === 'consumable'): ?><span class="badge bg-warning text-dark ms-1" style="font-size:.55rem">Consumable</span><?php endif; ?>
-                                <?php if ($desc55): ?><div class="pl-desc"><?= esc($desc55) ?></div><?php endif; ?>
+                                <?php
+                                    // For promoted variant rows show attribute summary; otherwise normal description
+                                    $displayDesc = !empty($product['_is_variant_row']) && !empty($product['_variant_attrs_summary'])
+                                        ? $product['_variant_attrs_summary']
+                                        : $desc55;
+                                ?>
+                                <?php if ($displayDesc): ?><div class="pl-desc"><?= esc($displayDesc) ?></div><?php endif; ?>
                             </div>
                         </div>
                     </td>
@@ -458,7 +739,15 @@
                     <td class="text-end" style="white-space:nowrap">
                         <?php
                             $isTemplate = ($product['product_type'] ?? '') === 'variable';
-                            if ($isTemplate):
+                            if ($isVariantRow):
+                                // Promoted variant row — show its own stock directly, link to variant page
+                                $vStock   = (float)($product['simple_stock'] ?? 0);
+                                $stockCls = $vStock > 0 ? 'text-success' : ($vStock < 0 ? 'text-danger' : 'text-muted');
+                        ?>
+                            <a href="<?= $variantViewUrl ?>" class="<?= $stockCls ?>" style="font-size:.73rem;font-variant-numeric:tabular-nums;text-decoration:none" title="View variant">
+                                <?= number_format($vStock, 2) ?>
+                            </a>
+                        <?php elseif ($isTemplate):
                                 $vStock  = (float)($product['variant_stock'] ?? 0);
                                 $vCount  = (int)($product['variant_count'] ?? 0);
                                 $stockCls = $vStock > 0 ? 'text-success' : ($vStock < 0 ? 'text-danger' : 'text-muted');
@@ -479,6 +768,17 @@
                             </span>
                         <?php endif; ?>
                     </td>
+                    <td class="text-end" style="font-size:.73rem;font-variant-numeric:tabular-nums">
+                        <?= number_format((float)($product['sold_units'] ?? 0), 2) ?>
+                    </td>
+                    <td class="text-end" style="font-size:.73rem;font-variant-numeric:tabular-nums">
+                        <?= number_format((float)($product['purchased_units'] ?? 0), 2) ?>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary" style="font-size:.65rem;cursor:pointer" onclick="viewProductAssets(<?= $product['id'] ?>)" title="View assets">
+                            <?= (int)($product['asset_count'] ?? 0) ?>
+                        </span>
+                    </td>
                     <td>
                         <?php if ($product['is_active']): ?>
                             <span class="badge bg-success" style="font-size:.62rem">Active</span>
@@ -488,13 +788,17 @@
                     </td>
                     <td><span style="font-size:.71rem;color:var(--cl-text-muted)"><?= date('M j, Y', strtotime($product['created_at'])) ?></span></td>
                     <td class="text-end" style="white-space:nowrap">
-                        <a href="<?= base_url('/products/' . $productIdentifier) ?>" class="pl-act-btn" title="View"><i class="bi bi-eye"></i></a>
+                        <a href="<?= $variantViewUrl ?>" class="pl-act-btn" title="<?= $isVariantRow ? 'Edit Variant' : 'View' ?>"><i class="bi bi-<?= $isVariantRow ? 'pencil-square' : 'eye' ?>"></i></a>
+                        <?php if (!$isVariantRow): ?>
                         <button type="button" class="pl-act-btn pl-more-trigger"
                                 data-pid="<?= $product['id'] ?>"
                                 data-active="<?= (int)$product['is_active'] ?>"
                                 data-name="<?= esc($product['name']) ?>"
                                 data-isvariable="<?= ($product['product_type'] ?? '') === 'variable' ? '1' : '0' ?>"
                                 title="More"><i class="bi bi-three-dots-vertical"></i></button>
+                        <?php else: ?>
+                        <a href="<?= base_url('products/' . $productIdentifier) ?>" class="pl-act-btn" title="View parent product"><i class="bi bi-diagram-2"></i></a>
+                        <?php endif; ?>                    
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -574,9 +878,6 @@
     <?php endif; ?>
 </ul>
 
-<!-- Image hover preview -->
-<div id="plImgPreview"><img src="" alt="" id="plImgPreviewImg"></div>
-
 <!-- Image Modal -->
 <div class="modal fade" id="imageModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -597,24 +898,28 @@
 
 <?= $this->section('js') ?>
 <script>
-// ── Multi-Attribute Filter Handler ─────────────────────────────────
+// Multi-Attribute Filter Handler (stock-style, products IDs)
 (function() {
-    const attrMap = <?= json_encode($attributeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    const attrMapRaw = <?= json_encode($attributeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?>;
+    const attrMap = (attrMapRaw && typeof attrMapRaw === 'object') ? attrMapRaw : {};
     const attrNameSel = document.getElementById('plAttrNameSel');
     const attrValueInp = document.getElementById('plAttrValueInp');
     const attrValueList = document.getElementById('plAttrValueList');
     const tagsContainer = document.getElementById('plAttrTagsContainer');
     const hiddenInputsDiv = document.getElementById('plAttrHiddenInputs');
-    const attrAddBtn = document.getElementById('plAttrAddBtn');
-    
-    let currentAttributes = [];
-    
-    // Parse existing attributes from current_attributes PHP variable if available
-    <?php if (!empty($current_attributes) && is_array($current_attributes)): ?>
-        currentAttributes = <?= json_encode($current_attributes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        renderTags();
-    <?php endif; ?>
-    
+
+    let currentAttributes = <?= json_encode(!empty($current_attributes) && is_array($current_attributes) ? $current_attributes : [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?>;
+    if (!Array.isArray(currentAttributes)) {
+        currentAttributes = [];
+    }
+
+    function escLocal(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
     function updateValueSuggestions() {
         if (!attrNameSel || !attrValueList) return;
         const selected = attrNameSel.value || '';
@@ -626,33 +931,36 @@
             attrValueList.appendChild(opt);
         });
     }
-    
+
     function renderTags() {
         if (!tagsContainer || !hiddenInputsDiv) return;
         tagsContainer.innerHTML = '';
         hiddenInputsDiv.innerHTML = '';
-        
+
         currentAttributes.forEach(function(attr, idx) {
             const tag = document.createElement('span');
             tag.className = 'pl-attr-tag';
-            tag.innerHTML = '<span style="opacity:.75;font-size:.62rem">' + esc(attr.name) + '</span>'
-                + '<span class="pl-attr-tag-sep">:</span>'
-                + '<span class="pl-attr-tag-val">' + esc(attr.value) + '</span>'
-                + '<button type="button" class="pl-attr-tag-rm" data-idx="' + idx + '" aria-label="Remove">&times;</button>';
+            tag.innerHTML = '<span style="opacity:.8">' + escLocal(attr.name) + '</span>'
+                + '<span style="opacity:.5">:</span>'
+                + '<span class="pl-attr-tag-val">' + escLocal(attr.value) + '</span>'
+                + '<button type="button" class="pl-attr-tag-rm" data-idx="' + idx + '">&times;</button>';
             tagsContainer.appendChild(tag);
-            
-            tag.querySelector('.pl-attr-tag-rm').addEventListener('click', function(e) {
-                e.preventDefault();
-                currentAttributes.splice(parseInt(this.dataset.idx, 10), 1);
-                renderTags();
-            });
-            
+
+            const removeBtn = tag.querySelector('.pl-attr-tag-rm');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    currentAttributes.splice(parseInt(this.dataset.idx, 10), 1);
+                    renderTags();
+                });
+            }
+
             const nameInput = document.createElement('input');
             nameInput.type = 'hidden';
             nameInput.name = 'attr[' + idx + '][name]';
             nameInput.value = attr.name;
             hiddenInputsDiv.appendChild(nameInput);
-            
+
             const valueInput = document.createElement('input');
             valueInput.type = 'hidden';
             valueInput.name = 'attr[' + idx + '][value]';
@@ -660,54 +968,200 @@
             hiddenInputsDiv.appendChild(valueInput);
         });
     }
-    
+
     function addAttribute() {
-        const name = attrNameSel ? attrNameSel.value : '';
-        const value = attrValueInp ? attrValueInp.value : '';
-        
+        const name = attrNameSel ? (attrNameSel.value || '').trim() : '';
+        const value = attrValueInp ? (attrValueInp.value || '').trim() : '';
         if (!name || !value) {
             alert('Please select an attribute and enter a value');
             return;
         }
-        
-        // Check for duplicates
-        const isDuplicate = currentAttributes.some(a => a.name === name && a.value === value);
+
+        const isDuplicate = currentAttributes.some(function(a) {
+            return String(a.name).toLowerCase() === name.toLowerCase() && String(a.value).toLowerCase() === value.toLowerCase();
+        });
         if (isDuplicate) {
             alert('This attribute filter already exists');
             return;
         }
-        
-        currentAttributes.push({ name, value });
+
+        currentAttributes.push({ name: name, value: value });
         renderTags();
-        
-        // Reset inputs
         if (attrNameSel) attrNameSel.value = '';
         if (attrValueInp) attrValueInp.value = '';
         updateValueSuggestions();
     }
-    
-    // Expose function globally for HTML onclick
+
     window.addAttributeFilter = function(e) {
-        e.preventDefault();
+        if (e) e.preventDefault();
         addAttribute();
     };
-    
-    // Handle attribute name change
+
     if (attrNameSel) {
         attrNameSel.addEventListener('change', updateValueSuggestions);
     }
-    
-    // Handle Enter key on value input
     if (attrValueInp) {
+        const supportsShowPicker = typeof attrValueInp.showPicker === 'function';
+        let compatPanel = null;
+
+        function ensureCompatPanel() {
+            if (compatPanel) return compatPanel;
+            compatPanel = document.createElement('div');
+            compatPanel.id = 'plAttrValueCompatPanel';
+            compatPanel.style.cssText = 'display:none;position:absolute;z-index:1200;max-height:220px;overflow:auto;background:#111827;border:1px solid #334155;border-radius:6px;box-shadow:0 10px 24px rgba(0,0,0,.35);';
+            document.body.appendChild(compatPanel);
+            return compatPanel;
+        }
+
+        function hideCompatPanel() {
+            if (compatPanel) compatPanel.style.display = 'none';
+        }
+
+        function renderCompatPanel(query) {
+            if (supportsShowPicker) return;
+            const panel = ensureCompatPanel();
+            const rect = attrValueInp.getBoundingClientRect();
+            panel.style.left = rect.left + 'px';
+            panel.style.top = rect.bottom + 'px';
+            panel.style.width = rect.width + 'px';
+
+            const q = String(query || '').trim().toLowerCase();
+            const allValues = Array.from(attrValueList ? attrValueList.options : []).map(o => String(o.value || '').trim()).filter(Boolean);
+            const values = q === '' ? allValues : allValues.filter(v => v.toLowerCase().includes(q));
+
+            panel.innerHTML = '';
+            if (!attrNameSel || !attrNameSel.value) {
+                const msg = document.createElement('div');
+                msg.style.cssText = 'padding:8px 10px;color:#94a3b8;font-size:.72rem;';
+                msg.textContent = 'Select attribute first';
+                panel.appendChild(msg);
+            } else if (values.length === 0) {
+                const msg = document.createElement('div');
+                msg.style.cssText = 'padding:8px 10px;color:#94a3b8;font-size:.72rem;';
+                msg.textContent = 'No matching values';
+                panel.appendChild(msg);
+            } else {
+                values.forEach(function(v) {
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.style.cssText = 'display:block;width:100%;text-align:left;border:0;background:transparent;color:#e5e7eb;padding:7px 10px;font-size:.74rem;cursor:pointer;';
+                    row.textContent = v;
+                    row.addEventListener('mouseenter', function() { row.style.background = '#1f2937'; });
+                    row.addEventListener('mouseleave', function() { row.style.background = 'transparent'; });
+                    row.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        attrValueInp.value = v;
+                        hideCompatPanel();
+                    });
+                    panel.appendChild(row);
+                });
+            }
+
+            panel.style.display = 'block';
+        }
+
+        function openValueList() {
+            // Always refresh list from selected attribute before opening.
+            updateValueSuggestions();
+            try {
+                if (supportsShowPicker) {
+                    attrValueInp.showPicker();
+                } else {
+                    renderCompatPanel(attrValueInp.value || '');
+                }
+            } catch (_) {
+                // Some browsers may block showPicker outside trusted gestures.
+                renderCompatPanel(attrValueInp.value || '');
+            }
+        }
+
+        attrValueInp.addEventListener('focus', openValueList);
+        attrValueInp.addEventListener('click', openValueList);
+        attrValueInp.addEventListener('input', function() {
+            if (!supportsShowPicker) {
+                renderCompatPanel(attrValueInp.value || '');
+            }
+        });
+        attrValueInp.addEventListener('blur', function() {
+            setTimeout(hideCompatPanel, 120);
+        });
         attrValueInp.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 addAttribute();
             }
         });
+
+        document.addEventListener('click', function(e) {
+            if (!compatPanel || compatPanel.style.display !== 'block') return;
+            if (e.target === attrValueInp || compatPanel.contains(e.target)) return;
+            hideCompatPanel();
+        });
+
+        window.addEventListener('resize', hideCompatPanel);
+        window.addEventListener('scroll', hideCompatPanel, true);
     }
-    
+
+    renderTags();
     updateValueSuggestions();
+})();
+
+// Product autocomplete (stock-style endpoint usage)
+(function(){
+    const input = document.getElementById('productSearch');
+    const list = document.getElementById('productList');
+    let last = '';
+    if (!input || !list) return;
+    input.addEventListener('input', function(){
+        const v = this.value.trim();
+        if (v.length < 2 || v === last) return;
+        last = v;
+        fetch('<?= base_url('products/search') ?>?q=' + encodeURIComponent(v))
+            .then(r => r.json())
+            .then(js => {
+                if (!js.success) return;
+                list.innerHTML = '';
+                js.data.forEach(item => {
+                    const opt = document.createElement('option');
+                    const text = item.text || [
+                        item.code || '',
+                        item.name || '',
+                        item.variant_art_number || '',
+                        item.variant_name || ''
+                    ].filter(Boolean).join(' - ');
+                    opt.value = text;
+                    list.appendChild(opt);
+                });
+            }).catch(()=>{});
+    });
+})();
+
+// Auto-apply key sorting controls for faster UX.
+(function(){
+    const filterForm = document.querySelector('form.pl-filter-form');
+    if (!filterForm) return;
+
+    const sortSel = document.getElementById('plSortBySel');
+    const perPageSel = document.getElementById('plPerPageSel');
+    const hasAssetsChk = document.getElementById('plHasAssets');
+
+    if (sortSel) {
+        sortSel.addEventListener('change', function(){
+            filterForm.submit();
+        });
+    }
+
+    if (perPageSel) {
+        perPageSel.addEventListener('change', function(){
+            filterForm.submit();
+        });
+    }
+
+    if (hasAssetsChk) {
+        hasAssetsChk.addEventListener('change', function(){
+            filterForm.submit();
+        });
+    }
 })();
 
 // Helper function to escape strings (basic HTML escaping)
@@ -835,46 +1289,6 @@ function bulkAction(action) {
     }
 }
 
-// ── Image hover preview ─────────────────────────────────────────────
-(function () {
-    const preview = document.getElementById('plImgPreview');
-    const previewImg = document.getElementById('plImgPreviewImg');
-    if (!preview || !previewImg) return;
-    let hideTimer = null;
-
-    function position(e) {
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const pw = 190, ph = 190; // approx panel size
-        let left = e.clientX + 14;
-        let top  = e.clientY + 14;
-        if (left + pw > vw - 8) left = e.clientX - pw - 10;
-        if (top  + ph > vh - 8) top  = e.clientY - ph - 10;
-        preview.style.left = left + 'px';
-        preview.style.top  = top  + 'px';
-    }
-
-    document.addEventListener('mouseover', function (e) {
-        const thumb = e.target.closest('[data-preview]');
-        if (!thumb) return;
-        clearTimeout(hideTimer);
-        previewImg.src = thumb.dataset.preview;
-        preview.classList.add('is-visible');
-        position(e);
-    });
-
-    document.addEventListener('mousemove', function (e) {
-        if (!preview.classList.contains('is-visible')) return;
-        if (!e.target.closest('[data-preview]')) return;
-        position(e);
-    });
-
-    document.addEventListener('mouseout', function (e) {
-        const thumb = e.target.closest('[data-preview]');
-        if (!thumb) return;
-        hideTimer = setTimeout(() => preview.classList.remove('is-visible'), 80);
-    });
-})();
-
 // ── More-actions dropdown ─────────────────────────────────────────────
 (function () {
     const menu   = document.getElementById('plMoreMenu');
@@ -933,6 +1347,189 @@ function bulkAction(action) {
         menu.classList.remove('is-open');
         if (activePid) window.qadjOpen(activePid, null, activeName, activeIsVar);
     });
+})();
+
+// ── View product assets modal ────────────────────────────────────────
+let currentAssetIndex = 0;
+let currentAssets = [];
+
+function viewProductAssets(productId) {
+    // Fetch assets for this product
+    fetch(`<?= base_url('/products/') ?>${productId}/assets`, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success || !data.data || !data.data.groups) {
+            alert('Failed to load assets');
+            return;
+        }
+
+        // Flatten all assets from all groups
+        currentAssets = [];
+        data.data.groups.forEach(groupData => {
+            if (groupData.assets && Array.isArray(groupData.assets)) {
+                currentAssets.push(...groupData.assets);
+            }
+        });
+
+        if (currentAssets.length === 0) {
+            alert('No assets found for this product');
+            return;
+        }
+
+        // Show assets modal
+        showAssetsModal(data.data.product_name || `Product #${productId}`);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to load assets');
+    });
+}
+
+function showAssetsModal(productName) {
+    if (currentAssets.length === 0) {
+        alert('No assets to display');
+        return;
+    }
+
+    currentAssetIndex = 0;
+    const modal = document.getElementById('assetsViewerModal');
+    if (!modal) {
+        createAssetsModal();
+        return showAssetsModal(productName);
+    }
+
+    const titleEl = document.getElementById('assetsViewerTitle');
+    const bodyEl = document.getElementById('assetsViewerBody');
+    
+    if (titleEl) titleEl.textContent = `Assets - ${productName} (${currentAssets.length} total)`;
+    
+    displayAsset(0);
+    
+    if (typeof bootstrap !== 'undefined') {
+        new bootstrap.Modal(modal).show();
+    }
+}
+
+function createAssetsModal() {
+    const html = `
+    <div class="modal fade" id="assetsViewerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#1f2937;border-bottom:1px solid #374151">
+                    <h6 class="modal-title" id="assetsViewerTitle" style="color:#e5e7eb;font-weight:700">Assets Viewer</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="assetsViewerBody" style="background:#0f1a2b;min-height:450px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem">
+                    <div style="text-align:center;color:#94a3b8">
+                        <div style="font-size:2rem;margin-bottom:1rem">Loading...</div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#1f2937;border-top:1px solid #374151;gap:.5rem;justify-content:space-between">
+                    <div style="font-size:.75rem;color:#94a3b8">
+                        <span id="assetsCounter">1 / 1</span>
+                    </div>
+                    <div style="display:flex;gap:.5rem">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="previousAsset()">
+                            <i class="bi bi-chevron-left"></i> Previous
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="nextAsset()">
+                            Next <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function displayAsset(index) {
+    if (index < 0 || index >= currentAssets.length) return;
+    
+    currentAssetIndex = index;
+    const asset = currentAssets[index];
+    const bodyEl = document.getElementById('assetsViewerBody');
+    const counterEl = document.getElementById('assetsCounter');
+    
+    if (!bodyEl || !counterEl) return;
+    
+    counterEl.textContent = `${index + 1} / ${currentAssets.length}`;
+    
+    // Determine asset type based on mime_type or file_path
+    const mimeType = asset.mime_type || '';
+    const filePath = asset.file_path || '';
+    const thumbnailPath = asset.thumbnail_path || filePath;
+    const fileName = asset.file_name || 'Asset';
+    
+    let content = '';
+    
+    if (mimeType.startsWith('image/') || filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Image asset
+        const url = `<?= base_url('/') ?>${filePath}`;
+        content = `
+            <div style="width:100%;height:400px;display:flex;align-items:center;justify-content:center;background:#0d1626;border-radius:6px;overflow:hidden;border:1px solid #334155">
+                <img src="${url}" alt="${escHtml(fileName)}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\"color:#94a3b8;text-align:center\"><i class=\"bi bi-exclamation-triangle\" style=\"font-size:2rem;margin-bottom:1rem;display:block\"></i>Failed to load image</div>'">
+            </div>
+            <div style="margin-top:1rem;text-align:center">
+                <div style="color:#cbd5e1;font-weight:500;margin-bottom:.5rem">${escHtml(fileName)}</div>
+                <div style="font-size:.75rem;color:#94a3b8">
+                    Type: ${mimeType}<br>
+                    Size: ${formatFileSize(asset.file_size || 0)}
+                </div>
+            </div>
+        `;
+    } else {
+        // Generic file
+        content = `
+            <div style="text-align:center">
+                <i class="bi bi-file" style="font-size:3rem;color:#3b82f6;margin-bottom:1rem;display:block"></i>
+                <div style="color:#cbd5e1;font-weight:500;margin-bottom:.5rem">${escHtml(fileName)}</div>
+                <div style="font-size:.75rem;color:#94a3b8;margin-bottom:1rem">
+                    Type: ${mimeType}<br>
+                    Size: ${formatFileSize(asset.file_size || 0)}
+                </div>
+                <a href="<?= base_url('/') ?>${filePath}" class="btn btn-sm btn-primary" download>
+                    <i class="bi bi-download"></i> Download
+                </a>
+            </div>
+        `;
+    }
+    
+    bodyEl.innerHTML = content;
+}
+
+function nextAsset() {
+    if (currentAssetIndex < currentAssets.length - 1) {
+        displayAsset(currentAssetIndex + 1);
+    }
+}
+
+function previousAsset() {
+    if (currentAssetIndex > 0) {
+        displayAsset(currentAssetIndex - 1);
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function escHtml(str) {
+    const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+    return str.replace(/[&<>"']/g, m => map[m]);
+}
 
     document.querySelectorAll('#plMenuView, #plMenuEdit, #plMenuProcesses').forEach(el => {
         el && el.addEventListener('click', () => menu.classList.remove('is-open'));

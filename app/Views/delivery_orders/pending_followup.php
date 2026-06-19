@@ -181,7 +181,6 @@ Pending Shipment Follow-up
                         </td>
                         <td>
                             <?php if (!empty($do['tracking_number'])): ?>
-                                <span class="d-inline-flex align-items-center gap-1">
                                 <?php if (!empty($do['tracking_url'])): ?>
                                     <a href="<?= esc($do['tracking_url']) ?>" target="_blank" rel="noopener" class="text-decoration-none">
                                         <?= esc($do['tracking_number']) ?>
@@ -190,18 +189,6 @@ Pending Shipment Follow-up
                                 <?php else: ?>
                                     <?= esc($do['tracking_number']) ?>
                                 <?php endif; ?>
-                                    <button
-                                        type="button"
-                                        class="btn btn-link p-0 js-copy-tracking"
-                                        data-tracking="<?= esc($do['tracking_number']) ?>"
-                                        title="Copy tracking number"
-                                        aria-label="Copy tracking number"
-                                        style="font-size:.82rem;line-height:1;color:#60a5fa;"
-                                    >
-                                        <i class="bi bi-clipboard"></i>
-                                    </button>
-                                    <a href="#" class="small js-copy-tracking" data-tracking="<?= esc($do['tracking_number']) ?>" style="text-decoration:none;">Copy</a>
-                                </span>
                             <?php else: ?>
                                 <span class="badge bg-warning text-dark">Missing</span>
                             <?php endif; ?>
@@ -224,13 +211,8 @@ Pending Shipment Follow-up
                             </span>
                         </td>
                         <td class="text-nowrap">
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-success js-open-status-modal"
-                                data-do-id="<?= (int)$do['do_id'] ?>"
-                                data-do-number="<?= esc($do['do_number']) ?>"
-                            >
-                                <i class="bi bi-check2-circle me-1"></i>Update Status
+                            <button type="button" class="btn btn-sm btn-success js-mark-delivered" data-do-id="<?= (int)$do['do_id'] ?>">
+                                <i class="bi bi-check2-circle me-1"></i>Mark Delivered
                             </button>
                             <a href="<?= site_url('delivery-orders/view/' . $doIdentifier) ?>" class="btn btn-sm btn-outline-primary">Open</a>
                         </td>
@@ -240,60 +222,6 @@ Pending Shipment Follow-up
         </table>
     </div>
 <?php endif; ?>
-</div>
-
-<div class="modal fade" id="pendingStatusModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content" style="background:var(--cl-surface,#1e293b);border:1px solid var(--cl-border,#334155);">
-            <div class="modal-header" style="border-bottom-color:var(--cl-border,#334155);">
-                <h5 class="modal-title">Update Delivery Status <small class="text-muted" id="pendingModalDoLabel"></small></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="pendingModalDoId" value="">
-                <div class="row g-3">
-                    <div class="col-md-5">
-                        <label class="form-label">Status <span class="text-danger">*</span></label>
-                        <select class="form-select" id="pendingDeliveryStatusSelect">
-                            <option value="">-- Select Status --</option>
-                            <option value="delivered">Delivered Successfully</option>
-                            <option value="partial_delivery">Partial Delivery</option>
-                            <option value="delayed">Delayed</option>
-                            <option value="lost">Lost in Transit</option>
-                            <option value="damaged_in_transit">Damaged in Transit</option>
-                            <option value="customer_refused">Customer Refused</option>
-                            <option value="returned_to_sender">Returned to Sender</option>
-                        </select>
-                    </div>
-                    <div class="col-md-7">
-                        <label class="form-label">Comments</label>
-                        <input type="text" class="form-control" id="pendingDeliveryNotesInput" placeholder="Add remarks, receiver name, issue details, etc.">
-                    </div>
-                </div>
-
-                <div id="pendingDeliveredExtraFields" class="mt-3" style="display:none;padding-top:.75rem;border-top:1px solid var(--cl-border,#334155);">
-                    <div class="row g-3">
-                        <div class="col-md-5">
-                            <label class="form-label">Delivery Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" id="pendingDeliveredAtInput" max="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
-                        </div>
-                        <div class="col-md-7">
-                            <label class="form-label">Delivery Screenshot / Proof</label>
-                            <input type="file" class="form-control" id="pendingDeliveryScreenshotInput" accept="image/*">
-                            <div class="form-text">Optional. JPG/PNG/GIF/WEBP up to 5MB.</div>
-                        </div>
-                    </div>
-                </div>
-                <div id="pendingStatusMsg" class="mt-3" style="min-height:1rem;font-size:.85rem;"></div>
-            </div>
-            <div class="modal-footer" style="border-top-color:var(--cl-border,#334155);">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="pendingSaveStatusBtn">
-                    <i class="bi bi-check-circle me-1"></i>Save Status
-                </button>
-            </div>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -306,53 +234,6 @@ Pending Shipment Follow-up
     const kpiPending = document.getElementById('kpiPending');
     const kpiOverdue = document.getElementById('kpiOverdue');
     const kpiMissing = document.getElementById('kpiMissingTracking');
-    const modalEl = document.getElementById('pendingStatusModal');
-    const modalDoId = document.getElementById('pendingModalDoId');
-    const modalDoLabel = document.getElementById('pendingModalDoLabel');
-    const statusSelect = document.getElementById('pendingDeliveryStatusSelect');
-    const notesInput = document.getElementById('pendingDeliveryNotesInput');
-    const deliveredAtInput = document.getElementById('pendingDeliveredAtInput');
-    const screenshotInput = document.getElementById('pendingDeliveryScreenshotInput');
-    const deliveredExtra = document.getElementById('pendingDeliveredExtraFields');
-    const saveBtn = document.getElementById('pendingSaveStatusBtn');
-    const statusMsg = document.getElementById('pendingStatusMsg');
-    const statusModal = (window.bootstrap && modalEl) ? new bootstrap.Modal(modalEl) : null;
-
-    function openStatusModal() {
-        if (!modalEl) return;
-        if (statusModal) {
-            statusModal.show();
-            return;
-        }
-        modalEl.style.display = 'block';
-        modalEl.classList.add('show');
-        modalEl.removeAttribute('aria-hidden');
-        modalEl.setAttribute('aria-modal', 'true');
-        document.body.classList.add('modal-open');
-
-        if (!document.getElementById('pendingStatusModalBackdrop')) {
-            const backdrop = document.createElement('div');
-            backdrop.id = 'pendingStatusModalBackdrop';
-            backdrop.className = 'modal-backdrop fade show';
-            backdrop.addEventListener('click', closeStatusModal);
-            document.body.appendChild(backdrop);
-        }
-    }
-
-    function closeStatusModal() {
-        if (!modalEl) return;
-        if (statusModal) {
-            statusModal.hide();
-            return;
-        }
-        modalEl.classList.remove('show');
-        modalEl.style.display = 'none';
-        modalEl.setAttribute('aria-hidden', 'true');
-        modalEl.removeAttribute('aria-modal');
-        document.body.classList.remove('modal-open');
-        const backdrop = document.getElementById('pendingStatusModalBackdrop');
-        if (backdrop) backdrop.remove();
-    }
 
     function updateCountersAfterRemove(row) {
         if (kpiPending) {
@@ -376,39 +257,19 @@ Pending Shipment Follow-up
         wrap.innerHTML = '<div class="pf-empty" id="pendingEmptyState"><i class="bi bi-check2-circle" style="font-size:2.2rem;color:#34d399"></i><div class="mt-2">No pending shipments. Great job.</div></div>';
     }
 
-    async function updateDeliveryStatus(doId) {
+    async function markDelivered(btn) {
+        const doId = btn.getAttribute('data-do-id');
         if (!doId) return;
 
-        const row = table.querySelector('tr.pending-row[data-do-id="' + String(doId) + '"]');
-        const st = (statusSelect?.value || '').trim();
-        const notes = (notesInput?.value || '').trim();
-        const deliveredAt = (deliveredAtInput?.value || '').trim();
-
-        if (!st) {
-            if (statusMsg) statusMsg.innerHTML = '<span class="text-danger">Please select a status.</span>';
-            return;
-        }
-        if (st === 'delivered' && !deliveredAt) {
-            if (statusMsg) statusMsg.innerHTML = '<span class="text-danger">Please select delivery date.</span>';
-            return;
-        }
-
-        if (saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
-        }
-        if (statusMsg) statusMsg.innerHTML = '';
+        const row = btn.closest('tr.pending-row');
+        btn.disabled = true;
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Updating...';
 
         try {
             const fd = new FormData();
-            fd.append('delivery_status', st);
-            fd.append('delivery_notes', notes);
-            if (st === 'delivered') {
-                fd.append('delivered_at', deliveredAt);
-                if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
-                    fd.append('delivery_screenshot', screenshotInput.files[0]);
-                }
-            }
+            fd.append('delivery_status', 'delivered');
+            fd.append('delivery_notes', 'Marked delivered from Pending Follow-up monitor');
             fd.append(csrfName, csrfHash);
 
             const res = await fetch('<?= site_url('delivery-orders/update-delivery-status/') ?>' + doId, {
@@ -416,145 +277,25 @@ Pending Shipment Follow-up
                 body: fd,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-
-            const raw = await res.text();
-            let data = null;
-            try {
-                data = JSON.parse(raw);
-            } catch (e) {
-                throw new Error('Server response was not valid JSON. HTTP ' + res.status);
-            }
-
+            const data = await res.json();
             if (!data || !data.success) {
                 throw new Error((data && data.message) ? data.message : 'Failed to update status');
             }
 
-            if (st === 'delivered') {
-                if (row) {
-                    updateCountersAfterRemove(row);
-                    row.remove();
-                }
-                ensureEmptyState();
-            } else {
-                if (row) {
-                    const pill = row.querySelector('.pf-status-pill');
-                    if (pill) {
-                        pill.innerHTML = '<i class="bi bi-truck"></i> ' + st.replaceAll('_', ' ').replace(/\b\w/g, function(m){ return m.toUpperCase(); });
-                    }
-                }
+            if (row) {
+                updateCountersAfterRemove(row);
+                row.remove();
             }
-
-            closeStatusModal();
+            ensureEmptyState();
         } catch (e) {
-            if (statusMsg) {
-                statusMsg.innerHTML = '<span class="text-danger">Could not update status: ' + e.message + '</span>';
-            } else {
-                alert('Could not update status: ' + e.message);
-            }
-        } finally {
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Save Status';
-            }
+            alert('Could not mark delivered: ' + e.message);
+            btn.disabled = false;
+            btn.innerHTML = oldHtml;
         }
     }
 
-    statusSelect?.addEventListener('change', function() {
-        if (deliveredExtra) {
-            deliveredExtra.style.display = this.value === 'delivered' ? 'block' : 'none';
-        }
-    });
-
-    document.querySelectorAll('.js-open-status-modal').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            const doId = btn.getAttribute('data-do-id') || '';
-            const doNumber = btn.getAttribute('data-do-number') || '';
-            if (modalDoId) modalDoId.value = doId;
-            if (modalDoLabel) modalDoLabel.textContent = doNumber ? '(' + doNumber + ')' : '';
-            if (statusSelect) statusSelect.value = 'delivered';
-            if (notesInput) notesInput.value = '';
-            if (deliveredAtInput) deliveredAtInput.value = '<?= date('Y-m-d') ?>';
-            if (screenshotInput) screenshotInput.value = '';
-            if (statusMsg) statusMsg.innerHTML = '';
-            if (deliveredExtra) deliveredExtra.style.display = 'block';
-            openStatusModal();
-        });
-    });
-
-    modalEl?.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function(el) {
-        el.addEventListener('click', function(e) {
-            if (!statusModal) {
-                e.preventDefault();
-                closeStatusModal();
-            }
-        });
-    });
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && modalEl?.classList.contains('show')) {
-            closeStatusModal();
-        }
-    });
-
-    saveBtn?.addEventListener('click', function() {
-        updateDeliveryStatus(modalDoId?.value || '');
-    });
-
-    function copyTracking(value, triggerEl) {
-        const text = (value || '').trim();
-        if (!text) return;
-
-        const setCopiedState = function() {
-            if (!triggerEl) return;
-            const icon = triggerEl.querySelector('i');
-            if (icon) {
-                icon.className = 'bi bi-clipboard-check';
-                icon.style.color = '#34d399';
-                setTimeout(function() {
-                    icon.className = 'bi bi-clipboard';
-                    icon.style.color = '';
-                }, 1200);
-            }
-            if (!icon) {
-                const oldText = triggerEl.textContent;
-                triggerEl.textContent = 'Copied';
-                setTimeout(function() { triggerEl.textContent = oldText; }, 1200);
-            }
-        };
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(setCopiedState).catch(function() {
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.focus();
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                setCopiedState();
-            });
-            return;
-        }
-
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        setCopiedState();
-    }
-
-    document.querySelectorAll('.js-copy-tracking').forEach(function(el) {
-        el.addEventListener('click', function(e) {
-            e.preventDefault();
-            copyTracking(el.getAttribute('data-tracking') || '', el);
-        });
+    document.querySelectorAll('.js-mark-delivered').forEach(function(btn) {
+        btn.addEventListener('click', function() { markDelivered(btn); });
     });
 })();
 </script>

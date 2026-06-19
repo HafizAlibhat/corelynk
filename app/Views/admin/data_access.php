@@ -61,6 +61,66 @@
                     </div>
                 </div>
             </div>
+    </div>
+
+    <!-- Product Visibility Restrictions -->
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-box-seam"></i>
+                    <strong>Products Visibility</strong>
+                    <span class="badge bg-secondary ms-auto">Optional restrictions</span>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">Control which product types and categories users with this role can see in the Products list.</p>
+
+                    <div class="form-check form-switch mb-4">
+                        <input class="form-check-input" type="checkbox" id="product_hide_services"
+                               name="product_hide_services" value="1"
+                               <?= !empty($settings['product_hide_services']) ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="product_hide_services">
+                            <strong>Hide Service products</strong>
+                            <span class="d-block text-muted small">Users will not see products with type = Service (e.g. shipping, subcontracting services)</span>
+                        </label>
+                    </div>
+
+                    <hr>
+                    <label class="form-label fw-semibold"><i class="bi bi-tags me-1"></i>Allowed Categories</label>
+                    <p class="small text-muted mb-2">
+                        Check only the categories this role is allowed to see.
+                        <strong>Leave all unchecked to allow all categories</strong> (no restriction).
+                    </p>
+                    <?php if (!empty($productCategories)): ?>
+                    <div class="row g-2">
+                        <?php foreach ($productCategories as $cat): ?>
+                        <div class="col-sm-6 col-md-4 col-lg-3">
+                            <div class="form-check">
+                                <input class="form-check-input cat-cb" type="checkbox"
+                                       id="cat_<?= (int) $cat['id'] ?>"
+                                       name="product_allowed_categories[]"
+                                       value="<?= (int) $cat['id'] ?>"
+                                       <?= in_array((int) $cat['id'], $savedCategoryIds ?? []) ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="cat_<?= (int) $cat['id'] ?>">
+                                    <?= esc($cat['name']) ?>
+                                </label>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="mt-2 d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.cat-cb').forEach(c=>c.checked=true)">
+                            <i class="bi bi-check-all me-1"></i>Select All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.cat-cb').forEach(c=>c.checked=false)">
+                            <i class="bi bi-x me-1"></i>Clear All (no restriction)
+                        </button>
+                    </div>
+                    <?php else: ?>
+                    <p class="text-muted small">No product categories found.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
 

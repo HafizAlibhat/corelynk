@@ -10,7 +10,7 @@ $do       = $delivery_order;
 $status   = $do['status'] ?? 'draft';
 $doId     = (int)($do['id'] ?? 0);
 $isDraft  = ($status === 'draft');
-$isConfirmed = in_array($status, ['confirmed', 'delivered'], true);
+$isConfirmed = in_array($status, ['confirmed', 'shipped', 'delivered'], true);
 $hasTracking = !empty($do['tracking_number']);
 $deliveryStatus = $do['delivery_status'] ?? null;
 $estDays = (int)($do['estimated_delivery_days'] ?? 0);
@@ -43,6 +43,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
 .do-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .do-pill-draft{background:rgba(250,204,21,.15);color:#fbbf24;border:1px solid rgba(250,204,21,.25)}
 .do-pill-confirmed{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.2)}
+.do-pill-shipped{background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.2)}
 .do-pill-delivered{background:rgba(96,165,250,.12);color:#60a5fa;border:1px solid rgba(96,165,250,.2)}
 .do-pill-overdue{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.2)}
 .do-pill-track{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
@@ -156,6 +157,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                 <button type="button" class="btn btn-sm btn-primary" id="updateDeliveryBtn"><i class="bi bi-clipboard-check me-1"></i>Update Delivery Status</button>
             <?php endif; ?>
         <?php endif; ?>
+        <a href="<?= site_url('delivery-orders/print/' . (!empty($do['public_id']) ? $do['public_id'] : $doId)) ?>" class="btn btn-sm btn-outline-dark" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Print</a>
         <a href="<?= site_url('delivery-orders') ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>All DOs</a>
     </div>
 </div>
@@ -201,7 +203,6 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                     <dl class="do-detail"><dt>Tracking #</dt><dd>
                     <?php if (!empty($do['tracking_url'])): ?><a href="<?= esc($do['tracking_url']) ?>" target="_blank" rel="noopener" class="fw-semibold"><?= esc($do['tracking_number']) ?> <i class="bi bi-box-arrow-up-right" style="font-size:.65rem"></i></a>
                     <?php else: ?><span class="fw-semibold"><?= esc($do['tracking_number']) ?></span><?php endif; ?>
-                    <button type="button" class="copy-tracking-btn btn btn-link p-0 ms-1" data-tracking="<?= esc($do['tracking_number']) ?>" title="Copy tracking number" style="font-size:.8rem;color:#60a5fa;vertical-align:middle;line-height:1;"><i class="bi bi-clipboard"></i></button>
                     </dd></dl>
                 <?php else: ?>
                     <div style="font-size:.8rem;color:var(--cl-text-muted,#64748b)"><i class="bi bi-hourglass-split me-1"></i>Tracking not yet added</div>
@@ -338,50 +339,19 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
 <!-- ════ DELIVERY TRACKING (confirmed only) ════ -->
 <?php if ($isConfirmed): ?>
 <?php
-    // Delivery timeline and performance calculations
+    // Calculate days since shipped
     $daysSinceShipped = 0;
-    $actualDaysToDeliver = 0;
     $estDeliveryDate = null;
     $isOverdue = false;
-    $deliveryPerfLabel = null;
-    $deliveryPerfColor = '#34d399';
-    $deliveryPerfDelta = 0;
-    $deliveryCompletedAt = null;
-    if (!empty($do['delivered_at'])) {
-        $deliveryCompletedAt = strtotime($do['delivered_at'] . ' 23:59:59');
-    } elseif (!empty($do['delivery_confirmed_at'])) {
-        $deliveryCompletedAt = strtotime($do['delivery_confirmed_at']);
-    }
-
     if ($shippedAt) {
         $shippedTime = strtotime($shippedAt);
         $daysSinceShipped = (int)floor((time() - $shippedTime) / 86400);
-        $actualDaysToDeliver = (int)floor(((($deliveryCompletedAt ?: time()) - $shippedTime)) / 86400);
-        if ($actualDaysToDeliver < 0) {
-            $actualDaysToDeliver = 0;
-        }
         if ($estDays > 0) {
             $estDeliveryDate = date('d M Y', strtotime("+{$estDays} days", $shippedTime));
             $isOverdue = $daysSinceShipped > $estDays && !$isDelivered;
-
-            if ($isDelivered) {
-                $deliveryPerfDelta = $actualDaysToDeliver - $estDays;
-                if ($deliveryPerfDelta > 0) {
-                    $deliveryPerfLabel = 'Late by ' . $deliveryPerfDelta . ' day' . ($deliveryPerfDelta > 1 ? 's' : '');
-                    $deliveryPerfColor = '#f87171';
-                } elseif ($deliveryPerfDelta < 0) {
-                    $earlyDays = abs($deliveryPerfDelta);
-                    $deliveryPerfLabel = 'Delivered ' . $earlyDays . ' day' . ($earlyDays > 1 ? 's' : '') . ' early';
-                    $deliveryPerfColor = '#34d399';
-                } else {
-                    $deliveryPerfLabel = 'Delivered on time';
-                    $deliveryPerfColor = '#22c55e';
-                }
-            }
         }
     }
-    $daysProgressBase = $isDelivered ? $actualDaysToDeliver : $daysSinceShipped;
-    $daysProgress = ($estDays > 0) ? min(100, round(($daysProgressBase / $estDays) * 100)) : 0;
+    $daysProgress = ($estDays > 0) ? min(100, round(($daysSinceShipped / $estDays) * 100)) : 0;
 
     // Delivery status config
     $currentStatusCfg = $statusConfig[$deliveryStatus] ?? null;
@@ -399,7 +369,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
             <!-- Left: Shipping Progress -->
             <div class="col-md-5">
                 <div style="font-size:.78rem;font-weight:600;color:var(--cl-text-secondary,#cbd5e1);margin-bottom:.8rem;">
-                    <i class="bi bi-clock-history me-1"></i><?= $isDelivered ? 'Delivery Performance' : 'Shipping Progress' ?>
+                    <i class="bi bi-clock-history me-1"></i>Shipping Progress
                 </div>
 
                 <div class="d-flex justify-content-between" style="font-size:.75rem;color:var(--cl-text-muted,#64748b);margin-bottom:4px;">
@@ -413,19 +383,13 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                 </div>
                 <?php endif; ?>
 
-                <?php if ($isDelivered && $deliveryPerfLabel): ?>
-                <div style="margin-bottom:.6rem;font-size:.75rem;font-weight:700;color:<?= $deliveryPerfColor ?>;">
-                    <i class="bi bi-graph-up-arrow me-1"></i><?= esc($deliveryPerfLabel) ?>
-                </div>
-                <?php endif; ?>
-
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
                     <div style="background:var(--cl-surface-alt,#162033);border-radius:6px;padding:.5rem .7rem;text-align:center;">
-                        <div style="font-size:1.3rem;font-weight:700;color:var(--cl-text-primary,#f1f5f9);"><?= $isDelivered ? $actualDaysToDeliver : $daysSinceShipped ?></div>
-                        <div style="font-size:.68rem;color:var(--cl-text-muted,#64748b);"><?= $isDelivered ? 'Days to Deliver' : 'Days Since Shipped' ?></div>
+                        <div style="font-size:1.3rem;font-weight:700;color:var(--cl-text-primary,#f1f5f9);"><?= $daysSinceShipped ?></div>
+                        <div style="font-size:.68rem;color:var(--cl-text-muted,#64748b);">Days Since Shipped</div>
                     </div>
                     <div style="background:var(--cl-surface-alt,#162033);border-radius:6px;padding:.5rem .7rem;text-align:center;">
-                        <div style="font-size:1.3rem;font-weight:700;color:<?= ($isDelivered && $deliveryPerfLabel) ? $deliveryPerfColor : ($isOverdue ? '#f87171' : '#818cf8') ?>;"><?= $estDays > 0 ? $estDays : '—' ?></div>
+                        <div style="font-size:1.3rem;font-weight:700;color:<?= $isOverdue ? '#f87171' : '#818cf8' ?>;"><?= $estDays > 0 ? $estDays : '—' ?></div>
                         <div style="font-size:.68rem;color:var(--cl-text-muted,#64748b);">Estimated Days</div>
                     </div>
                 </div>
@@ -453,35 +417,17 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                         <div style="font-size:.9rem;font-weight:700;color:<?= $currentStatusCfg['color'] ?>;">
                             <i class="bi bi-<?= $currentStatusCfg['icon'] ?> me-1"></i><?= $currentStatusCfg['label'] ?>
                         </div>
-                        <?php if (!empty($do['delivered_at'])): ?>
-                            <div style="font-size:.78rem;color:var(--cl-text-secondary,#cbd5e1);margin-top:4px;">
-                                <i class="bi bi-calendar-check me-1"></i>Delivered on: <strong><?= date('d M Y', strtotime($do['delivered_at'])) ?></strong>
-                            </div>
-                        <?php endif; ?>
                         <?php if (!empty($do['delivery_confirmed_at'])): ?>
                             <div style="font-size:.72rem;color:var(--cl-text-muted,#64748b);margin-top:3px;">
                                 Updated: <?= date('d M Y, H:i', strtotime($do['delivery_confirmed_at'])) ?>
                                 <?php if ($shippedAt): ?>
-                                    &middot; <?= $actualDaysToDeliver ?> day<?= $actualDaysToDeliver !== 1 ? 's' : '' ?> after shipping
+                                    &middot; <?= (int)floor((strtotime($do['delivery_confirmed_at']) - strtotime($shippedAt)) / 86400) ?> days after shipping
                                 <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-                        <?php if ($isDelivered && $deliveryPerfLabel): ?>
-                            <div style="font-size:.75rem;color:<?= $deliveryPerfColor ?>;margin-top:4px;">
-                                <i class="bi bi-speedometer2 me-1"></i><?= esc($deliveryPerfLabel) ?>
                             </div>
                         <?php endif; ?>
                         <?php if (!empty($do['delivery_notes'])): ?>
                             <div style="font-size:.78rem;color:var(--cl-text-secondary,#cbd5e1);margin-top:.5rem;padding-top:.5rem;border-top:1px solid <?= $currentStatusCfg['color'] ?>22;">
                                 <i class="bi bi-chat-left-text me-1"></i><?= esc($do['delivery_notes']) ?>
-                            </div>
-                        <?php endif; ?>
-                        <?php if (!empty($do['delivery_screenshot'])): ?>
-                            <div style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid <?= $currentStatusCfg['color'] ?>22;">
-                                <div style="font-size:.72rem;color:var(--cl-text-muted,#64748b);margin-bottom:4px;"><i class="bi bi-image me-1"></i>Delivery Screenshot</div>
-                                <a href="<?= base_url($do['delivery_screenshot']) ?>" target="_blank" rel="noopener">
-                                    <img src="<?= base_url($do['delivery_screenshot']) ?>" alt="Delivery Screenshot" style="max-height:100px;max-width:200px;border-radius:6px;border:1px solid <?= $currentStatusCfg['color'] ?>44;object-fit:cover;" onerror="this.parentElement.style.display='none'">
-                                </a>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -517,26 +463,8 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                             </select>
                         </div>
                         <div class="col-md-7">
-                            <label class="form-label" style="font-size:.75rem;font-weight:600;">Comments <span class="text-muted fw-normal">(optional)</span></label>
+                            <label class="form-label" style="font-size:.75rem;font-weight:600;">Notes <span class="text-muted fw-normal">(optional)</span></label>
                             <input type="text" class="form-control form-control-sm" id="deliveryNotesInput" placeholder="e.g. Received by customer, signed by Ali">
-                        </div>
-                    </div>
-                    <!-- Extra fields shown only when "Delivered Successfully" is selected -->
-                    <div id="deliveredExtraFields" style="display:none;border-top:1px solid rgba(99,102,241,.2);padding-top:.75rem;margin-top:.25rem;">
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-5">
-                                <label class="form-label" style="font-size:.75rem;font-weight:600;"><i class="bi bi-calendar-check me-1"></i>Delivery Date <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control form-control-sm" id="deliveredAtInput" max="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>">
-                                <div class="form-text" style="font-size:.7rem;">Date when item was delivered</div>
-                            </div>
-                            <div class="col-md-7">
-                                <label class="form-label" style="font-size:.75rem;font-weight:600;"><i class="bi bi-image me-1"></i>Delivery Screenshot <span class="text-muted fw-normal">(optional)</span></label>
-                                <input type="file" class="form-control form-control-sm" id="deliveryScreenshotInput" accept="image/*">
-                                <div class="form-text" style="font-size:.7rem;">Upload proof of delivery (JPG, PNG, max 5MB)</div>
-                                <div id="screenshotPreviewWrap" style="display:none;margin-top:6px;">
-                                    <img id="screenshotPreview" src="" alt="Preview" style="max-height:80px;max-width:160px;border-radius:6px;border:1px solid var(--cl-border,#334155);object-fit:cover;">
-                                </div>
-                            </div>
                         </div>
                     </div>
                     <div class="d-flex gap-2">
@@ -572,7 +500,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                 $img = $line['product_image_url'] ?? base_url('assets/images/no-image.png');
             ?>
             <tr>
-                <td><img src="<?= esc($img) ?>" alt="" style="width:40px;height:32px;object-fit:cover;border-radius:4px;opacity:.85" onerror="this.src='<?= base_url('assets/images/no-image.png') ?>'"></td>
+                <td><img src="<?= esc($img) ?>" alt="" class="js-product-hover-thumb" data-preview-src="<?= esc($img) ?>" style="width:40px;height:40px;object-fit:cover;border-radius:4px;opacity:.85" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>');"></td>
                 <td>
                     <div class="do-pcode"><?= esc($line['product_code'] ?? '') ?></div>
                     <div class="do-pname"><?= esc($line['product_name'] ?? '') ?></div>
@@ -1348,65 +1276,15 @@ document.getElementById('updateDeliveryBtn')?.addEventListener('click',()=>{
     if(dsForm){dsForm.style.display=dsForm.style.display==='none'?'block':'none';if(dsForm.style.display==='block')dsForm.scrollIntoView({behavior:'smooth',block:'nearest'});}
 });
 document.getElementById('cancelDeliveryStatusBtn')?.addEventListener('click',()=>{if(dsForm)dsForm.style.display='none';});
-/* ── Show/hide delivered extra fields based on status ── */
-document.getElementById('deliveryStatusSelect')?.addEventListener('change',function(){
-    const extraFields=document.getElementById('deliveredExtraFields');
-    if(extraFields){extraFields.style.display=this.value==='delivered'?'block':'none';}
-});
-
-/* ── Screenshot preview ── */
-document.getElementById('deliveryScreenshotInput')?.addEventListener('change',function(){
-    const preview=document.getElementById('screenshotPreview'),wrap=document.getElementById('screenshotPreviewWrap');
-    if(this.files&&this.files[0]&&preview&&wrap){
-        const r=new FileReader();r.onload=e=>{preview.src=e.target.result;wrap.style.display='block';};r.readAsDataURL(this.files[0]);
-    }else if(wrap){wrap.style.display='none';}
-});
-
 document.getElementById('saveDeliveryStatusBtn')?.addEventListener('click',async function(){
     const st=document.getElementById('deliveryStatusSelect')?.value||'',
           nt=document.getElementById('deliveryNotesInput')?.value.trim()||'',
           msg=document.getElementById('deliveryStatusMsg');
     if(!st){if(msg)msg.innerHTML='<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Please select a status</span>';return;}
-
-    const fd=new FormData();
-    fd.append('delivery_status',st);
-    fd.append('delivery_notes',nt);
-    fd.append('<?= csrf_token() ?>','<?= csrf_hash() ?>');
-
-    if(st==='delivered'){
-        const dat=document.getElementById('deliveredAtInput')?.value||'';
-        if(!dat){if(msg)msg.innerHTML='<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Please select the delivery date</span>';return;}
-        fd.append('delivered_at',dat);
-        const sf=document.getElementById('deliveryScreenshotInput');
-        if(sf&&sf.files&&sf.files[0]){fd.append('delivery_screenshot',sf.files[0]);}
-    }
-
     this.disabled=true;this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
-    try{
-        const resp=await fetch('<?= site_url("delivery-orders/update-delivery-status/") ?>'+DO_ID,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}});
-        const d=await resp.json();
+    try{const d=await post('<?= site_url("delivery-orders/update-delivery-status/") ?>'+DO_ID,{delivery_status:st,delivery_notes:nt});
         if(d.success)location.reload();else{if(msg)msg.innerHTML='<span class="text-danger">'+(d.message||'Failed')+'</span>';this.disabled=false;this.innerHTML='<i class="bi bi-check-circle me-1"></i>Save Status';}
     }catch(e){if(msg)msg.innerHTML='<span class="text-danger">Connection error</span>';this.disabled=false;this.innerHTML='<i class="bi bi-check-circle me-1"></i>Save Status';}
-});
-
-/* ── Copy tracking number ── */
-document.querySelectorAll('.copy-tracking-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-        const tn=this.dataset.tracking||'';
-        if(!tn)return;
-        navigator.clipboard.writeText(tn).then(()=>{
-            const icon=this.querySelector('i');
-            if(icon){icon.className='bi bi-clipboard-check';icon.style.color='#34d399';}
-            setTimeout(()=>{if(icon){icon.className='bi bi-clipboard';icon.style.color='';}},2000);
-        }).catch(()=>{
-            // fallback
-            const ta=document.createElement('textarea');ta.value=tn;ta.style.position='fixed';ta.style.opacity='0';
-            document.body.appendChild(ta);ta.focus();ta.select();document.execCommand('copy');document.body.removeChild(ta);
-            const icon=this.querySelector('i');
-            if(icon){icon.className='bi bi-clipboard-check';icon.style.color='#34d399';}
-            setTimeout(()=>{if(icon){icon.className='bi bi-clipboard';icon.style.color='';}},2000);
-        });
-    });
 });
 
 /* ── Parcel Image Upload (confirmed state) ── */

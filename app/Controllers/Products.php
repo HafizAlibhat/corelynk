@@ -6,6 +6,7 @@ use App\Models\ProductModel;
 use App\Models\ProductAttributeModel;
 use App\Models\WorkOrderModel;
 use App\Models\ComponentModel;
+use App\Libraries\RoleDataAccess;
 
 class Products extends BaseController
 {
@@ -70,6 +71,69 @@ class Products extends BaseController
     private function weightUnitOptions(): array
     {
         return ['KG', 'G', 'MG', 'LB', 'OZ', 'TON'];
+    }
+
+    private function userHasRoleSlug(string $slug): bool
+    {
+        $slug = strtolower(trim($slug));
+        if ($slug === '') {
+            return false;
+        }
+
+        try {
+            $sessionRole = strtolower(trim((string)($this->session->get('role') ?? '')));
+            if ($sessionRole === $slug) {
+                return true;
+            }
+
+            $userId = (int)($this->currentUser['id'] ?? 0);
+            if ($userId <= 0) {
+                return false;
+            }
+
+            $db = \Config\Database::connect();
+            $row = $db->table('user_roles ur')
+                ->join('roles r', 'r.id = ur.role_id')
+                ->where('ur.user_id', $userId)
+                ->where('LOWER(r.slug)', $slug)
+                ->select('ur.id')
+                ->get()
+                ->getRowArray();
+
+            if (!empty($row)) {
+                return true;
+            }
+
+            $primaryRoleId = (int)($this->currentUser['role_id'] ?? 0);
+            if ($primaryRoleId > 0) {
+                $primary = $db->table('roles')->where('id', $primaryRoleId)->select('slug')->get()->getRowArray();
+                if (strtolower(trim((string)($primary['slug'] ?? ''))) === $slug) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $_) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private function canViewBusinessData(): bool
+    {
+        // Explicit permission can always allow sensitive overview blocks.
+        if ($this->hasPermission('products.sensitive_overview')) {
+            return true;
+        }
+
+        // Designers are intentionally restricted unless explicitly granted above.
+        if ($this->userHasRoleSlug('designer') || $this->userHasRoleSlug('desinger')) {
+            return false;
+        }
+
+        // Commercial/admin-like users can view business metrics.
+        return $this->hasPermission('products.edit')
+            || $this->hasPermission('invoices.read')
+            || $this->hasPermission('accounting.read');
     }
 
     /**
@@ -268,6 +332,56 @@ class Products extends BaseController
     }
 
     /**
+     * Parse attribute values from DB safely.
+     * Supports valid JSON arrays and malformed JSON/control-character fallbacks.
+     *
+     * @return array<int,string>
+     */
+    private function parseAttributeValues($rawValues): array
+    {
+        if (is_array($rawValues)) {
+            return array_values(array_filter(array_map(static fn($v) => trim((string) $v), $rawValues), static fn($v) => $v !== ''));
+        }
+
+        $raw = trim((string) $rawValues);
+        if ($raw === '') {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return array_values(array_filter(array_map(static fn($v) => trim((string) $v), $decoded), static fn($v) => $v !== ''));
+            }
+        } catch (\Throwable $_) {
+        }
+
+        $sanitized = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', ' ', $raw);
+        if ($sanitized !== null) {
+            $sanitized = str_replace(["\r\n", "\r", "\n"], '\\n', $sanitized);
+            try {
+                $decoded = json_decode($sanitized, true);
+                if (is_array($decoded)) {
+                    return array_values(array_filter(array_map(static fn($v) => trim((string) $v), $decoded), static fn($v) => $v !== ''));
+                }
+            } catch (\Throwable $_) {
+            }
+        }
+
+        if (strlen($raw) >= 2 && $raw[0] === '[' && $raw[strlen($raw) - 1] === ']') {
+            $matches = [];
+            if (preg_match_all('/"((?:[^"\\\\]|\\\\.)*)"/', $raw, $matches) && !empty($matches[1])) {
+                $vals = array_map(static fn($v) => trim((string) stripcslashes($v)), $matches[1]);
+                return array_values(array_filter($vals, static fn($v) => $v !== ''));
+            }
+        }
+
+        $parts = preg_split('/[\r\n,]+/', $raw) ?: [];
+        $vals = array_map(static fn($v) => trim((string) $v), $parts);
+        return array_values(array_filter($vals, static fn($v) => $v !== ''));
+    }
+
+    /**
      * POST /products/backfill-services
      * Create service products for any shipping_services rows that have product_id = NULL.
      * Safe to call multiple times (idempotent by carrier+service_name lookup).
@@ -338,7 +452,23 @@ class Products extends BaseController
         $categoryFilter = $this->request->getGet('category');
         $statusFilter = $this->request->getGet('status');
         $typeFilter = $this->request->getGet('type');
+        $hasAssets = $this->request->getGet('has_assets');
         $perPage = (int) ($this->request->getGet('per_page') ?? 20);
+        $sortBy = trim((string)($this->request->getGet('sort_by') ?? ''));
+
+        $allowedPerPage = [20, 50, 100, 200];
+        if (!in_array($perPage, $allowedPerPage, true)) {
+            $perPage = 20;
+        }
+
+        $allowedSorts = ['recent', 'oldest', 'most_sold', 'ready_stock', 'most_purchased', 'name_az'];
+        if ($sortBy === '') {
+            $sortBy = (string)($this->session->get('products_sort_pref') ?? 'recent');
+        }
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'recent';
+        }
+        $this->session->set('products_sort_pref', $sortBy);
 
         // Parse multiple attribute filters from URL params:
         // attr[0][name]=Color&attr[0][value]=Blue&attr[1][name]=Size&attr[1][value]=16cm
@@ -377,13 +507,32 @@ class Products extends BaseController
             }
         }
 
+        // Fallback for direct single pair filters submitted from the filter bar.
+        $directAttrName = trim((string) ($this->request->getGet('direct_attr_name') ?? ''));
+        $directAttrValue = trim((string) ($this->request->getGet('direct_attr_value') ?? ''));
+        if ($directAttrValue === '__custom__') {
+            $directAttrValue = trim((string) ($this->request->getGet('direct_attr_value_custom') ?? ''));
+        }
+        if ($directAttrName !== '' && $directAttrValue !== '') {
+            $directKey = mb_strtolower($directAttrName) . '::' . mb_strtolower($directAttrValue);
+            if (!isset($seenAttrPairs[$directKey])) {
+                $seenAttrPairs[$directKey] = true;
+                $attributeFilters[] = ['name' => $directAttrName, 'value' => $directAttrValue];
+            }
+        }
+
+        $pf = (new RoleDataAccess())->getProductFilters((int) ($this->session->get('user_id') ?? 0));
         $products = $this->productModel->getProductsWithFilters(
             $searchTerm,
             $categoryFilter,
             $statusFilter,
             $perPage,
             $typeFilter,
-            $attributeFilters
+            $attributeFilters,
+            $pf['hide_services'],
+            $pf['allowed_category_ids'] ?? [],
+            $hasAssets,
+            $sortBy
         );
 
         // Build variant-level matches for the listed products so UI can show exactly
@@ -412,6 +561,13 @@ class Products extends BaseController
             );
         }
         
+        // When search matches a variant art_number specifically (not the parent product
+        // code/name), replace the template row with the individual variant row(s) so
+        // the user sees the exact variant — not the generic template product.
+        if ($searchTerm !== '') {
+            $products = $this->productModel->promoteVariantRowsIfVariantSearch($searchTerm, $products);
+        }
+
         // Structure the data properly for the view
         $productData = [
             'data' => $products,
@@ -435,15 +591,7 @@ class Products extends BaseController
             if ($name === '') {
                 continue;
             }
-            $vals = [];
-            try {
-                $vals = json_decode((string)($row['values'] ?? '[]'), true) ?? [];
-            } catch (\Throwable $e) {
-                $vals = [];
-            }
-            if (!is_array($vals)) {
-                $vals = [];
-            }
+            $vals = $this->parseAttributeValues($row['values'] ?? '[]');
             $cleanVals = [];
             $seen = [];
             foreach ($vals as $v) {
@@ -462,6 +610,47 @@ class Products extends BaseController
             $attributeOptions[$name] = $cleanVals;
         }
 
+        // Product type tabs with default preference support
+        $productTypeTabs = ['all' => 'All Products', 'storable' => 'Storable', 'consumable' => 'Consumable', 'service' => 'Services'];
+        
+        // Get product counts for each type.
+        // IMPORTANT: this schema uses `detailed_type` and has no `deleted_at` on products.
+        $productTypeCounts = ['all' => 0, 'storable' => 0, 'consumable' => 0, 'service' => 0];
+        try {
+            $db = \Config\Database::connect();
+            $baseCounter = $db->table('products');
+
+            // Keep counts aligned with role restrictions and active status behavior.
+            if (!empty($pf['hide_services'])) {
+                $baseCounter->where('products.detailed_type !=', 'service');
+            }
+            if (!empty($pf['allowed_category_ids']) && is_array($pf['allowed_category_ids'])) {
+                $baseCounter->whereIn('products.category_id', $pf['allowed_category_ids']);
+            }
+            if (empty($searchTerm) && ($statusFilter === null || $statusFilter === '')) {
+                $baseCounter->where('products.is_active', 1);
+            }
+
+            $productTypeCounts['all'] = (clone $baseCounter)->countAllResults();
+            $productTypeCounts['storable'] = (clone $baseCounter)->where('products.detailed_type', 'storable')->countAllResults();
+            $productTypeCounts['consumable'] = (clone $baseCounter)->where('products.detailed_type', 'consumable')->countAllResults();
+            $productTypeCounts['service'] = (clone $baseCounter)->where('products.detailed_type', 'service')->countAllResults();
+        } catch (\Throwable $e) {
+            log_message('error', 'Product type counts failed: ' . $e->getMessage());
+            $productTypeCounts = ['all' => 0, 'storable' => 0, 'consumable' => 0, 'service' => 0];
+        }
+        
+        // Use default tab if no type filter in URL
+        if (empty($typeFilter) && !$this->request->getGet('type')) {
+            $defaultTab = $this->session->get('products_default_tab') ?? 'all';
+            if ($defaultTab !== 'all' && isset($productTypeTabs[$defaultTab])) {
+                $typeFilter = $defaultTab;
+            }
+        } elseif (!empty($typeFilter) && in_array($typeFilter, array_keys($productTypeTabs), true)) {
+            // Remember current tab as user preference
+            $this->session->set('products_default_tab', $typeFilter);
+        }
+
         $data = $this->setPageData([
             'page_title' => 'Products Management',
             'products' => $productData,
@@ -471,10 +660,14 @@ class Products extends BaseController
             'current_category' => $categoryFilter,
             'current_status' => $statusFilter,
             'current_type' => $typeFilter,
+            'current_has_assets' => $hasAssets,
+            'current_sort_by' => $sortBy,
             'current_attributes' => $attributeFilters,
             'matched_variants_by_product' => $matchedVariantsByProduct,
             'attribute_options' => $attributeOptions,
             'per_page' => $perPage,
+            'product_type_tabs' => $productTypeTabs,
+            'product_type_counts' => $productTypeCounts,
             'can_create' => $this->hasPermission('products.create'),
             'can_edit' => $this->hasPermission('products.edit'),
             'can_delete' => $this->hasPermission('products.delete')
@@ -590,6 +783,75 @@ class Products extends BaseController
     }
 
     /**
+     * Get product assets (API endpoint)
+     * Returns assets for a specific product organized by asset groups
+     * GET: /products/{id}/assets?limit=20
+     */
+    public function getProductAssets($productId = null)
+    {
+        $this->requireAuth();
+        $this->requirePermission('products.view');
+
+        if (empty($productId)) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'error' => 'Product ID required']);
+        }
+
+        try {
+            $db = \Config\Database::connect();
+            
+            // Check if product exists
+            $product = $this->productModel->find($productId);
+            if (!$product) {
+                return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Product not found']);
+            }
+
+            // Get asset groups for this product with their assets
+            if (!$db->tableExists('product_asset_groups') || !$db->tableExists('product_assets')) {
+                return $this->response->setJSON(['success' => true, 'data' => ['groups' => []]]);
+            }
+
+            $groups = $db->table('product_asset_groups pag')
+                ->select('pag.*, COALESCE(pa_count.cnt, 0) as asset_count')
+                ->where('pag.product_id', $productId)
+                ->leftJoin(
+                    '(SELECT asset_group_id, COUNT(*) as cnt FROM product_assets GROUP BY asset_group_id) pa_count',
+                    'pa_count.asset_group_id = pag.id',
+                    'left'
+                )
+                ->orderBy('pag.created_at', 'DESC')
+                ->get()
+                ->getResultArray();
+
+            // For each group, get its assets
+            $groupsWithAssets = [];
+            foreach ($groups as $group) {
+                $assets = $db->table('product_assets')
+                    ->where('asset_group_id', $group['id'])
+                    ->orderBy('created_at', 'DESC')
+                    ->get()
+                    ->getResultArray();
+
+                $groupsWithAssets[] = [
+                    'group' => $group,
+                    'assets' => $assets
+                ];
+            }
+
+            return $this->response->setJSON([
+                'success' => true,
+                'data' => [
+                    'product_id' => $productId,
+                    'product_name' => $product['name'] ?? '',
+                    'groups' => $groupsWithAssets
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'getProductAssets error: ' . $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => 'Server error']);
+        }
+    }
+
+    /**
      * Display single product details
      */
     public function show($id = null)
@@ -682,19 +944,84 @@ class Products extends BaseController
             $activeTab = 'overview';
         }
 
+        $canViewAssets = $this->hasPermission('product_assets.read')
+            || $this->hasPermission('product_assets.view')
+            || $this->hasPermission('products.edit');
+
+        if ($activeTab === 'assets' && ! $canViewAssets) {
+            $activeTab = 'overview';
+        }
+
+        $salesUnitsTotal = 0.0;
+        $purchasedUnitsTotal = 0.0;
+        try {
+            $dbMetrics = \Config\Database::connect();
+
+            if ($dbMetrics->tableExists('sales_order_lines')) {
+                $solFields = $dbMetrics->getFieldNames('sales_order_lines');
+                $solQty = in_array('quantity', $solFields ?? [], true) ? 'quantity' : (in_array('qty', $solFields ?? [], true) ? 'qty' : null);
+                if ($solQty !== null && in_array('product_id', $solFields ?? [], true)) {
+                    $qb = $dbMetrics->table('sales_order_lines sol')
+                        ->select('COALESCE(SUM(COALESCE(sol.' . $solQty . ',0)),0) as units', false)
+                        ->where('sol.product_id', $productId);
+
+                    if ($dbMetrics->tableExists('sales_orders')) {
+                        $soFields = $dbMetrics->getFieldNames('sales_orders');
+                        $solFk = in_array('sales_order_id', $solFields ?? [], true) ? 'sales_order_id' : (in_array('so_id', $solFields ?? [], true) ? 'so_id' : null);
+                        if ($solFk !== null && in_array('status', $soFields ?? [], true)) {
+                            $qb->join('sales_orders so', 'so.id = sol.' . $solFk, 'left')
+                                ->where("LOWER(COALESCE(so.status,'')) NOT IN ('draft','cancelled','canceled','rejected')", null, false);
+                        }
+                    }
+
+                    $salesUnitsTotal = (float)(($qb->get()->getRowArray()['units'] ?? 0));
+                }
+            }
+
+            if ($dbMetrics->tableExists('purchase_order_lines')) {
+                $polFields = $dbMetrics->getFieldNames('purchase_order_lines');
+                $polQty = in_array('quantity', $polFields ?? [], true) ? 'quantity' : (in_array('qty', $polFields ?? [], true) ? 'qty' : null);
+                if ($polQty !== null && in_array('product_id', $polFields ?? [], true)) {
+                    $qb = $dbMetrics->table('purchase_order_lines pol')
+                        ->select('COALESCE(SUM(COALESCE(pol.' . $polQty . ',0)),0) as units', false)
+                        ->where('pol.product_id', $productId);
+
+                    if ($dbMetrics->tableExists('purchase_orders')) {
+                        $poFields = $dbMetrics->getFieldNames('purchase_orders');
+                        $polFk = in_array('po_id', $polFields ?? [], true) ? 'po_id' : (in_array('purchase_order_id', $polFields ?? [], true) ? 'purchase_order_id' : null);
+                        if ($polFk !== null && in_array('status', $poFields ?? [], true)) {
+                            $qb->join('purchase_orders po', 'po.id = pol.' . $polFk, 'left')
+                                ->where("LOWER(COALESCE(po.status,'')) NOT IN ('draft','cancelled','canceled','rejected')", null, false);
+                        }
+                    }
+
+                    $purchasedUnitsTotal = (float)(($qb->get()->getRowArray()['units'] ?? 0));
+                }
+            }
+        } catch (\Throwable $e) {
+            $salesUnitsTotal = 0.0;
+            $purchasedUnitsTotal = 0.0;
+        }
+
+        $canViewBusinessData = $this->canViewBusinessData();
+
         $data = $this->setPageData([
             'page_title' => 'Product Details - ' . $product['name'],
             'product' => $product,
             'work_orders' => $workOrders,
             'can_edit' => $this->hasPermission('products.edit'),
             'can_delete' => $this->hasPermission('products.delete'),
+            'can_view_sensitive_overview' => $canViewBusinessData,
             'default_currency' => $defaultCurrency,
             'categories' => $categories,
             'vendors' => $vendors,
             'currencies' => $currencies,
             'preparation_profiles' => $preparationProfiles,
             'active_tab' => $activeTab,
+            'can_view_assets' => $canViewAssets,
             'product_identifier' => entityRouteIdentifier($product),
+            'sales_units_total' => $salesUnitsTotal,
+            'purchased_units_total' => $purchasedUnitsTotal,
         ]);
 
         // Load variants for the product view (with stock aggregates)

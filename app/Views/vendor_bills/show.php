@@ -125,8 +125,8 @@ Vendor Bill
   }
 
   .bill-line-thumb {
-    width: 52px;
-    height: 52px;
+    width: 40px;
+    height: 40px;
     object-fit: cover;
     border-radius: 6px;
     border: 1px solid rgba(148, 163, 184, 0.45);
@@ -578,8 +578,8 @@ Vendor Bill
         html += '</td>';
         html += '<td>';
         if (imageUrl) {
-          html += '<button type="button" class="bill-product-image-link" data-image-src="' + escHtml(imageUrl) + '" title="Click to view image">';
-          html += '<img src="' + imageUrl + '" alt="Product" class="bill-line-thumb js-bill-line-image" onerror="this.onerror=null;this.src=\'' + noImageSrc + '\';var btn=this.closest(\'.bill-product-image-link\');if(btn){btn.setAttribute(\'data-image-src\',\'' + noImageSrc + '\');}">';
+          html += '<button type="button" class="bill-product-image-link" data-image-src="' + escHtml(imageUrl) + '" title="Hover to preview, click to open image">';
+          html += '<img src="' + imageUrl + '" alt="Product" class="bill-line-thumb js-bill-line-image js-product-hover-thumb" data-preview-src="' + escHtml(imageUrl) + '" onerror="this.onerror=null;this.src=\'' + noImageSrc + '\';this.setAttribute(\'data-preview-src\',\'' + noImageSrc + '\');var btn=this.closest(\'.bill-product-image-link\');if(btn){btn.setAttribute(\'data-image-src\',\'' + noImageSrc + '\');}">';
           html += '</button>';
         } else {
           html += '<img src="' + noImageSrc + '" alt="No image" class="bill-line-thumb">';
@@ -852,7 +852,7 @@ Vendor Bill
 
       // Print button
       document.getElementById('printBtn').addEventListener('click', function() {
-        window.print();
+        window.open('<?= site_url('vendor-bills/') ?>' + encodeURIComponent(id) + '/print', '_blank');
       });
 
       const lightbox = document.getElementById('billImageLightbox');

@@ -250,11 +250,8 @@ body.theme-dark .grn-tbl thead th{background:linear-gradient(180deg,#0a1929 0%,#
 .grn-tbl td{padding:.52rem .75rem;vertical-align:middle;}
 .line-sr{font-size:.76rem;font-weight:800;color:#64748b;text-align:center;}
 .prod-thumb-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:transparent;cursor:zoom-in;}
-.prod-thumb{width:42px;height:42px;object-fit:cover;border-radius:.3rem;border:1px solid var(--bs-border-color,#dee2e6);box-shadow:0 1px 2px rgba(15,23,42,.08);transition:transform .14s ease, box-shadow .14s ease;}
+.prod-thumb{width:40px;height:40px;object-fit:cover;border-radius:.3rem;border:1px solid var(--bs-border-color,#dee2e6);box-shadow:0 1px 2px rgba(15,23,42,.08);transition:transform .14s ease, box-shadow .14s ease;}
 .prod-thumb-btn:hover .prod-thumb{transform:scale(1.08);box-shadow:0 10px 26px rgba(15,23,42,.16);}
-.prod-hover-preview{position:absolute;left:calc(100% + .7rem);top:50%;transform:translateY(-50%) scale(.96);width:170px;height:170px;border-radius:.7rem;border:1px solid rgba(148,163,184,.35);background:#fff;padding:.45rem;box-shadow:0 18px 40px rgba(15,23,42,.22);opacity:0;visibility:hidden;pointer-events:none;z-index:20;transition:opacity .14s ease,transform .14s ease,visibility .14s ease;}
-.prod-hover-preview img{width:100%;height:100%;object-fit:contain;border-radius:.45rem;background:#f8fafc;}
-.prod-thumb-btn:hover .prod-hover-preview,.prod-thumb-btn:focus-visible .prod-hover-preview{opacity:1;visibility:visible;transform:translateY(-50%) scale(1);}
 .prod-meta{display:flex;flex-direction:column;gap:.14rem;min-width:0;}
 .prod-code{display:inline-flex;align-items:center;gap:.28rem;width:fit-content;max-width:100%;background:#e8eef8;color:#0f2f5f;border:1px solid #c6d4ee;border-radius:.3rem;padding:.09rem .45rem .09rem .4rem;font-size:.72rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:800;line-height:1.2;white-space:nowrap;}
 .prod-code small{font-size:.58rem;color:#334155;letter-spacing:.08em;text-transform:uppercase;font-weight:800;}
@@ -308,8 +305,6 @@ body.theme-dark .grn-sec-hd{border-bottom-color:#334155;}
 body.theme-dark .grn-tbl thead th{background:linear-gradient(180deg,#0a1929 0%,#0d1f35 100%);border-bottom-color:#1d4ed8;}
 body.theme-dark .grn-tbl tbody tr{border-bottom-color:#334155;}
 body.theme-dark .grn-tbl tbody tr:hover{background:#1e293b;}
-body.theme-dark .prod-hover-preview{background:#0f172a;border-color:#334155;}
-body.theme-dark .prod-hover-preview img{background:#020617;}
 body.theme-dark .prod-code{background:#1e3a5f;color:#dbeafe;border-color:#334155;}
 body.theme-dark .over-chip{background:#1e3a5f;color:#93c5fd;border-color:#1d4ed8;}
 body.theme-dark .over-chip.free{background:#1c1308;color:#fcd34d;border-color:#92400e;}
@@ -321,7 +316,7 @@ body.theme-dark .grn-flow-txt{color:#dbeafe;}
 body.theme-dark .grn-flow-list{color:#bfdbfe;}
 body.theme-dark .grn-flow-ok{color:#5eead4;}
 @media print{.grn-hero-actions,.line-actions,.grn-footer a,.prod-thumb-btn{display:none!important;}.grn-doc{max-width:100%;}.grn-hero{border-radius:0;}.grn-facts,.grn-sec,.grn-footer{border-radius:0;}}
-@media(max-width:768px){.grn-hero{padding:1rem 1rem .9rem;}.grn-hero-num{font-size:1.3rem;}.grn-hero-actions{position:static;max-width:100%;margin-top:.7rem;justify-content:flex-start;}.grn-facts{grid-template-columns:1fr 1fr;}.grn-fact{padding:.5rem .6rem;}.grn-tbl{display:block;overflow-x:auto;}.prod-hover-preview{display:none;}.line-actions{justify-content:flex-start;}.issue-modal-summary{grid-template-columns:1fr;}}
+@media(max-width:768px){.grn-hero{padding:1rem 1rem .9rem;}.grn-hero-num{font-size:1.3rem;}.grn-hero-actions{position:static;max-width:100%;margin-top:.7rem;justify-content:flex-start;}.grn-facts{grid-template-columns:1fr 1fr;}.grn-fact{padding:.5rem .6rem;}.grn-tbl{display:block;overflow-x:auto;}.line-actions{justify-content:flex-start;}.issue-modal-summary{grid-template-columns:1fr;}}
 </style>
 
 <div class="grn-doc">
@@ -533,8 +528,7 @@ body.theme-dark .grn-flow-ok{color:#5eead4;}
             <td class="line-sr"><?= (int)$idx + 1 ?></td>
             <td>
               <button type="button" class="prod-thumb-btn line-image-open" data-image-src="<?= esc($img, 'attr') ?>" data-image-alt="<?= esc($productLabel, 'attr') ?>" aria-label="Preview <?= esc($productLabel, 'attr') ?> image">
-                <img src="<?= esc($img) ?>" alt="<?= esc($productLabel, 'attr') ?>" class="prod-thumb" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'">
-                <span class="prod-hover-preview" aria-hidden="true"><img src="<?= esc($img) ?>" alt=""></span>
+                <img src="<?= esc($img) ?>" alt="<?= esc($productLabel, 'attr') ?>" class="prod-thumb js-product-hover-thumb" data-preview-src="<?= esc($img, 'attr') ?>" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>');">
               </button>
             </td>
             <td>
@@ -760,6 +754,7 @@ body.theme-dark .grn-flow-ok{color:#5eead4;}
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const grnRef = '<?= esc((string)$grnId) ?>';
   const base = '<?= site_url('new-purchase-grns/'.$grnId.'/lines/') ?>';
   const issueModalEl = document.getElementById('grnIssueModal');
   const imageModalEl = document.getElementById('grnImageModal');
@@ -783,7 +778,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const today = new Date().toISOString().slice(0,10);
 
   if (printBtn) {
-    printBtn.addEventListener('click', () => window.print());
+    printBtn.addEventListener('click', () => window.open('<?= site_url('new-purchase-grns/') ?>' + encodeURIComponent(grnRef) + '/print', '_blank'));
   }
   if (pdfBtn) {
     pdfBtn.addEventListener('click', () => window.print());

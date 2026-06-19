@@ -15,10 +15,11 @@ class QuotationModel extends Model
     protected $returnType = 'array';
     protected $allowedFields = [
         'quote_number','company_id','customer_id','price_list_id','issue_date','expires_at','status','currency','quote_currency','base_currency',
-        'subtotal','discount','tax','tax_total','shipping_amount','total_weight','total','notes','created_by','public_id','created_at','updated_at','deleted_at'
+        'subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax','tax_total','shipping_amount','total_weight','total','notes','created_by','public_id','created_at','updated_at','deleted_at'
     ];
 
     protected $useTimestamps = true;
+    protected $useSoftDeletes = true;
     protected $createdField  = 'created_at';
     protected $updatedField  = 'updated_at';
     protected $deletedField  = 'deleted_at';
@@ -52,9 +53,15 @@ class QuotationModel extends Model
 
         // Preload products referenced by the lines to avoid N+1 queries in the view
         $productMap = [];
+        $productMapByCode = [];
         $variantMap = [];
+        $variantMapByArt = [];
         try {
             $productIds = array_values(array_unique(array_filter(array_map('intval', array_column($lines, 'product_id')))));
+            $lineCodes = array_values(array_unique(array_filter(array_map(static function ($ln) {
+                return strtoupper(trim((string)($ln['product_code'] ?? '')));
+            }, $lines))));
+
             if (!empty($productIds)) {
                 $pm = new \App\Models\ProductModel();
                 $products = $pm->whereIn('id', $productIds)->findAll();
@@ -70,7 +77,7 @@ class QuotationModel extends Model
                         }
                     }
 
-                    $productMap[(int)$p['id']] = [
+                    $entry = [
                         'code' => $p['code'] ?? ($p['sku'] ?? ''),
                         'sku' => $p['sku'] ?? null,
                         'name' => $p['name'] ?? null,
@@ -79,16 +86,65 @@ class QuotationModel extends Model
                         'weight_unit' => $p['weight_unit'] ?? 'kg',
                         'image_url' => $imageUrl,
                     ];
+
+                    $productMap[(int)$p['id']] = $entry;
+
+                    $codeKey = strtoupper(trim((string)($p['code'] ?? '')));
+                    if ($codeKey !== '') {
+                        $productMapByCode[$codeKey] = $entry;
+                    }
+                    $skuKey = strtoupper(trim((string)($p['sku'] ?? '')));
+                    if ($skuKey !== '') {
+                        $productMapByCode[$skuKey] = $entry;
+                    }
                 }
             }
 
-            // Preload variant art_numbers so variant lines get the correct code.
+            // Fallback preload by product code for legacy/recovered lines with null product_id.
+            if (!empty($lineCodes)) {
+                $pm = new \App\Models\ProductModel();
+                $productsByCode = $pm->groupStart()
+                    ->whereIn('code', $lineCodes)
+                    ->orWhereIn('sku', $lineCodes)
+                    ->groupEnd()
+                    ->findAll();
+
+                foreach ($productsByCode as $p) {
+                    $imageUrl = base_url('assets/images/no-image.png');
+                    if (!empty($p['image'])) {
+                        $imageUrl = base_url('/uploads/products/' . ltrim((string)$p['image'], '/'));
+                    } elseif (!empty($p['images'])) {
+                        $imgs = is_string($p['images']) ? json_decode($p['images'], true) : $p['images'];
+                        if (is_array($imgs) && !empty($imgs[0])) {
+                            $imageUrl = base_url('/uploads/products/' . ltrim((string)$imgs[0], '/'));
+                        }
+                    }
+
+                    $entry = [
+                        'code' => $p['code'] ?? ($p['sku'] ?? ''),
+                        'sku' => $p['sku'] ?? null,
+                        'name' => $p['name'] ?? null,
+                        'unit' => $p['unit'] ?? null,
+                        'unit_weight' => $p['unit_weight'] ?? ($p['weight'] ?? null),
+                        'weight_unit' => $p['weight_unit'] ?? 'kg',
+                        'image_url' => $imageUrl,
+                    ];
+
+                    $codeKey = strtoupper(trim((string)($p['code'] ?? '')));
+                    if ($codeKey !== '') {
+                        $productMapByCode[$codeKey] = $entry;
+                    }
+                    $skuKey = strtoupper(trim((string)($p['sku'] ?? '')));
+                    if ($skuKey !== '') {
+                        $productMapByCode[$skuKey] = $entry;
+                    }
+                }
+            }
+
+            // Preload variant metadata so variant lines get the correct code and image.
             $variantIds = array_values(array_unique(array_filter(array_map('intval', array_column($lines, 'product_variant_id')))));
-            $lineCodes = array_values(array_unique(array_filter(array_map(static function ($ln) {
-                return strtoupper(trim((string)($ln['product_code'] ?? '')));
-            }, $lines))));
             if (!empty($variantIds) || !empty($lineCodes)) {
-                $builder = $db->table('product_variants')->select('id, art_number, weight');
+                $builder = $db->table('product_variants')->select('id, art_number, weight, image');
                 if (!empty($variantIds) && !empty($lineCodes)) {
                     $builder->groupStart()->whereIn('id', $variantIds)->orWhereIn('art_number', $lineCodes)->groupEnd();
                 } elseif (!empty($variantIds)) {
@@ -98,16 +154,34 @@ class QuotationModel extends Model
                 }
                 $variantRows = $builder->get()->getResultArray();
                 foreach ($variantRows as $vr) {
-                    $variantMap[(int)$vr['id']] = [
+                    $variantImage = trim((string)($vr['image'] ?? ''));
+                    $variantImageUrl = '';
+                    if ($variantImage !== '') {
+                        $variantImageUrl = preg_match('#^(https?:)?//#i', $variantImage)
+                            ? $variantImage
+                            : base_url('/uploads/variants/' . ltrim($variantImage, '/'));
+                    }
+
+                    $entry = [
                         'art_number' => $vr['art_number'] ?? '',
                         'weight' => isset($vr['weight']) ? (float)$vr['weight'] : 0.0,
+                        'image_url' => $variantImageUrl,
                     ];
+
+                    $variantMap[(int)$vr['id']] = $entry;
+
+                    $artKey = strtoupper(trim((string)($vr['art_number'] ?? '')));
+                    if ($artKey !== '') {
+                        $variantMapByArt[$artKey] = $entry;
+                    }
                 }
             }
         } catch (\Throwable $_) {
             // best-effort; continue without product enrichment
             $productMap = [];
+            $productMapByCode = [];
             $variantMap = [];
+            $variantMapByArt = [];
         }
 
         // Recalculate per-line amounts and document totals for display consistency.
@@ -123,6 +197,10 @@ class QuotationModel extends Model
             if (!empty($ln['product_id'])) {
                 $pid = (int)$ln['product_id'];
                 $prod = $productMap[$pid] ?? null;
+            }
+            $lineCode = strtoupper(trim((string)($ln['product_code'] ?? '')));
+            if (!$prod && $lineCode !== '' && isset($productMapByCode[$lineCode])) {
+                $prod = $productMapByCode[$lineCode];
             }
             if ($prod) {
                 if (empty($ln['product_code'])) {
@@ -152,8 +230,18 @@ class QuotationModel extends Model
                 if (empty($ln['weight_unit'])) {
                     $ln['weight_unit'] = $prod['weight_unit'] ?? 'kg';
                 }
-                // Only set image if not already provided (prefer variant/specific image)
-                if (empty($ln['product_image_url'])) {
+                $variantId = !empty($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : 0;
+                $variantImageUrl = $variantId > 0 ? (string)($variantMap[$variantId]['image_url'] ?? '') : '';
+                if ($variantImageUrl === '' && $lineCode !== '' && isset($variantMapByArt[$lineCode])) {
+                    $variantImageUrl = (string)($variantMapByArt[$lineCode]['image_url'] ?? '');
+                }
+
+                // Prefer variant image, then product image when line image is empty or placeholder.
+                $lineImageUrl = trim((string)($ln['product_image_url'] ?? ''));
+                $lineIsDefault = ($lineImageUrl !== '' && stripos($lineImageUrl, 'assets/images/no-image.png') !== false);
+                if ($variantImageUrl !== '' && ($lineImageUrl === '' || $lineIsDefault)) {
+                    $ln['product_image_url'] = $variantImageUrl;
+                } elseif ($lineImageUrl === '' || $lineIsDefault) {
                     $ln['product_image_url'] = $prod['image_url'];
                 }
             } else {
@@ -201,15 +289,41 @@ class QuotationModel extends Model
             $totalWeight += $unitWeightKg * ((float)$ln['quantity']);
         }
 
+        $documentDiscountType = strtolower((string)($quote['document_discount_type'] ?? 'fixed'));
+        if (!in_array($documentDiscountType, ['percent', 'fixed'], true)) {
+            $documentDiscountType = 'fixed';
+        }
+        $documentDiscountValue = (float)($quote['document_discount_value'] ?? 0);
+        $excludeShipping = !array_key_exists('discount_exclude_shipping', $quote)
+            ? true
+            : ((int)$quote['discount_exclude_shipping'] === 1);
+
+        $lineNet = max(0.0, $subtotal - $discountTotal);
+        $shippingAmount = isset($quote['shipping_amount']) ? (float)$quote['shipping_amount'] : 0.0;
+        $docBase = $lineNet + $taxTotal + ($excludeShipping ? 0.0 : $shippingAmount);
+        $documentDiscountAmount = 0.0;
+        if ($documentDiscountValue > 0) {
+            if ($documentDiscountType === 'percent') {
+                $documentDiscountAmount = $docBase * ($documentDiscountValue / 100.0);
+            } else {
+                $documentDiscountAmount = $documentDiscountValue;
+            }
+        }
+        $documentDiscountAmount = min(max(0.0, $documentDiscountAmount), $docBase);
+
         // Attach computed header totals (rounded)
         $quote['subtotal'] = round($subtotal, 2);
-        $quote['discount'] = round($discountTotal, 2);
+        $quote['discount'] = round($discountTotal + $documentDiscountAmount, 2);
         $quote['tax'] = round($taxTotal, 2);
         // Single source of truth per spec
-        $quote['shipping_amount'] = isset($quote['shipping_amount']) ? (float)$quote['shipping_amount'] : 0.0;
+        $quote['shipping_amount'] = $shippingAmount;
         // Always show a computed weight from current line/product data in view payload.
         $quote['total_weight'] = round($totalWeight, 3);
-        $quote['total'] = round(($subtotal - $discountTotal + $taxTotal + $quote['shipping_amount']), 2);
+        $quote['document_discount_type'] = $documentDiscountType;
+        $quote['document_discount_value'] = round($documentDiscountValue, 2);
+        $quote['discount_exclude_shipping'] = $excludeShipping ? 1 : 0;
+        $quote['document_discount_amount'] = round($documentDiscountAmount, 2);
+        $quote['total'] = round(($lineNet + $taxTotal + $shippingAmount - $documentDiscountAmount), 2);
 
         // Provide a 'currency' alias for consumers that expect a single currency field.
         $quote['currency'] = $quote['quote_currency'] ?? $quote['base_currency'] ?? 'USD';
@@ -238,10 +352,10 @@ class QuotationModel extends Model
     /**
      * Generate a mostly-unique quote number. You may replace with a sequential strategy.
      */
-    public function generateQuoteNumber(): string
+    public function generateQuoteNumber(?\CodeIgniter\Database\BaseConnection $db = null): string
     {
         // Produce sequential numbers like RI-Q0001 (prefix configurable in Settings)
-        $db = \Config\Database::connect();
+        $db = $db ?: \Config\Database::connect();
 
         // Read prefix from company_settings if the column exists
         $prefix = 'RI';
@@ -259,14 +373,11 @@ class QuotationModel extends Model
     // Use Q series for quotations (RI-Q0001)
     $fullPrefix = $prefix . '-Q';
         try {
-            // get last quote_number that matches the prefix
-            $builder = $db->table($this->table);
-            $row = $builder->select('quote_number')
-                ->like('quote_number', $fullPrefix . '%', 'after')
-                ->orderBy('id', 'DESC')
-                ->limit(1)
-                ->get()
-                ->getRowArray();
+            // Lock the current tail row for this prefix to reduce race conditions.
+            $escaped = str_replace("'", "''", $fullPrefix) . '%';
+            $row = $db->query(
+                "SELECT quote_number FROM {$this->table} WHERE quote_number LIKE '{$escaped}' ORDER BY id DESC LIMIT 1 FOR UPDATE"
+            )->getRowArray();
 
             $lastNumber = 0;
             if ($row && ! empty($row['quote_number'])) {
@@ -299,17 +410,31 @@ class QuotationModel extends Model
 
     // Preserve user-provided shipping_amount from payload (do NOT rely on calculators here)
     $payloadShipping = isset($data['shipping_amount']) ? (float)$data['shipping_amount'] : 0.0;
+    $documentDiscountType = strtolower((string)($data['document_discount_type'] ?? 'fixed'));
+    if (!in_array($documentDiscountType, ['percent', 'fixed'], true)) {
+        $documentDiscountType = 'fixed';
+    }
+    $documentDiscountValue = isset($data['document_discount_value']) ? (float)$data['document_discount_value'] : 0.0;
+    $discountExcludeShipping = !array_key_exists('discount_exclude_shipping', $data)
+        ? true
+        : ((int)$data['discount_exclude_shipping'] === 1);
 
 
         // Ensure quote_number
         if (empty($data['quote_number'])) {
-            $data['quote_number'] = $this->generateQuoteNumber();
+            $data['quote_number'] = $this->generateQuoteNumber($db);
         }
 
         // (debug logging removed per deterministic fix request)
 
     // Calculate totals and normalize lines (shipping used for totals only, but do not overwrite payload shipping)
-    $calc = $this->calculateTotals($lines, $payloadShipping);
+    $calc = $this->calculateTotals(
+        $lines,
+        $payloadShipping,
+        $documentDiscountType,
+        $documentDiscountValue,
+        $discountExcludeShipping
+    );
 
         // Map calculation results into whatever columns exist in the live DB.
         // Query live column names and only keep keys that exist in the table to avoid unknown column errors.
@@ -372,10 +497,21 @@ class QuotationModel extends Model
         // Use a direct DB insert to avoid model filtering interference and ensure shipping_amount is persisted.
         $db->transStart();
         try {
+            $maxAttempts = 3;
+            $attempt = 0;
+            $insertId = 0;
+            $lastError = null;
+
+            while ($attempt < $maxAttempts && $insertId <= 0) {
+                $attempt++;
+                if ($attempt > 1 && in_array('quote_number', $tableCols, true) && empty($data['quote_number'])) {
+                    $data['quote_number'] = $this->generateQuoteNumber($db);
+                }
+
             // Build insert row only for columns that exist on the live table to avoid SQL errors
             $insertRow = [];
             if (in_array('customer_id', $tableCols)) $insertRow['customer_id'] = $data['customer_id'] ?? null;
-            if (in_array('issue_date', $tableCols)) $insertRow['issue_date'] = $data['issue_date'] ?? date('Y-m-d');
+            if (in_array('issue_date', $tableCols)) $insertRow['issue_date'] = !empty($data['issue_date']) ? $data['issue_date'] : date('Y-m-d');
             if (in_array('quote_number', $tableCols) && !empty($data['quote_number'])) $insertRow['quote_number'] = $data['quote_number'];
             if (in_array('status', $tableCols)) $insertRow['status'] = $data['status'] ?? 'draft';
             if (in_array('price_list_id', $tableCols) && isset($data['price_list_id'])) $insertRow['price_list_id'] = $data['price_list_id'];
@@ -386,14 +522,35 @@ class QuotationModel extends Model
             if (in_array('total', $tableCols)) $insertRow['total'] = $data['total'] ?? 0;
             if (in_array('total_weight', $tableCols)) $insertRow['total_weight'] = $data['total_weight'] ?? 0;
             if (in_array('shipping_amount', $tableCols)) $insertRow['shipping_amount'] = $data['shipping_amount'] ?? 0;
+            if (in_array('document_discount_type', $tableCols)) $insertRow['document_discount_type'] = $documentDiscountType;
+            if (in_array('document_discount_value', $tableCols)) $insertRow['document_discount_value'] = round($documentDiscountValue, 2);
+            if (in_array('discount_exclude_shipping', $tableCols)) $insertRow['discount_exclude_shipping'] = $discountExcludeShipping ? 1 : 0;
             if (in_array('created_by', $tableCols)) $insertRow['created_by'] = $data['created_by'] ?? (session()->get('user_id') ?? null);
             if (in_array('currency', $tableCols) && isset($data['currency'])) $insertRow['currency'] = $data['currency'];
             if (in_array('quote_currency', $tableCols) && isset($data['quote_currency'])) $insertRow['quote_currency'] = $data['quote_currency'];
             if (in_array('base_currency', $tableCols) && isset($data['base_currency'])) $insertRow['base_currency'] = $data['base_currency'];
             $insertRow['created_at'] = date('Y-m-d H:i:s');
 
-            $db->table($this->table)->insert($insertRow);
-            $insertId = (int)$db->insertID();
+                try {
+                    $db->table($this->table)->insert($insertRow);
+                    $insertId = (int)$db->insertID();
+                    $lastError = null;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                    $msg = strtolower($e->getMessage());
+                    $isDuplicate = str_contains($msg, 'duplicate') || str_contains($msg, '1062');
+                    if ($isDuplicate) {
+                        // Force regeneration on retry.
+                        $data['quote_number'] = null;
+                        continue;
+                    }
+                    throw $e;
+                }
+            }
+
+            if ($insertId <= 0 && $lastError) {
+                throw $lastError;
+            }
         } catch (\Throwable $e) {
             $db->transComplete();
             return false;
@@ -444,7 +601,13 @@ class QuotationModel extends Model
     /**
      * Calculate totals from provided lines. Returns array with subtotal, discount, tax, total and normalized lines.
      */
-    public function calculateTotals(array $lines, float $shippingAmount = 0.0): array
+    public function calculateTotals(
+        array $lines,
+        float $shippingAmount = 0.0,
+        string $documentDiscountType = 'fixed',
+        float $documentDiscountValue = 0.0,
+        bool $discountExcludeShipping = true
+    ): array
     {
         // Collect product ids and variant ids to resolve weights from product master and variant.
         $productIds = [];
@@ -530,11 +693,17 @@ class QuotationModel extends Model
                 $discountAmount = $discountValue;
             }
 
-            // Tax: input is expected as tax_rate percent
-            $taxRate = isset($line['tax_rate']) ? (float)$line['tax_rate'] : (isset($line['tax']) ? (float)$line['tax'] : 0.0);
+            // Tax can be entered as either percent or fixed value.
+            $taxType = strtolower((string)($line['tax_type'] ?? 'percent'));
+            if (!in_array($taxType, ['percent', 'fixed'], true)) {
+                $taxType = 'percent';
+            }
+            $taxValue = isset($line['tax_value'])
+                ? (float)$line['tax_value']
+                : (isset($line['tax_rate']) ? (float)$line['tax_rate'] : (isset($line['tax']) ? (float)$line['tax'] : 0.0));
             $raw = $qty * $unit;
             $taxable = max(0, $raw - $discountAmount);
-            $taxAmount = $taxable * ($taxRate / 100.0);
+            $taxAmount = $taxType === 'fixed' ? $taxValue : ($taxable * ($taxValue / 100.0));
             $lineTotal = $taxable + $taxAmount;
 
             $subtotal += $raw;
@@ -567,7 +736,9 @@ class QuotationModel extends Model
                 'discount_type' => $discountType,
                 'discount_value' => $discountValue,
                 'discount_amount' => round($discountAmount, 2),
-                'tax_rate' => $taxRate,
+                'tax_type' => $taxType,
+                'tax_value' => $taxValue,
+                'tax_rate' => $taxValue,
                 'tax_amount' => round($taxAmount, 2),
                 'line_total' => round($lineTotal, 2),
                 'unit_weight' => round((float)$unitWeightRaw, 4),
@@ -580,11 +751,34 @@ class QuotationModel extends Model
             $norm[] = $merged;
         }
 
-    $total = round($subtotal - $discountTotal + $taxTotal + $shippingAmount, 2);
+    $documentDiscountType = strtolower($documentDiscountType);
+    if (!in_array($documentDiscountType, ['percent', 'fixed'], true)) {
+        $documentDiscountType = 'fixed';
+    }
+    $documentDiscountValue = max(0.0, (float)$documentDiscountValue);
+
+    $lineNet = max(0.0, $subtotal - $discountTotal);
+    $documentBase = $lineNet + $taxTotal + ($discountExcludeShipping ? 0.0 : $shippingAmount);
+    $documentDiscountAmount = 0.0;
+    if ($documentDiscountValue > 0) {
+        if ($documentDiscountType === 'percent') {
+            $documentDiscountAmount = $documentBase * ($documentDiscountValue / 100.0);
+        } else {
+            $documentDiscountAmount = $documentDiscountValue;
+        }
+    }
+    $documentDiscountAmount = min(max(0.0, $documentDiscountAmount), $documentBase);
+
+    $total = round($lineNet + $taxTotal + $shippingAmount - $documentDiscountAmount, 2);
 
         return [
             'subtotal' => round($subtotal, 2),
-            'discount' => round($discountTotal, 2),
+            'line_discount_total' => round($discountTotal, 2),
+            'document_discount_type' => $documentDiscountType,
+            'document_discount_value' => round($documentDiscountValue, 2),
+            'discount_exclude_shipping' => $discountExcludeShipping ? 1 : 0,
+            'document_discount_amount' => round($documentDiscountAmount, 2),
+            'discount' => round($discountTotal + $documentDiscountAmount, 2),
             'tax' => round($taxTotal, 2),
             'shipping_amount' => round($shippingAmount, 2),
             'total_weight' => round($totalWeight, 3),

@@ -12,7 +12,7 @@ class SalesOrderModel extends Model
     protected $primaryKey = 'id';
     protected $useTimestamps = true;
     protected $allowedFields = [
-        'order_number','quotation_id','customer_id','order_date','subtotal','tax_total','total','status','created_by','public_id'
+        'order_number','quotation_id','customer_id','order_date','subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax_total','total','status','created_by','public_id'
     ];
 
     public function __construct(?\CodeIgniter\Database\ConnectionInterface $db = null, ?\CodeIgniter\Validation\ValidationInterface $validation = null)

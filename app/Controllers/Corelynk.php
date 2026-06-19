@@ -3,9 +3,17 @@
 namespace App\Controllers;
 
 use App\Libraries\RoleDataAccess;
+use App\Services\NotificationService;
 
 class Corelynk extends BaseController
 {
+    protected NotificationService $notificationService;
+
+    public function __construct()
+    {
+        $this->notificationService = new NotificationService();
+    }
+
     public function index()
     {
         $this->requireAuth();
@@ -574,5 +582,99 @@ class Corelynk extends BaseController
         }
 
         return $this->jsonResponse($payload, $payload['success'] ? 200 : 502);
+    }
+
+    /**
+     * Activity Center feed JSON endpoint for dashboard widget.
+     */
+    public function activityCenterFeed()
+    {
+        $this->requireAuth();
+        $this->requirePermission('dashboard.read');
+
+        $userId = (int) ($this->currentUser['id'] ?? 0);
+        $limit = (int) ($this->request->getGet('limit') ?? 10);
+
+        $data = $this->notificationService->getActivityCenterFeed($userId, $limit);
+
+        return $this->jsonResponse([
+            'success' => true,
+            'data' => $data,
+            'csrf' => [
+                'token' => csrf_token(),
+                'hash' => csrf_hash(),
+            ],
+        ]);
+    }
+
+    /**
+     * Mark a single activity center notification as read.
+     */
+    public function activityCenterMarkRead($notificationId = null)
+    {
+        $this->requireAuth();
+        $this->requirePermission('dashboard.read');
+
+        if (!$this->request->isAJAX()) {
+            return $this->jsonResponse([
+                'success' => false,
+                'message' => 'Invalid request type.',
+            ], 400);
+        }
+
+        $notificationId = (int) ($notificationId ?? 0);
+        $userId = (int) ($this->currentUser['id'] ?? 0);
+
+        if ($notificationId <= 0 || $userId <= 0) {
+            return $this->jsonResponse([
+                'success' => false,
+                'message' => 'Invalid notification request.',
+            ], 422);
+        }
+
+        $ok = $this->notificationService->markAsRead($userId, $notificationId);
+
+        return $this->jsonResponse([
+            'success' => $ok,
+            'csrf' => [
+                'token' => csrf_token(),
+                'hash' => csrf_hash(),
+            ],
+        ], $ok ? 200 : 500);
+    }
+
+    /**
+     * Mark all currently active activity center notifications as read.
+     */
+    public function activityCenterMarkAllRead()
+    {
+        $this->requireAuth();
+        $this->requirePermission('dashboard.read');
+
+        if (!$this->request->isAJAX()) {
+            return $this->jsonResponse([
+                'success' => false,
+                'message' => 'Invalid request type.',
+            ], 400);
+        }
+
+        $userId = (int) ($this->currentUser['id'] ?? 0);
+        if ($userId <= 0) {
+            return $this->jsonResponse([
+                'success' => false,
+                'message' => 'Invalid user context.',
+            ], 422);
+        }
+
+        $count = $this->notificationService->markAllAsRead($userId);
+
+        return $this->jsonResponse([
+            'success' => true,
+            'marked_count' => $count,
+            'csrf' => [
+                'token' => csrf_token(),
+                'hash' => csrf_hash(),
+            ],
+        ]);
     }
 }

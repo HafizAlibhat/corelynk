@@ -95,6 +95,10 @@ $routes->group('api', ['namespace' => 'App\Controllers\Api'], function ($routes)
     $routes->get('admin/roles',                      'MobileUserApi::roles');
 });
 
+// Public customer approval portal for customs invoices
+$routes->get('customs-approval/(:segment)', 'CustomsInvoices::approvalPortal/$1');
+$routes->post('customs-approval/(:segment)/decision', 'CustomsInvoices::approvalDecision/$1');
+
 // Authentication Routes
 $routes->group('auth', function($routes) {
     $routes->get('login', 'Auth::login');
@@ -169,6 +173,9 @@ $routes->group('', function($routes) {
     
     // Corelynk CEO dashboard + widgets
     $routes->get('corelynk/fx-rates', 'Corelynk::fxRates');
+    $routes->get('corelynk/activity-center/feed', 'Corelynk::activityCenterFeed');
+    $routes->post('corelynk/activity-center/read/(:num)', 'Corelynk::activityCenterMarkRead/$1');
+    $routes->post('corelynk/activity-center/read-all', 'Corelynk::activityCenterMarkAllRead');
 
     // POS (Point of Sale) Register
     $routes->group('pos', function($routes) {
@@ -207,6 +214,8 @@ $routes->group('', function($routes) {
         $routes->get('get-data', 'Products::getData');
         // Lightweight JSON search endpoint for typeahead/autocomplete (code/name)
         $routes->get('search', 'Products::search');
+        // AJAX endpoint: attribute values for a given attribute name (live search)
+        $routes->get('attribute-values', 'Products::attributeValues');
         $routes->get('create', 'Products::create');
         $routes->post('store', 'Products::store');
         $routes->get($productIdentifier, 'Products::show/$1');
@@ -267,6 +276,8 @@ $routes->group('', function($routes) {
         $routes->get('(:num)/edit', 'PreparationProfiles::edit/$1');
         $routes->post('(:num)/update', 'PreparationProfiles::update/$1');
         $routes->post('(:num)/delete', 'PreparationProfiles::delete/$1');
+        $routes->post('(:num)/copy-to-variants', 'PreparationProfiles::copyToVariants/$1');
+        $routes->post('ajax/create-service', 'PreparationProfiles::createServiceAjax');
     });
 
     // Product Variants (preview & generate endpoints)
@@ -282,6 +293,7 @@ $routes->group('', function($routes) {
     // Some clients (and HTML forms without method-override) post to /product-variants/{id}/delete
     // Accept POST for compatibility and route it to the same delete handler.
     $routes->post('(:num)/delete', 'ProductVariants::delete/$1');
+    $routes->post('(:num)/exclude-from-list', 'ProductVariants::excludeFromList/$1');
     $routes->post('bulk-delete', 'ProductVariants::bulkDelete');
     });
 
@@ -335,6 +347,7 @@ $routes->group('', function($routes) {
             $routes->get('clear-data', 'DevTools::index');
             $routes->post('clear-data', 'DevTools::clear');
             $routes->post('set-env', 'DevTools::setEnv');
+            $routes->post('reset-db', 'DevTools::resetDb');
         });
     }
 
@@ -602,10 +615,7 @@ $routes->group('', function($routes) {
         $routes->get('/', 'Customers::index');
         $routes->get('create', 'Customers::create');
         $routes->post('create', 'Customers::create');
-        // Debug-only JSON API — disabled in production
-        if (ENVIRONMENT !== 'production') {
-            $routes->post('api-create', 'Customers::apiCreate');
-        }
+        $routes->post('api-create', 'Customers::apiCreate');
         $routes->get('(:segment)', 'Customers::show/$1');
         $routes->get('(:segment)/edit', 'Customers::edit/$1');
         $routes->post('(:segment)/edit', 'Customers::edit/$1');
@@ -639,6 +649,7 @@ $routes->group('', function($routes) {
         $routes->post('post/(:segment)', 'CustomerInvoices::post/$1');
         $routes->get('view/(:segment)', 'CustomerInvoices::view/$1');
     $routes->get('pdf/(:segment)', 'CustomerInvoices::pdf/$1');
+    $routes->get('print/(:segment)', 'CustomerInvoices::printView/$1');
 
         // System invoices
         $routes->get('system/new', 'CustomerInvoices::createSystemView');
@@ -651,6 +662,31 @@ $routes->group('', function($routes) {
         // PDF generation / download
         $routes->get('(:segment)/pdf/system', 'CustomerInvoices::downloadSystemPDF/$1');
         $routes->get('(:segment)/pdf/custom', 'CustomerInvoices::downloadCustomPDF/$1');
+    });
+
+    // Customs Invoices (linked to original customer invoices)
+    $routes->group('customs-invoices', ['filter' => 'auth'], function($routes) {
+        $routes->get('/', 'CustomsInvoices::index');
+        $routes->get('', 'CustomsInvoices::index');
+        $routes->get('workspace/(:segment)', 'CustomsInvoices::workspace/$1');
+        $routes->post('create-from-invoice/(:num)', 'CustomsInvoices::createFromInvoice/$1');
+        $routes->get('(:segment)', 'CustomsInvoices::show/$1');
+        $routes->post('(:segment)/draft/save', 'CustomsInvoices::saveDraft/$1');
+        $routes->post('(:segment)/submit-approval', 'CustomsInvoices::submitApproval/$1');
+        $routes->post('(:segment)/approve', 'CustomsInvoices::approve/$1');
+        $routes->post('(:segment)/reject', 'CustomsInvoices::reject/$1');
+        $routes->post('(:segment)/finalize', 'CustomsInvoices::finalize/$1');
+        $routes->post('(:segment)/send-agent', 'CustomsInvoices::sendToAgent/$1');
+        $routes->post('(:segment)/archive', 'CustomsInvoices::archive/$1');
+        $routes->post('(:segment)/pdf/preview', 'CustomsInvoices::generatePreviewPdf/$1');
+        $routes->post('(:segment)/pdf/final', 'CustomsInvoices::generateFinalPdf/$1');
+        $routes->get('(:segment)/files', 'CustomsInvoices::files/$1');
+        $routes->get('(:segment)/files/(:num)/download', 'CustomsInvoices::downloadFile/$1/$2');
+        $routes->post('(:segment)/upload-documents', 'CustomsInvoices::uploadDocuments/$1');
+        $routes->get('(:segment)/documents', 'CustomsInvoices::documents/$1');
+        $routes->get('(:segment)/documents/(:num)/download', 'CustomsInvoices::downloadDocument/$1/$2');
+        $routes->get('(:segment)/versions', 'CustomsInvoices::versions/$1');
+        $routes->get('(:segment)/audit', 'CustomsInvoices::audit/$1');
     });
 
     // Sales & Quotations
@@ -669,14 +705,24 @@ $routes->group('', function($routes) {
         $routes->post('api/create', 'Quotations::apiCreate');
         // Inline line update
         $routes->post('update-line/(:any)', 'Quotations::updateLine/$1');
+        // Inline line create
+        $routes->post('add-line/(:any)', 'Quotations::addLine/$1');
+        // Inline line delete
+        $routes->delete('delete-line/(:any)', 'Quotations::deleteLine/$1');
+        $routes->post('delete-line/(:any)', 'Quotations::deleteLine/$1');
     // Update shipping amount
     $routes->post('update-shipping/(:any)', 'Quotations::updateShipping/$1');
         // Bulk update quotation (edit form)
         $routes->post('update/(:any)', 'Quotations::update/$1');
         // View a saved quotation
         $routes->get('view/(:any)', 'Quotations::view/$1');
+        // Warehouse printable HTML pick slip
+        $routes->get('warehouse-document/(:any)', 'Quotations::warehouseDocument/$1');
+        // Warehouse PDF (must be before generic pdf route)
+        $routes->get('pdf/(:any)/warehouse', 'Quotations::warehousePdf/$1');
         // Download quotation PDF
         $routes->get('pdf/(:any)', 'Quotations::pdf/$1');
+                $routes->get('print/(:any)', 'Quotations::printView/$1');
             // Edit alias (temporary: redirect to view until edit form exists)
             $routes->get('edit/(:any)', 'Quotations::edit/$1');
     // Delete quotation (accept POST or DELETE for compatibility with HTML forms)
@@ -687,12 +733,25 @@ $routes->group('', function($routes) {
         $routes->get('search-customers', 'Quotations::searchCustomers');
         $routes->get('price-lists/(:num)', 'Quotations::getPriceLists/$1');
         $routes->post('calculate', 'Quotations::calculateQuote');
+
+        // Quotation Discount Module
+        $routes->get('(:any)/discounts', 'QuotationDiscounts::index/$1');
+        $routes->get('(:any)/discounts/create', 'QuotationDiscounts::create/$1');
+        $routes->post('(:any)/discounts/store', 'QuotationDiscounts::store/$1');
+        $routes->get('(:any)/discounts/(:num)/edit', 'QuotationDiscounts::edit/$1/$2');
+        $routes->post('(:any)/discounts/(:num)/update', 'QuotationDiscounts::update/$1/$2');
+        $routes->post('(:any)/discounts/(:num)/delete', 'QuotationDiscounts::delete/$1/$2');
+        $routes->post('(:any)/discounts/(:num)/activate', 'QuotationDiscounts::activate/$1/$2');
+        $routes->post('(:any)/discounts/(:num)/deactivate', 'QuotationDiscounts::deactivate/$1/$2');
+        $routes->get('(:any)/discounts/api/data', 'QuotationDiscounts::apiData/$1');
     });
 
     // Unified Sales Documents list (Quotations + Sales Orders)
     $routes->group('documents', ['filter' => 'auth'], function($routes) {
         $routes->get('/', 'Documents::index');
         $routes->get('search', 'Documents::search');
+        $routes->get('order-alert-state', 'Documents::orderAlertState');
+        $routes->post('acknowledge-orders-alarm', 'Documents::acknowledgeOrdersAlarm');
     });
 
     // Expose product vendor price lookup at a top-level path for AJAX clients
@@ -703,18 +762,28 @@ $routes->group('', function($routes) {
         $routes->get('create', 'SalesOrders::create');
         $routes->post('create', 'SalesOrders::store');
         $routes->get('view/(:any)', 'SalesOrders::view/$1');
+        $routes->get('warehouse-document/(:any)', 'SalesOrders::warehouseDocument/$1');
+        $routes->get('warehouse-print/(:any)', 'SalesOrders::warehousePrintView/$1');
         $routes->get('pdf/(:any)', 'SalesOrders::pdf/$1');
+            $routes->get('print/(:any)', 'SalesOrders::printView/$1');
         $routes->get('create-from-quotation/(:num)', 'SalesOrders::createFromQuotation/$1');
         $routes->get('invoice/(:num)', 'SalesOrders::invoice/$1');
         $routes->post('cancel/(:any)', 'SalesOrders::cancel/$1');
+        $routes->post('reset-to-quotation/(:any)', 'SalesOrders::resetToQuotation/$1');
         $routes->post('create-purchase-drafts/(:num)', 'SalesOrders::createPurchaseDrafts/$1'); // Phase-2
+        $routes->post('create-material-rfq/(:num)', 'SalesOrders::createMaterialRfq/$1');
         $routes->post('preparation/send-to-vendor', 'PreparationExecution::sendToVendor');
+        $routes->post('preparation/bulk-send-to-vendor', 'PreparationExecution::bulkSendToVendor');
         $routes->post('preparation/start-inhouse', 'PreparationExecution::startInHouse');
     });
 
     $routes->group('vendor-receive', ['filter' => 'auth'], function($routes) {
         $routes->get('/', 'VendorReceive::index');
+        $routes->get('received-items', 'VendorReceive::receivedItems');
+        $routes->get('rejection/(:num)/pdf', 'VendorReceive::rejectionPdf/$1');
+        $routes->get('handover-slip/batch', 'VendorReceive::handoverSlipBatch');
         $routes->get('(:num)', 'VendorReceive::receiveForm/$1');
+        $routes->get('(:num)/handover-slip', 'VendorReceive::handoverSlip/$1');
         $routes->post('store', 'VendorReceive::store');
     });
 
@@ -736,6 +805,8 @@ $routes->group('', function($routes) {
         $routes->get('shipped', 'DeliveryOrders::shipped');
         $routes->get('pending-followup', 'DeliveryOrders::pendingFollowup');
         $routes->get('view/(:segment)', 'DeliveryOrders::view/$1');
+        $routes->get('print-old/(:segment)', 'DeliveryOrders::print/$1');
+        $routes->get('print/(:segment)', 'DeliveryOrders::printView/$1');
         $routes->get('progress/so/(:num)', 'DeliveryOrders::orderProgress/$1');
         $routes->post('create-from-sales-order/(:num)', 'DeliveryOrders::createFromSalesOrder/$1');
         $routes->post('update-qty/(:segment)', 'DeliveryOrders::updateQty/$1');
@@ -751,6 +822,16 @@ $routes->group('', function($routes) {
         $routes->post('quick-service', 'DeliveryOrders::quickService');
         $routes->post('create-shipping-po/(:segment)', 'DeliveryOrders::createShippingPoManual/$1');
         $routes->match(['POST','DELETE'], 'delete/(:segment)', 'DeliveryOrders::delete/$1');
+    });
+
+    // Shared line operations for quotation / sales order / purchase order
+    $routes->group('document-lines', ['filter' => 'auth'], function($routes) {
+        $routes->post('reorder', 'DocumentLines::reorder');
+        $routes->post('sort', 'DocumentLines::sort');
+        $routes->post('add-section', 'DocumentLines::addSection');
+        $routes->post('update-section', 'DocumentLines::updateSection');
+        $routes->post('delete-section', 'DocumentLines::deleteSection');
+        $routes->post('recalculate', 'DocumentLines::recalculate');
     });
     
     // Components & Inventory Management
@@ -984,6 +1065,7 @@ $routes->group('', function($routes) {
         $routes->post('saveNetwork', 'Settings::saveNetwork');
         $routes->post('saveMobileSettings', 'Settings::saveMobileSettings');
         $routes->post('saveDateFormat', 'Settings::saveDateFormat');
+        $routes->post('saveProductAssetUploadSettings', 'Settings::saveProductAssetUploadSettings');
     });
 
     // Integrations (Odoo)
@@ -1098,9 +1180,11 @@ $routes->get('newpurchaseui/rfqs', 'NewPurchaseUI::rfqs');
 $routes->get('newpurchaseui/pos', 'NewPurchaseUI::pos');
 $routes->get('newpurchaseui/po/(:segment)', 'NewPurchaseUI::po/$1');
 $routes->get('newpurchaseui/grn', 'NewPurchaseUI::grn');
+$routes->get('newpurchaseui/receipts', 'NewPurchaseUI::receipts');
 // Friendly purchase detail aliases
 $routes->get('purchases/po/(:segment)', 'NewPurchaseUI::po/$1');
 $routes->get('purchases/rfq/(:segment)', 'NewPurchaseUI::rfq/$1');
+$routes->get('purchases/receipts', 'NewPurchaseUI::receipts');
 // API endpoint for creating RFQs (match UI POST path exactly)
 $routes->post('new-purchase-rfqs/create', 'NewPurchaseRfqs::create');
 // RFQ lifecycle and listing
@@ -1108,11 +1192,13 @@ $routes->get('new-purchase-rfqs/next-number', 'NewPurchaseRfqs::nextNumber');
 $routes->get('new-purchase-rfqs', 'NewPurchaseRfqs::index');
 $routes->get('new-purchase-rfqs/(:segment)', 'NewPurchaseRfqs::show/$1');
 $routes->get('new-purchase-rfqs/(:segment)/pdf', 'NewPurchaseRfqs::pdf/$1');
+$routes->get('new-purchase-rfqs/(:segment)/print', 'NewPurchaseRfqs::printView/$1');
 $routes->post('new-purchase-rfqs/(:segment)/update', 'NewPurchaseRfqs::update/$1');
 $routes->post('new-purchase-rfqs/(:segment)/confirm', 'NewPurchaseRfqs::confirm/$1');
 $routes->post('new-purchase-rfqs/(:segment)/send', 'NewPurchaseRfqs::send/$1');
 $routes->post('new-purchase-rfqs/(:segment)/accept', 'NewPurchaseRfqs::accept/$1');
 $routes->post('new-purchase-rfqs/(:segment)/cancel', 'NewPurchaseRfqs::cancel/$1');
+$routes->post('new-purchase-rfqs/(:segment)/delete', 'NewPurchaseRfqs::delete/$1');
 
 // PO from RFQ conversion
 $routes->post('new-purchase-orders/from-rfq/(:num)', 'NewPurchaseOrders::from_rfq/$1');
@@ -1120,6 +1206,7 @@ $routes->post('new-purchase-orders/from-rfq/(:num)', 'NewPurchaseOrders::from_rf
 // PO detail, update and cancel endpoints used by UI
 $routes->get('new-purchase-orders/(:segment)', 'NewPurchaseOrders::show/$1');
 $routes->get('new-purchase-orders/(:segment)/pdf', 'NewPurchaseOrders::pdf/$1');
+$routes->get('new-purchase-orders/(:segment)/print', 'NewPurchaseOrders::printView/$1');
 $routes->post('new-purchase-orders/(:segment)/update', 'NewPurchaseOrders::update/$1');
 $routes->post('new-purchase-orders/(:segment)/set-draft', 'NewPurchaseOrders::setDraft/$1');
 $routes->post('new-purchase-orders/(:segment)/cancel', 'NewPurchaseOrders::cancel/$1');
@@ -1154,6 +1241,7 @@ $routes->post('new-purchase-grns/create', 'NewPurchaseGrns::create');
 $routes->post('new-purchase-grns/(:num)/lines/(:num)/issue', 'NewPurchaseGrns::issue/$1/$2');
 $routes->get('new-purchase-grns/list', 'NewPurchaseGrns::list');
 $routes->get('new-purchase-grns/detail/(:segment)', 'NewPurchaseGrns::detail/$1');
+$routes->get('new-purchase-grns/(:segment)/print', 'NewPurchaseGrns::printView/$1');
 
  // Inventory: warehouses & locations management
  $routes->get('inventory/locations', 'InventoryLocations::index');
@@ -1179,6 +1267,7 @@ $routes->get('vendors/ledger/(:num)', 'VendorLedger::index/$1');
 // Vendor Bills
 $routes->get('vendor-bills', 'VendorBills::index');
 $routes->get('vendor-bills/(:segment)', 'VendorBills::show/$1');
+$routes->get('vendor-bills/(:segment)/print', 'VendorBills::printView/$1');
 $routes->post('vendor-bills/(:segment)/confirm', 'VendorBills::confirm/$1');
 $routes->post('vendor-bills/(:segment)/update', 'VendorBills::update/$1');
 $routes->post('vendor-bills/(:segment)/cancel', 'VendorBills::cancel/$1');

@@ -104,6 +104,23 @@ class WarehouseDashboard extends BaseController
 
         $db = \Config\Database::connect();
 
+        // Build a schema-safe filter so warehouse only sees physical incoming stock,
+        // not service purchases (e.g., shipping agent service invoices).
+        $productFilters = ['p.id IS NOT NULL'];
+        if ($db->fieldExists('product_type', 'products')) {
+            $productFilters[] = "LOWER(COALESCE(p.product_type,'')) NOT IN ('service','shipping_service','shipping','digital')";
+        }
+        if ($db->fieldExists('detailed_type', 'products')) {
+            $productFilters[] = "LOWER(COALESCE(p.detailed_type,'')) NOT IN ('service','shipping_service','shipping','digital')";
+        }
+        if ($db->fieldExists('is_stockable', 'products')) {
+            $productFilters[] = 'COALESCE(p.is_stockable,1) = 1';
+        }
+        if ($db->fieldExists('track_inventory', 'products')) {
+            $productFilters[] = 'COALESCE(p.track_inventory,1) = 1';
+        }
+        $stockProductWhere = implode(' AND ', $productFilters);
+
         // Select PO header + lines with product and vendor info
         $rows = [];
         try {
@@ -128,8 +145,9 @@ class WarehouseDashboard extends BaseController
                     ->join('product_variants pv', 'pv.id = COALESCE(pol.variant_id, pol.product_variant_id)', 'left')
                     ->join('(' . $grnSub . ') grn', 'grn.po_line_id = pol.id', 'left', false)
                     ->where("(pol.qty - COALESCE(pol.qty_received, grn.grn_received,0)) > 0")
-                    // include most statuses but exclude closed POs so warehouse can see pending receipts
-                    ->where("(po.status IS NULL OR po.status != 'closed')")
+                    ->where($stockProductWhere, null, false)
+                    // Show only actionable incoming POs; hide completed/received/cancelled lifecycle states.
+                    ->where("LOWER(COALESCE(po.status, '')) NOT IN ('closed','received','completed','cancelled','canceled','rejected')", null, false)
                     ->orderBy('po.id', 'DESC');
 
                 // Apply optional date filters from GET params (expected_date)
@@ -228,8 +246,8 @@ class WarehouseDashboard extends BaseController
                         ->join('products p', 'p.id = pol.product_id', 'left')
                         ->join('(' . $grnSub . ') grn', 'grn.po_line_id = pol.id', 'left', false)
                         ->where("(pol.$qtyCol - COALESCE(pol.qty_received, grn.grn_received,0)) > 0")
-                        // Only exclude closed POs
-                        ->where("(po.status IS NULL OR po.status != 'closed')")
+                        ->where($stockProductWhere, null, false)
+                        ->where("LOWER(COALESCE(po.status, '')) NOT IN ('closed','received','completed','cancelled','canceled','rejected')", null, false)
                         ->orderBy('po.id', 'DESC');
                     $test = $qb->get()->getResultArray();
                     if (!empty($test)) {
@@ -257,9 +275,15 @@ class WarehouseDashboard extends BaseController
                     $etaColLocal = isset($etaCol) ? $etaCol : null;
                     $selectEta = $etaColLocal ? "po.$etaColLocal as expected_date" : "NULL as expected_date";
                     $candQ = $db->table('purchase_orders po')
+                        ->distinct()
                         ->select("po.id, po.po_number, po.status, {$selectEta}, v.name as vendor_name")
                         ->join('vendors v', 'v.id = po.vendor_id', 'left')
-                        ->where("(po.status IS NULL OR po.status NOT IN ('received','closed'))")
+                        ->join('purchase_order_lines pol', 'pol.po_id = po.id', 'inner')
+                        ->join('products p', 'p.id = pol.product_id', 'left')
+                        ->join('(' . $grnSub . ') grn', 'grn.po_line_id = pol.id', 'left', false)
+                        ->where("(pol.qty - COALESCE(pol.qty_received, grn.grn_received,0)) > 0")
+                        ->where($stockProductWhere, null, false)
+                        ->where("LOWER(COALESCE(po.status, '')) NOT IN ('closed','received','completed','cancelled','canceled','rejected')", null, false)
                         ->orderBy('po.created_at', 'DESC')
                         ->limit(10)
                         ->get();

@@ -10,6 +10,7 @@ class CompanySettingsModel extends Model
     protected $primaryKey = 'id';
     protected $allowedFields = [
         'name','address','contact','email','phone','website','tagline',
+        'timezone',
         'base_currency','secondary_currency','use_demo_data',
         'default_sales_currency','default_purchase_currency',
         'logo_path','company_logo',

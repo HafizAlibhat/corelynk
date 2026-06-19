@@ -35,6 +35,7 @@
         $defaultStatus = $isEdit ? ($quote['status'] ?? 'quoted') : 'quoted';
         $defaultCustomerId = $isEdit ? ($quote['customer_id'] ?? '') : (old('customer_id') ?? '');
         $defaultCustomerSearch = $isEdit ? (($quote['customer_code'] ?? '') . (isset($quote['customer_name']) ? (' - ' . $quote['customer_name']) : '')) : (old('customer_search') ?? '');
+        $customerLockedOnEdit = $isEdit && !empty($prefillLines);
     // Date display in DD-MM-YYYY for UX (stored as posted string)
     $rawIssueDate = $isEdit ? ($quote['issue_date'] ?? date('Y-m-d')) : date('Y-m-d');
     $defaultIssueDate = date('d-m-Y', strtotime($rawIssueDate));
@@ -44,8 +45,13 @@
     $showShipping = ($docType === 'sales_order') ? true : ($isEdit && $defaultShipping > 0);
         $prefillLines = $isEdit ? ($lines ?? []) : [];
         $defaultSubtotal = $isEdit ? (float)($quote['subtotal'] ?? 0) : 0.0;
+        $defaultDiscount = $isEdit ? (float)($quote['discount'] ?? 0) : 0.0;
         $defaultTax = $isEdit ? (float)($quote['tax'] ?? ($quote['tax_total'] ?? 0)) : 0.0;
         $defaultTotal = $isEdit ? (float)($quote['total'] ?? 0) : 0.0;
+        $defaultDocDiscountType = $isEdit ? strtolower((string)($quote['document_discount_type'] ?? 'fixed')) : 'fixed';
+        if (!in_array($defaultDocDiscountType, ['percent','fixed'], true)) $defaultDocDiscountType = 'fixed';
+        $defaultDocDiscountValue = $isEdit ? (float)($quote['document_discount_value'] ?? 0) : 0.0;
+        $defaultExcludeShipping = $isEdit ? ((int)($quote['discount_exclude_shipping'] ?? 1) === 1) : true;
     ?>
     <?= form_open($action, ['id' => 'quotation-form']) ?>
     <input type="hidden" name="status" id="quote-status" value="<?= esc($defaultStatus) ?>">
@@ -61,10 +67,13 @@
             <div class="col-md-5">
                 <label class="form-label">Customer</label>
                 <div class="position-relative">
-                    <input type="text" id="customer_search" class="form-control" placeholder="Search customer by code or name" value="<?= esc($defaultCustomerSearch) ?>">
+                    <input type="text" id="customer_search" class="form-control" placeholder="Search customer by code or name" value="<?= esc($defaultCustomerSearch) ?>" <?= $customerLockedOnEdit ? 'readonly' : '' ?>>
                     <input type="hidden" name="customer_id" id="customer_id" value="<?= esc($defaultCustomerId) ?>">
                     <div id="customer_list" class="card autocomplete-list" style="position:absolute;z-index:1200;display:none;width:100%"></div>
                     <div class="invalid-feedback d-block" id="error-customer"><?= esc(session()->getFlashdata('form_errors')['customer_id'] ?? '') ?></div>
+                    <?php if ($customerLockedOnEdit): ?>
+                        <small class="text-muted">Customer is locked because this quotation already has line items. Create a new quotation to change customer.</small>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="col-md-3">
@@ -92,9 +101,19 @@
         </div>
 
         <!-- Quote lines table -->
+        <style>
+            .quote-create-lines .col-disc,
+            .quote-create-lines .col-tax {
+                display: none;
+            }
+            .quote-create-lines.show-discount-tax .col-disc,
+            .quote-create-lines.show-discount-tax .col-tax {
+                display: table-cell;
+            }
+        </style>
         <h5>Lines</h5>
         <div class="table-responsive">
-            <table class="table" id="quote-lines-table">
+            <table class="table quote-create-lines" id="quote-lines-table">
                 <thead>
                     <tr>
                         <th style="width:6%">Code</th>
@@ -103,8 +122,8 @@
                         <th style="width:7%">Unit</th>
                         <th style="width:5%">Qty</th>
                         <th style="width:18%">Unit Price</th>
-                        <th style="width:5%">Disc %</th>
-                        <th style="width:5%">Tax %</th>
+                        <th style="width:12%" class="col-disc">Item Discount</th>
+                        <th style="width:11%" class="col-tax">Item Tax</th>
                         <th style="width:5%">Total</th>
                         <th style="width:3%"></th>
                     </tr>
@@ -122,7 +141,9 @@
                                 $price = $ln['unit_price'] ?? 0;
                                 $discType = $ln['discount_type'] ?? 'percent';
                                 $discVal = $ln['discount_value'] ?? 0;
-                                $taxRate = $ln['tax_rate'] ?? 0;
+                                $taxType = strtolower((string)($ln['tax_type'] ?? 'percent'));
+                                if (!in_array($taxType, ['percent', 'fixed'], true)) $taxType = 'percent';
+                                $taxValue = $ln['tax_value'] ?? ($ln['tax_rate'] ?? 0);
                                 $lineTotal = $ln['line_total'] ?? 0;
                                 $pid = $ln['product_id'] ?? null;
                                 $unitWeight = $ln['unit_weight'] ?? ($ln['weight'] ?? 0);
@@ -163,10 +184,23 @@
                                     <input type="number" step="0.01" min="0" name="lines[<?= (int)$idx ?>][unit_price]" class="form-control line-price" value="<?= number_format((float)$price, 2, '.', '') ?>" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;font-weight:600">
                                 </td>
                                 <td style="vertical-align:middle;padding:2px;">
-                                    <input type="hidden" name="lines[<?= (int)$idx ?>][discount_type]" value="<?= esc($discType) ?>">
-                                    <input type="number" step="0.01" min="0" name="lines[<?= (int)$idx ?>][discount_value]" class="form-control form-control-sm line-discount" placeholder="%" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center" value="<?= esc($discVal) ?>">
+                                    <div class="d-flex gap-1 align-items-center">
+                                        <select name="lines[<?= (int)$idx ?>][discount_type]" class="form-select form-select-sm line-discount-type" style="max-width:72px;padding:0.25rem 0.35rem;font-size:0.75rem;">
+                                            <option value="percent" <?= $discType === 'percent' ? 'selected' : '' ?>>%</option>
+                                            <option value="fixed" <?= $discType === 'fixed' ? 'selected' : '' ?>>Fix</option>
+                                        </select>
+                                        <input type="number" step="0.01" min="0" name="lines[<?= (int)$idx ?>][discount_value]" class="form-control form-control-sm line-discount" placeholder="0.00" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center" value="<?= esc($discVal) ?>">
+                                    </div>
                                 </td>
-                                <td style="vertical-align:middle;padding:2px;"><input type="number" step="0.01" min="0" name="lines[<?= (int)$idx ?>][tax_rate]" class="form-control form-control-sm line-tax" placeholder="%" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center" value="<?= esc($taxRate) ?>"></td>
+                                <td style="vertical-align:middle;padding:2px;" class="col-tax">
+                                    <div class="d-flex gap-1 align-items-center">
+                                        <select name="lines[<?= (int)$idx ?>][tax_type]" class="form-select form-select-sm line-tax-type" style="max-width:72px;padding:0.25rem 0.35rem;font-size:0.75rem;">
+                                            <option value="percent" <?= $taxType === 'percent' ? 'selected' : '' ?>>%</option>
+                                            <option value="fixed" <?= $taxType === 'fixed' ? 'selected' : '' ?>>Fix</option>
+                                        </select>
+                                        <input type="number" step="0.01" min="0" name="lines[<?= (int)$idx ?>][tax_value]" class="form-control form-control-sm line-tax" placeholder="0.00" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center" value="<?= esc($taxValue) ?>">
+                                    </div>
+                                </td>
                                 <td class="line-total text-end" style="padding:2px 2px;vertical-align:middle;font-size:0.85rem;"><?= number_format((float)$lineTotal, 2) ?></td>
                                 <td style="vertical-align:middle;padding:2px;"><button type="button" class="btn btn-sm btn-outline-danger btn-remove-line" style="padding:0.25rem 0.5rem;"><i class="bi bi-trash"></i></button></td>
                             </tr>
@@ -204,11 +238,24 @@
                         <td style="vertical-align:middle;padding:2px;">
                             <input type="number" step="0.01" min="0" name="lines[0][unit_price]" class="form-control line-price" value="0.00" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;font-weight:600">
                         </td>
-                        <td style="vertical-align:middle;padding:2px;">
-                            <input type="hidden" name="lines[0][discount_type]" value="percent">
-                            <input type="number" step="0.01" min="0" name="lines[0][discount_value]" class="form-control form-control-sm line-discount" placeholder="%" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center">
+                        <td style="vertical-align:middle;padding:2px;" class="col-disc">
+                            <div class="d-flex gap-1 align-items-center">
+                                <select name="lines[0][discount_type]" class="form-select form-select-sm line-discount-type" style="max-width:72px;padding:0.25rem 0.35rem;font-size:0.75rem;">
+                                    <option value="percent" selected>%</option>
+                                    <option value="fixed">Fix</option>
+                                </select>
+                                <input type="number" step="0.01" min="0" name="lines[0][discount_value]" class="form-control form-control-sm line-discount" placeholder="0.00" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center">
+                            </div>
                         </td>
-                        <td style="vertical-align:middle;padding:2px;"><input type="number" step="0.01" min="0" name="lines[0][tax_rate]" class="form-control form-control-sm line-tax" placeholder="%" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center"></td>
+                        <td style="vertical-align:middle;padding:2px;" class="col-tax">
+                            <div class="d-flex gap-1 align-items-center">
+                                <select name="lines[0][tax_type]" class="form-select form-select-sm line-tax-type" style="max-width:72px;padding:0.25rem 0.35rem;font-size:0.75rem;">
+                                    <option value="percent" selected>%</option>
+                                    <option value="fixed">Fix</option>
+                                </select>
+                                <input type="number" step="0.01" min="0" name="lines[0][tax_value]" class="form-control form-control-sm line-tax" placeholder="0.00" style="width:95%;padding:0.25rem 0.5rem;font-size:0.85rem;text-align:center">
+                            </div>
+                        </td>
                         <td class="line-total text-end" style="padding:2px 2px;vertical-align:middle;font-size:0.85rem;">0.00</td>
                         <td style="vertical-align:middle;padding:2px;"><button type="button" class="btn btn-sm btn-outline-danger btn-remove-line" style="padding:0.25rem 0.5rem;"><i class="bi bi-trash"></i></button></td>
                     </tr>
@@ -220,11 +267,27 @@
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mt-2">
             <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
                 <button type="button" id="add-line" class="btn btn-outline-secondary">Add Line</button>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="toggle-discount-tax">
+                    <label class="form-check-label" for="toggle-discount-tax" style="font-size:0.9rem;">Show Item Discount &amp; Tax</label>
+                </div>
                 <!-- Single save action -->
                 <button type="button" id="btn-save-quote" class="btn btn-primary" data-status="quoted"><?= $isEdit ? ('Update ' . $docTitle) : ('Save ' . $docTitle) ?></button>
             </div>
             <div class="text-end" style="min-width:260px">
+                <div class="d-flex justify-content-end align-items-center gap-2 mb-1">
+                    <select name="document_discount_type" id="document_discount_type" class="form-select form-select-sm" style="max-width:90px;">
+                        <option value="fixed" <?= $defaultDocDiscountType === 'fixed' ? 'selected' : '' ?>>Fixed</option>
+                        <option value="percent" <?= $defaultDocDiscountType === 'percent' ? 'selected' : '' ?>>%</option>
+                    </select>
+                    <input type="number" step="0.01" min="0" name="document_discount_value" id="document_discount_value" class="form-control form-control-sm" style="max-width:120px;" value="<?= number_format((float)$defaultDocDiscountValue, 2, '.', '') ?>" placeholder="Doc discount">
+                </div>
+                <div class="form-check d-flex justify-content-end mb-1">
+                    <input class="form-check-input" type="checkbox" value="1" id="discount_exclude_shipping" name="discount_exclude_shipping" <?= $defaultExcludeShipping ? 'checked' : '' ?>>
+                    <label class="form-check-label ms-2" for="discount_exclude_shipping" style="font-size:0.8rem;">Exclude shipping from document discount</label>
+                </div>
                 <div>Subtotal: <span id="subtotal"><?= number_format((float)$defaultSubtotal, 2) ?></span> <span class="text-muted currency-code"><?= esc($selectedCurrency) ?></span></div>
+                <div>Discount: <span id="discount-total"><?= number_format((float)$defaultDiscount, 2) ?></span> <span class="text-muted currency-code"><?= esc($selectedCurrency) ?></span></div>
                 <div>Tax: <span id="tax"><?= number_format((float)$defaultTax, 2) ?></span> <span class="text-muted currency-code"><?= esc($selectedCurrency) ?></span></div>
                 <div class="d-flex justify-content-end align-items-center gap-2 text-muted mt-1">
                     <button type="button" id="add-shipping" class="btn btn-outline-primary btn-sm">Shipping</button>

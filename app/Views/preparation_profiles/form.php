@@ -221,6 +221,22 @@
 let materialIndex = document.querySelectorAll('#materials-table tbody tr').length;
 let stepIndex = document.querySelectorAll('#steps-container .step-block').length;
 
+// Multi-word tokenized matcher: every space-separated token must appear in the option text.
+// Allows searching like "16cm rosegold" or "16cm pc" to narrow results independently per word.
+function multiWordMatcher(params, data) {
+    if (!params.term || params.term.trim() === '') {
+        return data;
+    }
+    var tokens = params.term.trim().toLowerCase().split(/\s+/);
+    var text = (data.text || '').toLowerCase();
+    for (var i = 0; i < tokens.length; i++) {
+        if (tokens[i] && text.indexOf(tokens[i]) === -1) {
+            return null;
+        }
+    }
+    return data;
+}
+
 function initSearchableSelects(scope) {
     if (!(window.jQuery && window.jQuery.fn && window.jQuery.fn.select2)) {
         return;
@@ -232,11 +248,16 @@ function initSearchableSelects(scope) {
             if (window.jQuery(this).data('select2')) {
                 window.jQuery(this).select2('destroy');
             }
-            window.jQuery(this).select2({
+            var opts = {
                 width: '100%',
                 placeholder: 'Search...',
                 allowClear: true,
-            });
+            };
+            // Apply multi-word matcher only to the materials product dropdown
+            if (window.jQuery(this).attr('name') && window.jQuery(this).attr('name').indexOf('material_product_id') !== -1) {
+                opts.matcher = multiWordMatcher;
+            }
+            window.jQuery(this).select2(opts);
         } catch (e) {
             console.warn('Select2 init failed on preparation form', e);
         }

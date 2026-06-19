@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Models\QuotationModel;
 use App\Models\SalesOrderModel;
+use App\Services\NotificationService;
 use App\Services\SearchService;
 
 class Documents extends BaseController
@@ -15,6 +16,7 @@ class Documents extends BaseController
     {
         $quotationModel = new QuotationModel();
         $salesOrderModel = new SalesOrderModel();
+        $notificationService = new NotificationService();
         $searchTerm = $this->request->getGet('q') ?? $this->request->getGet('search');
 
         // Fetch latest docs (keep it lightweight; can be paginated later)
@@ -52,15 +54,123 @@ class Documents extends BaseController
         $customerIds = [];
         $orderIds = [];
         $quoteIds = [];
+        $createdByIds = [];
         foreach ($quotes as $q) { $quoteIds[] = (int)($q['id'] ?? 0); if (!empty($q['customer_id'])) $customerIds[] = (int)$q['customer_id']; }
-        foreach ($orders as $o) { $orderIds[] = (int)($o['id'] ?? 0); if (!empty($o['customer_id'])) $customerIds[] = (int)$o['customer_id']; }
+        foreach ($orders as $o) {
+            $orderIds[] = (int)($o['id'] ?? 0);
+            if (!empty($o['customer_id'])) $customerIds[] = (int)$o['customer_id'];
+            if (!empty($o['created_by'])) $createdByIds[] = (int)$o['created_by'];
+        }
         $customerIds = array_values(array_unique(array_filter($customerIds)));
+        $createdByIds = array_values(array_unique(array_filter($createdByIds)));
 
         $customerMap = [];
         if (!empty($customerIds)) {
             try {
                 $rows = $db->table('customers')->select('id, name')->whereIn('id', $customerIds)->get()->getResultArray();
                 foreach ($rows as $r) { $customerMap[(int)$r['id']] = trim((string)($r['name'] ?? '')); }
+            } catch (\Throwable $_) { /* best-effort */ }
+        }
+
+        $customerCountryFromCustomerTable = [];
+        if (!empty($customerIds)) {
+            try {
+                $customerCols = $db->getFieldNames('customers') ?: [];
+                if (in_array('country_name', $customerCols, true)) {
+                    $cRows = $db->table('customers')->select('id, country_name')->whereIn('id', $customerIds)->get()->getResultArray();
+                    foreach ($cRows as $cr) {
+                        $cid = (int)($cr['id'] ?? 0);
+                        if ($cid <= 0) {
+                            continue;
+                        }
+                        $country = trim((string)($cr['country_name'] ?? ''));
+                        if ($country !== '') {
+                            $customerCountryFromCustomerTable[$cid] = $country;
+                        }
+                    }
+                }
+            } catch (\Throwable $_) { /* best-effort */ }
+        }
+
+        $customerCountryMap = [];
+        if (!empty($customerIds)) {
+            try {
+                if ($db->tableExists('customer_addresses')) {
+                    $addressRows = $db->table('customer_addresses')
+                        ->select('customer_id, country_name, country_id, is_default, is_shipping, id')
+                        ->whereIn('customer_id', $customerIds)
+                        ->orderBy('is_default', 'DESC')
+                        ->orderBy('is_shipping', 'DESC')
+                        ->orderBy('id', 'ASC')
+                        ->get()
+                        ->getResultArray();
+
+                    $countryIds = [];
+                    foreach ($addressRows as $ar) {
+                        $cid = (int)($ar['customer_id'] ?? 0);
+                        if ($cid <= 0 || !empty($customerCountryMap[$cid])) {
+                            continue;
+                        }
+                        $countryName = trim((string)($ar['country_name'] ?? ''));
+                        if ($countryName !== '') {
+                            $customerCountryMap[$cid] = $countryName;
+                            continue;
+                        }
+                        $countryId = (int)($ar['country_id'] ?? 0);
+                        if ($countryId > 0) {
+                            $countryIds[$countryId] = true;
+                        }
+                    }
+
+                    if (!empty($countryIds) && $db->tableExists('countries')) {
+                        $countryRows = $db->table('countries')
+                            ->select('id, name')
+                            ->whereIn('id', array_keys($countryIds))
+                            ->get()
+                            ->getResultArray();
+                        $countryNameById = [];
+                        foreach ($countryRows as $cr) {
+                            $countryNameById[(int)$cr['id']] = trim((string)($cr['name'] ?? ''));
+                        }
+                        foreach ($addressRows as $ar) {
+                            $cid = (int)($ar['customer_id'] ?? 0);
+                            if ($cid <= 0 || !empty($customerCountryMap[$cid])) {
+                                continue;
+                            }
+                            $countryId = (int)($ar['country_id'] ?? 0);
+                            $resolved = $countryNameById[$countryId] ?? '';
+                            if ($resolved !== '') {
+                                $customerCountryMap[$cid] = $resolved;
+                            }
+                        }
+                    }
+
+                    foreach ($customerIds as $cid) {
+                        $cid = (int)$cid;
+                        if ($cid > 0 && empty($customerCountryMap[$cid]) && !empty($customerCountryFromCustomerTable[$cid])) {
+                            $customerCountryMap[$cid] = (string)$customerCountryFromCustomerTable[$cid];
+                        }
+                    }
+                }
+            } catch (\Throwable $_) { /* best-effort */ }
+        }
+
+        $creatorMap = [];
+        if (!empty($createdByIds)) {
+            try {
+                $userRows = $db->table('users')
+                    ->select('id, username, first_name, last_name')
+                    ->whereIn('id', $createdByIds)
+                    ->get()
+                    ->getResultArray();
+                foreach ($userRows as $ur) {
+                    $uid = (int)($ur['id'] ?? 0);
+                    if ($uid <= 0) {
+                        continue;
+                    }
+                    $full = trim((string)(($ur['first_name'] ?? '') . ' ' . ($ur['last_name'] ?? '')));
+                    $creatorMap[$uid] = $full !== '' ? $full : trim((string)($ur['username'] ?? ('User #' . $uid)));
+                }
             } catch (\Throwable $_) { /* best-effort */ }
         }
 
@@ -79,13 +189,17 @@ class Documents extends BaseController
                     $soId = (int)($ln['sales_order_id'] ?? 0);
                     if ($soId <= 0) continue;
                     $pid = !empty($ln['product_id']) ? (int)$ln['product_id'] : 0;
+                    $lineDetail = trim((string)($ln['description'] ?? ''));
+                    if ($lineDetail === '') {
+                        $lineDetail = trim((string)($ln['product_name'] ?? ''));
+                    }
                     if ($pid > 0) {
                         $orderProductIdsByDoc[$soId][] = $pid;
                         $productIds[] = $pid;
                         if (empty($orderProductMap[$soId])) $orderProductMap[$soId] = $pid;
-                    } else {
-                        $txt = trim((string)($ln['product_name'] ?? $ln['description'] ?? ''));
-                        if ($txt !== '') $orderProductNamesByDoc[$soId][] = $txt;
+                    }
+                    if ($lineDetail !== '') {
+                        $orderProductNamesByDoc[$soId][] = $lineDetail;
                     }
                 }
             }
@@ -95,13 +209,17 @@ class Documents extends BaseController
                     $qId = (int)($ln['quotation_id'] ?? 0);
                     if ($qId <= 0) continue;
                     $pid = !empty($ln['product_id']) ? (int)$ln['product_id'] : 0;
+                    $lineDetail = trim((string)($ln['description'] ?? ''));
+                    if ($lineDetail === '') {
+                        $lineDetail = trim((string)($ln['product_name'] ?? ''));
+                    }
                     if ($pid > 0) {
                         $quoteProductIdsByDoc[$qId][] = $pid;
                         $productIds[] = $pid;
                         if (empty($quoteProductMap[$qId])) $quoteProductMap[$qId] = $pid;
-                    } else {
-                        $txt = trim((string)($ln['product_name'] ?? $ln['description'] ?? ''));
-                        if ($txt !== '') $quoteProductNamesByDoc[$qId][] = $txt;
+                    }
+                    if ($lineDetail !== '') {
+                        $quoteProductNamesByDoc[$qId][] = $lineDetail;
                     }
                 }
             }
@@ -121,14 +239,15 @@ class Documents extends BaseController
         foreach ($orderIds as $oid) {
             $oid = (int)$oid;
             $names = [];
-            if (!empty($orderProductIdsByDoc[$oid])) {
+            if (!empty($orderProductNamesByDoc[$oid])) {
+                foreach ($orderProductNamesByDoc[$oid] as $txt) { if ($txt !== '') $names[] = $txt; }
+            }
+            // Only fall back to master product names when line-level labels are unavailable.
+            if (empty($names) && !empty($orderProductIdsByDoc[$oid])) {
                 foreach ($orderProductIdsByDoc[$oid] as $pid) {
                     $label = $productMap[(int)$pid] ?? '';
                     if ($label !== '') $names[] = $label;
                 }
-            }
-            if (!empty($orderProductNamesByDoc[$oid])) {
-                foreach ($orderProductNamesByDoc[$oid] as $txt) { if ($txt !== '') $names[] = $txt; }
             }
             $orderProducts[$oid] = array_values(array_unique(array_filter($names)));
         }
@@ -137,14 +256,15 @@ class Documents extends BaseController
         foreach ($quoteIds as $qid) {
             $qid = (int)$qid;
             $names = [];
-            if (!empty($quoteProductIdsByDoc[$qid])) {
+            if (!empty($quoteProductNamesByDoc[$qid])) {
+                foreach ($quoteProductNamesByDoc[$qid] as $txt) { if ($txt !== '') $names[] = $txt; }
+            }
+            // Only fall back to master product names when line-level labels are unavailable.
+            if (empty($names) && !empty($quoteProductIdsByDoc[$qid])) {
                 foreach ($quoteProductIdsByDoc[$qid] as $pid) {
                     $label = $productMap[(int)$pid] ?? '';
                     if ($label !== '') $names[] = $label;
                 }
-            }
-            if (!empty($quoteProductNamesByDoc[$qid])) {
-                foreach ($quoteProductNamesByDoc[$qid] as $txt) { if ($txt !== '') $names[] = $txt; }
             }
             $quoteProducts[$qid] = array_values(array_unique(array_filter($names)));
         }
@@ -178,6 +298,8 @@ class Documents extends BaseController
             // sales_orders table may not have a status column; keep it readable if missing
             $status = $o['status'] ?? null;
             $oid = (int)($o['id'] ?? 0);
+            $customerId = (int)($o['customer_id'] ?? 0);
+            $creatorId = (int)($o['created_by'] ?? 0);
             $custLabel = $o['customer_name'] ?? ($customerMap[(int)($o['customer_id'] ?? 0)] ?? ($o['customer_id'] ?? ''));
             $plist = $orderProducts[$oid] ?? [];
             $prodLabel = count($plist) ? $plist[0] : '';
@@ -194,6 +316,8 @@ class Documents extends BaseController
                 'status' => $status ? strtolower((string)$status) : 'confirmed',
                 'total' => (float)($o['total'] ?? 0),
                 'currency' => strtoupper((string)($o['currency'] ?? '')),
+                'created_by_name' => (string)($creatorMap[$creatorId] ?? ''),
+                'customer_country' => (string)($customerCountryMap[$customerId] ?? ''),
             ];
         }
 
@@ -215,9 +339,93 @@ class Documents extends BaseController
             ]);
         }
 
+        $latestVisibleOrderIds = array_values(array_map(static function ($o) {
+            return (int) ($o['id'] ?? 0);
+        }, array_slice(array_values(array_filter($orders, static function ($o) {
+            $status = strtolower((string)($o['status'] ?? 'confirmed'));
+            return !in_array($status, ['shipped', 'completed', 'cancelled'], true);
+        })), 0, 10)));
+
+        $newOrderIds = $this->computeNewOrderIds($currentUserId, $latestVisibleOrderIds);
+        $unreadOrderAlerts = min(10, count($newOrderIds));
+
         return view('documents/index', [
             'documents' => $rows,
             'search' => $searchTerm,
+            'unreadOrderAlerts' => $unreadOrderAlerts,
+            'newOrderIds' => $newOrderIds,
+        ]);
+    }
+
+    /**
+     * Mark all order alerts as seen for current user.
+     */
+    public function acknowledgeOrdersAlarm()
+    {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'message' => 'Invalid request type.',
+                'csrfToken' => csrf_token(),
+                'csrfHash' => csrf_hash(),
+            ]);
+        }
+
+        $userId = (int) (session()->get('user_id') ?? 0);
+        if ($userId <= 0) {
+            return $this->response->setStatusCode(401)->setJSON([
+                'success' => false,
+                'message' => 'Unauthorized.',
+                'csrfToken' => csrf_token(),
+                'csrfHash' => csrf_hash(),
+            ]);
+        }
+
+        $notificationService = new NotificationService();
+        $affected = $notificationService->markAllAsRead($userId);
+        $latestVisibleOrderIds = $this->getLatestVisibleSalesOrderIds($userId, 10);
+        $seenMaxOrderId = !empty($latestVisibleOrderIds) ? max(array_map('intval', $latestVisibleOrderIds)) : 0;
+        session()->set('documents_orders_alarm_seen_at', date('Y-m-d H:i:s'));
+        session()->set('documents_orders_alarm_seen_max_id', (int) $seenMaxOrderId);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Order alerts acknowledged.',
+            'marked' => $affected,
+            'unreadOrderAlerts' => 0,
+            'csrfToken' => csrf_token(),
+            'csrfHash' => csrf_hash(),
+        ]);
+    }
+
+    /**
+     * Return current unread order alert count for current user.
+     */
+    public function orderAlertState()
+    {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'message' => 'Invalid request type.',
+            ]);
+        }
+
+        $userId = (int) (session()->get('user_id') ?? 0);
+        if ($userId <= 0) {
+            return $this->response->setStatusCode(401)->setJSON([
+                'success' => false,
+                'message' => 'Unauthorized.',
+            ]);
+        }
+
+        $latestVisibleOrderIds = $this->getLatestVisibleSalesOrderIds($userId, 10);
+        $newOrderIds = $this->computeNewOrderIds($userId, $latestVisibleOrderIds);
+        $unreadOrderAlerts = min(10, count($newOrderIds));
+
+        return $this->response->setJSON([
+            'success' => true,
+            'unreadOrderAlerts' => $unreadOrderAlerts,
+            'newOrderIds' => $newOrderIds,
         ]);
     }
 
@@ -312,5 +520,157 @@ class Documents extends BaseController
             'total' => count($results),
             'searchTerm' => $searchTerm
         ]);
+    }
+
+    /**
+     * Compute unread order alerts with notification read-state + session fallback.
+     */
+    protected function computeNewOrderIds(int $userId, array $candidateOrderIds): array
+    {
+        $userId = (int) $userId;
+        $candidateOrderIds = array_values(array_unique(array_filter(array_map('intval', $candidateOrderIds))));
+
+        if ($userId <= 0 || empty($candidateOrderIds)) {
+            return [];
+        }
+
+        $notificationUnreadIds = [];
+        try {
+            $notificationService = new NotificationService();
+            $feed = $notificationService->getActivityCenterFeed($userId, 50);
+            $activeSalesOrders = is_array($feed['active_sales_orders'] ?? null) ? $feed['active_sales_orders'] : [];
+            foreach ($activeSalesOrders as $item) {
+                if (empty($item['is_read'])) {
+                    $sourceId = (int) ($item['source_id'] ?? 0);
+                    if ($sourceId > 0) {
+                        $notificationUnreadIds[] = $sourceId;
+                    }
+                }
+            }
+        } catch (\Throwable $_) {
+            $notificationUnreadIds = [];
+        }
+
+        $notificationUnreadIds = array_values(array_unique(array_filter(array_map('intval', $notificationUnreadIds))));
+        $notificationUnreadIds = array_values(array_intersect($candidateOrderIds, $notificationUnreadIds));
+
+        $fallbackUnreadIds = $this->computeFallbackUnreadOrdersFromSession($candidateOrderIds);
+        $merged = array_values(array_unique(array_merge($notificationUnreadIds, $fallbackUnreadIds)));
+        return array_values(array_intersect($candidateOrderIds, $merged));
+    }
+
+    /**
+     * Session-based per-user fallback so alarm still works without notification tables.
+     */
+    protected function computeFallbackUnreadOrdersFromSession(array $candidateOrderIds): array
+    {
+        $candidateOrderIds = array_values(array_unique(array_filter(array_map('intval', $candidateOrderIds))));
+        if (empty($candidateOrderIds)) {
+            return [];
+        }
+
+        $seenMaxId = (int) (session()->get('documents_orders_alarm_seen_max_id') ?? 0);
+        if ($seenMaxId > 0) {
+            $newIdsById = [];
+            foreach ($candidateOrderIds as $candidateId) {
+                $candidateId = (int) $candidateId;
+                if ($candidateId > $seenMaxId) {
+                    $newIdsById[] = $candidateId;
+                }
+            }
+            if (!empty($newIdsById)) {
+                return array_values(array_unique($newIdsById));
+            }
+        }
+
+        $seenAt = (string) (session()->get('documents_orders_alarm_seen_at') ?? '');
+        $seenTs = $seenAt !== '' ? strtotime($seenAt) : 0;
+        if ($seenTs === false) {
+            $seenTs = 0;
+        }
+
+        try {
+            $rows = (new SalesOrderModel())
+                ->select('id, created_at, order_date')
+                ->whereIn('id', $candidateOrderIds)
+                ->findAll();
+        } catch (\Throwable $_) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $newIds = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $eventAt = (string) ($row['created_at'] ?? $row['order_date'] ?? '');
+            $eventTs = $eventAt !== '' ? strtotime($eventAt) : 0;
+            if ($eventTs === false) {
+                $eventTs = 0;
+            }
+
+            if ($seenTs > 0) {
+                if ($eventTs > $seenTs) {
+                    $newIds[] = $id;
+                }
+            } else {
+                // First time: show a visible alarm baseline from latest orders.
+                $newIds[] = $id;
+            }
+        }
+
+        $newIds = array_values(array_unique(array_filter(array_map('intval', $newIds))));
+        return array_values(array_intersect($candidateOrderIds, $newIds));
+    }
+
+    /**
+     * Get latest visible sales order IDs for current user context.
+     *
+     * @return int[]
+     */
+    protected function getLatestVisibleSalesOrderIds(int $userId, int $limit = 10): array
+    {
+        $userId = (int) $userId;
+        $limit = max(1, min(10, (int) $limit));
+
+        $model = new SalesOrderModel();
+        $db = \Config\Database::connect();
+
+        $isAdmin = service('policy')->isAdmin();
+        $privateUserIds = (new \App\Libraries\RoleDataAccess())->getPrivateUserIds($userId, $isAdmin);
+        if (!empty($privateUserIds)) {
+            try {
+                if (in_array('created_by', $db->getFieldNames('sales_orders') ?: [], true)) {
+                    $model->whereNotIn('created_by', $privateUserIds);
+                }
+            } catch (\Throwable $_) {}
+        }
+
+        try {
+            $statusCols = [];
+            try { $statusCols = $db->getFieldNames('sales_orders') ?: []; } catch (\Throwable $_) { $statusCols = []; }
+            if (in_array('status', $statusCols, true)) {
+                $model->whereNotIn('status', ['shipped', 'completed', 'cancelled']);
+            }
+            $rows = $model->select('id')->orderBy('id', 'desc')->findAll($limit);
+        } catch (\Throwable $_) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 }

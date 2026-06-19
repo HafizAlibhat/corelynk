@@ -8,12 +8,96 @@
     .po-card .table th, .po-card .table td { padding: .45rem; vertical-align: middle; }
     .po-meta .badge { display:block; margin-bottom:.35rem; }
     .create-grn-btn { min-width:92px; }
+    .incoming-summary-card {
+        border: 1px solid var(--bs-border-color);
+        border-radius: .6rem;
+        padding: .7rem .8rem;
+        background: rgba(59,130,246,.06);
+    }
+    .incoming-summary-label {
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        opacity: .85;
+    }
+    .incoming-summary-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .incoming-flow-note {
+        border: 1px dashed var(--bs-border-color);
+        border-radius: .6rem;
+        padding: .65rem .8rem;
+        font-size: .86rem;
+        background: rgba(16,185,129,.05);
+    }
+    .status-chip {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        font-size: .72rem;
+        padding: .2rem .55rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+    }
+    .status-chip.confirmed { background: rgba(14,165,233,.18); color: #38bdf8; }
+    .status-chip.completed { background: rgba(34,197,94,.18); color: #22c55e; }
+    .status-chip.draft { background: rgba(251,191,36,.2); color: #f59e0b; }
+    .status-chip.other { background: rgba(148,163,184,.2); color: #94a3b8; }
     @media (max-width:767px) { .po-grid-cols { flex-direction: column; } }
 </style>
 
 <div class="card">
     <div class="card-body">
         <?php $req = service('request'); ?>
+        <?php
+            $buildPoUrl = static function ($poId): string {
+                return site_url('purchases/po/' . rawurlencode((string) ((int) $poId)));
+            };
+
+            $rowsForSummary = $flatList ?? [];
+            if (empty($rowsForSummary) && !empty($poList)) {
+                foreach ($poList as $po) {
+                    foreach (($po['lines'] ?? []) as $ln) {
+                        $rowsForSummary[] = [
+                            'po_id' => (int) ($po['po_id'] ?? 0),
+                            'pending_qty' => (float) ($ln['pending_qty'] ?? 0),
+                            'expected_date' => $po['expected_date'] ?? null,
+                        ];
+                    }
+                }
+            }
+
+            $summaryPoIds = [];
+            $summaryPendingLines = 0;
+            $summaryPendingQty = 0.0;
+            $summaryEtaNext7 = 0;
+            $todayTs = strtotime(date('Y-m-d'));
+            $next7Ts = strtotime('+7 days', $todayTs);
+
+            foreach ($rowsForSummary as $sr) {
+                $poId = (int) ($sr['po_id'] ?? 0);
+                if ($poId > 0) {
+                    $summaryPoIds[$poId] = true;
+                }
+                $pending = max(0, (float) ($sr['pending_qty'] ?? 0));
+                if ($pending > 0) {
+                    $summaryPendingLines++;
+                }
+                $summaryPendingQty += $pending;
+                $etaRaw = (string) ($sr['expected_date'] ?? '');
+                if ($etaRaw !== '') {
+                    $etaTs = strtotime($etaRaw);
+                    if ($etaTs !== false && $etaTs >= $todayTs && $etaTs <= $next7Ts) {
+                        $summaryEtaNext7++;
+                    }
+                }
+            }
+
+            $summaryPoCount = count($summaryPoIds);
+        ?>
 
         <form id="dateFilterForm" class="row g-2 mb-3 align-items-end" method="get" action="<?= site_url('warehouse/incoming-shipments') ?>">
             <div class="col-auto">
@@ -47,6 +131,37 @@
                 </div>
             </div>
         </form>
+
+        <div class="row g-2 mb-3">
+            <div class="col-12 col-md-3">
+                <div class="incoming-summary-card">
+                    <div class="incoming-summary-label">Open Incoming POs</div>
+                    <div class="incoming-summary-value"><?= number_format($summaryPoCount) ?></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-3">
+                <div class="incoming-summary-card">
+                    <div class="incoming-summary-label">Pending Lines</div>
+                    <div class="incoming-summary-value"><?= number_format($summaryPendingLines) ?></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-3">
+                <div class="incoming-summary-card">
+                    <div class="incoming-summary-label">Pending Qty</div>
+                    <div class="incoming-summary-value"><?= number_format($summaryPendingQty, 2) ?></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-3">
+                <div class="incoming-summary-card">
+                    <div class="incoming-summary-label">ETA Next 7 Days</div>
+                    <div class="incoming-summary-value"><?= number_format($summaryEtaNext7) ?></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="incoming-flow-note mb-3">
+            <strong>Warehouse flow:</strong> Open PO -> verify pending lines -> create GRN on arrival -> pending quantity updates automatically.
+        </div>
 
         <script>
         function setDateRange(type) {
@@ -90,7 +205,7 @@
                     <?php $ridx=1; foreach ($rows as $r): ?>
                         <tr<?= ($r['pending_qty'] > 0 ? ' class="table-warning"' : '') ?>>
                             <td><?= $ridx++ ?></td>
-                            <td><a href="<?= site_url('purchases/po/' . (int)$r['po_id']) ?>"><?= esc($r['po_number']) ?></a></td>
+                            <td><a href="<?= esc($buildPoUrl($r['po_id'])) ?>"><?= esc($r['po_number']) ?></a></td>
                             <td><?= esc($r['vendor_name']) ?></td>
                             <td><?= !empty($r['expected_date']) ? date('d M Y', strtotime($r['expected_date'])) : '&mdash;' ?></td>
                             <td>
@@ -127,9 +242,10 @@
                     <div class="card po-card shadow-sm">
                         <div class="card-header d-flex justify-content-between align-items-center bg-light">
                             <div>
-                                <strong><a href="<?= site_url('purchases/po/' . (int)$po['po_id']) ?>" class="text-decoration-none">PO: <?= esc($po['po_number']) ?></a></strong>
+                                <strong><a href="<?= esc($buildPoUrl($po['po_id'])) ?>" class="text-decoration-none">PO: <?= esc($po['po_number']) ?></a></strong>
                                 <div class="po-meta mt-2">
-                                    <span class="badge bg-secondary">Status: <?= esc(ucfirst($po['status'])) ?></span>
+                                    <?php $st = strtolower((string)($po['status'] ?? '')); ?>
+                                    <span class="status-chip <?= in_array($st, ['confirmed','completed','draft'], true) ? $st : 'other' ?>">Status: <?= esc($st !== '' ? $st : 'unknown') ?></span>
                                     <span class="badge bg-info text-white">Vendor: <?= esc($po['vendor_name']) ?></span>
                                 </div>
                             </div>
@@ -220,9 +336,10 @@
                                 <tbody>
                                 <?php foreach ($candidatePos as $cp): ?>
                                     <tr>
-                                        <td><a href="<?= site_url('accounting/purchase-orders/view/' . (int)$cp['id']) ?>"><?= esc($cp['po_number']) ?></a></td>
+                                        <td><a href="<?= esc($buildPoUrl($cp['id'])) ?>"><?= esc($cp['po_number']) ?></a></td>
                                         <td><?= esc($cp['vendor_name']) ?></td>
-                                        <td><?= esc($cp['status']) ?></td>
+                                        <?php $cst = strtolower((string)($cp['status'] ?? '')); ?>
+                                        <td><span class="status-chip <?= in_array($cst, ['confirmed','completed','draft'], true) ? $cst : 'other' ?>"><?= esc($cst !== '' ? $cst : 'unknown') ?></span></td>
                                         <td><?= !empty($cp['expected_date']) ? date('d M Y', strtotime($cp['expected_date'])) : '&mdash;' ?></td>
                                     </tr>
                                 <?php endforeach; ?>

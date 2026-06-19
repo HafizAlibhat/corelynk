@@ -28,6 +28,67 @@
     background: #f1f5f9;
     border-radius: 8px;
 }
+.inv-image-thumb {
+    cursor: zoom-in;
+    transition: transform .14s ease, box-shadow .14s ease;
+}
+.inv-image-thumb:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.45);
+}
+.inv-image-hover-card {
+    position: fixed;
+    z-index: 3000;
+    display: none;
+    pointer-events: none;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 24px 42px rgba(2, 6, 23, 0.55);
+    padding: 6px;
+    max-width: 340px;
+    max-height: 280px;
+}
+.inv-image-hover-card img {
+    display: block;
+    max-width: 328px;
+    max-height: 268px;
+    border-radius: 8px;
+    object-fit: contain;
+}
+.inv-section-row td {
+    background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%);
+    color: #f8fafc;
+    border-top: 1px solid #0f172a;
+    border-bottom: 1px solid #0f172a;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+.inv-section-row .inv-section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.inv-section-row .inv-section-title::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
+}
+.inv-section-subtotal td {
+    background: rgba(15, 23, 42, 0.72);
+    color: #cbd5e1;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    font-size: 0.76rem;
+    letter-spacing: 0.01em;
+}
 @media (prefers-color-scheme: dark) {
     .so-address-card {
         border: 1px solid #243b55;
@@ -166,7 +227,7 @@
                 <?php // Show download/print when at least confirmed
                 if ($statusKey !== 'draft'): ?>
                 <a class="btn btn-outline-primary" href="<?= site_url('customer-invoices/pdf/' . ($invoice['id'] ?? 0)) ?>" target="_blank">Download PDF</a>
-                <a class="btn btn-outline-dark" href="<?= site_url('customer-invoices/pdf/' . ($invoice['id'] ?? 0)) ?>" target="_blank">Print</a>
+                <a class="btn btn-outline-dark" href="<?= site_url('customer-invoices/print/' . ($invoice['id'] ?? 0)) ?>" target="_blank">Print</a>
                 <?php if (!$invoiceIsPaid): ?>
                     <a class="btn btn-outline-success" href="<?= site_url('accounting/customer-payments/pay?invoice_id=' . ($invoice['id'] ?? 0) . '&customer_id=' . ($invoice['customer_id'] ?? '') . '&amount=' . ($invoice['total_amount'] ?? $invoice['total'] ?? '')) ?>">Receive payment</a>
                 <?php endif; ?>
@@ -175,7 +236,13 @@
                 <?php if ($hasDraftPayments): ?>
                     <a class="btn btn-outline-secondary" href="<?= site_url('accounting/customer-payments') . '#drafts-section' ?>">Draft Payments</a>
                 <?php endif; ?>
+                <button type="button" class="btn btn-outline-info" onclick="createCustomsInvoiceFromOriginal('VALUE_ONLY')">Create Customs (Value Only)</button>
+                <button type="button" class="btn btn-outline-info" onclick="createCustomsInvoiceFromOriginal('FULL_REWRITE')">Create Customs (Full Rewrite)</button>
                 <a class="btn btn-outline-primary" href="<?= site_url('accounting/customer-payments?invoice_id=' . ($invoice['id'] ?? 0)) ?>">Browse This Invoice Payments</a>
+                <form id="createCustomsInvoiceForm" method="post" action="<?= site_url('customs-invoices/create-from-invoice/' . ($invoice['id'] ?? 0)) ?>" style="display:none;">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="mode" id="customsModeInput" value="VALUE_ONLY">
+                </form>
 
             <button type="button" id="toggle-customer" class="btn btn-outline-secondary">Show Customer</button>
             <button type="button" id="toggle-seller" class="btn btn-outline-secondary">Show Seller</button>
@@ -196,6 +263,13 @@
             $symbol = $currencySymbols[$currencyCode] ?? ($currencyCode !== '' ? $currencyCode : '$');
             $fmtMoney = function($val) use ($symbol) {
                 return $symbol . number_format((float)$val, 2);
+            };
+            $fmtShipmentWeight = static function($kg) {
+                $kg = max(0.0, (float)$kg);
+                if ($kg >= 1) {
+                    return number_format($kg, 3) . ' kg';
+                }
+                return number_format($kg * 1000, 0) . ' g';
             };
             $addrLines = [];
             if (!empty($customerAddress['line1'])) $addrLines[] = $customerAddress['line1'];
@@ -264,18 +338,51 @@
             <hr>
         <?php endif; ?>
 
-        <h5 class="mb-2" style="font-size:1rem;">Lines</h5>
-        <div class="table-responsive mb-3">
-            <table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;">
+        <?php
+            $invoiceSubtotal = (float)($invoice['subtotal'] ?? 0);
+            $invoiceTax = (float)($invoice['tax_total'] ?? 0);
+            $invoiceShipping = (float)($invoice['shipping_cost'] ?? 0);
+            $invoiceDiscount = (float)($invoice['discount_total'] ?? ($invoice['discount'] ?? 0));
+            $lineDiscountTotal = (float)($displayLineDiscount ?? 0);
+            $documentDiscountAmount = (float)($displayDocumentDiscountAmount ?? 0);
+            $documentDiscountType = strtolower((string)($displayDocumentDiscountType ?? $invoice['document_discount_type'] ?? 'fixed'));
+            if (!in_array($documentDiscountType, ['percent', 'fixed'], true)) {
+                $documentDiscountType = 'fixed';
+            }
+            $documentDiscountValue = (float)($displayDocumentDiscountValue ?? ($invoice['document_discount_value'] ?? 0));
+            $discountExcludeShipping = ((int)($displayDiscountExcludeShipping ?? ($invoice['discount_exclude_shipping'] ?? 1)) === 1);
+            $discountSourceLabel = 'No discount';
+            if ($lineDiscountTotal > 0 && $documentDiscountAmount > 0) {
+                $discountSourceLabel = 'Line + Document';
+            } elseif ($lineDiscountTotal > 0) {
+                $discountSourceLabel = 'Line only';
+            } elseif ($documentDiscountAmount > 0) {
+                $discountSourceLabel = 'Document only';
+            }
+            $effectiveTaxRate = 0.0;
+            $taxableDoc = max(0.0, $invoiceSubtotal - $invoiceDiscount);
+            if ($invoiceTax > 0 && $taxableDoc > 0) {
+                $effectiveTaxRate = round(($invoiceTax / $taxableDoc) * 100.0, 2);
+            }
+            $invoiceProductCount = is_array($lines ?? null) ? count($lines) : 0;
+        ?>
+
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <h5 class="mb-0" style="font-size:1rem;">Lines</h5>
+            <span class="badge bg-primary-subtle text-primary-emphasis">Products: <?= (int)$invoiceProductCount ?></span>
+        </div>
+        <div class="table-responsive mb-3" <?= !empty($canEditInvoice) ? 'data-doc-lines-root' : '' ?>>
+            <table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;" <?= !empty($canEditInvoice) ? ('data-doc-line-type="customer_invoice" data-doc-id="' . esc((string)($invoice['public_id'] ?? ($invoice['id'] ?? ''))) . '"') : '' ?>>
                 <thead>
                     <tr style="white-space:nowrap;">
+                        <th style="width:4%" class="text-center">No.</th>
                         <th style="width:8%">Code</th>
                         <th style="width:5%">Image</th>
                         <th style="width:28%">Product / Description</th>
                         <th style="width:5%">Unit</th>
                         <th style="width:6%" class="text-end">Qty</th>
                         <th style="width:9%" class="text-end">Unit Price (<?= esc($symbol) ?>)</th>
-                        <th style="width:7%" class="text-end">Disc %</th>
+                        <th style="width:10%" class="text-end">Disc Type / Value</th>
                         <th style="width:7%" class="text-end">Disc Amt</th>
                         <th style="width:6%" class="text-end">Tax %</th>
                         <th style="width:7%" class="text-end">Tax Amt</th>
@@ -283,109 +390,29 @@
                     </tr>
                 </thead>
                 <tbody>
-                <?php if (!empty($lines)): ?>
-                    <?php foreach ($lines as $ln): ?>
-                        <?php
-                            $img = $ln['product_image_url'] ?? base_url('assets/images/no-image.png');
-                            $code = $ln['product_code'] ?? ($ln['product_id'] ?? '');
-                            $qty = (float)($ln['quantity'] ?? 0);
-                            $unitPrice = (float)($ln['unit_price'] ?? 0);
-                            $discVal = isset($ln['discount_value']) ? (float)$ln['discount_value'] : null;
-                            $discType = $ln['discount_type'] ?? 'percent';
-                            $discAmtRaw = isset($ln['discount_amount']) ? (float)$ln['discount_amount'] : null;
-                            $taxAmtRaw = isset($ln['tax_amount']) ? (float)$ln['tax_amount'] : null;
-                            $taxRate = isset($ln['tax_rate']) ? (float)$ln['tax_rate'] : (isset($ln['tax']) ? (float)$ln['tax'] : 0.0);
-
-                            // Prefer explicit amounts when provided; otherwise derive from rate/value.
-                            $discAmt = ($discAmtRaw !== null && abs($discAmtRaw) > 0.00001) ? $discAmtRaw : 0.0;
-                            if ((abs($discAmt) < 0.00001) && $discVal !== null) {
-                                $discAmt = ($discType === 'percent') ? ($qty * $unitPrice * ($discVal / 100.0)) : $discVal;
-                            }
-
-                            $taxable = ($qty * $unitPrice) - $discAmt;
-                            $taxAmt = ($taxAmtRaw !== null && abs($taxAmtRaw) > 0.00001) ? $taxAmtRaw : 0.0;
-                            if ((abs($taxAmt) < 0.00001) && $taxRate > 0) {
-                                $taxAmt = $taxable * ($taxRate / 100.0);
-                            }
-
-                            // If this invoice was created via proportional allocation, the stored tax_rate can be a derived value (e.g. 10.56)
-                            // while the intended document tax is a flat rate (e.g. 12%). Prefer the document effective rate for display.
-                            if (!empty($effectiveTaxRate) && $effectiveTaxRate > 0 && $taxAmt > 0) {
-                                $taxRate = $effectiveTaxRate;
-                            }
-
-                            // IMPORTANT: For invoices we want the same meaning as Sales Order:
-                            // Line Total = (qty * unit_price) - discount_amount + tax_amount.
-                            // Some older records/flows may have line_total saved as base-only, so we compute it.
-                            $lineTotal = (($qty * $unitPrice) - $discAmt + $taxAmt);
-
-                            // If rates are present but amounts were saved as 0, infer amounts from line_total when possible.
-                            // This helps old invoices where only totals existed.
-                            // (Legacy fallback removed because we now compute lineTotal from amounts.)
-
-                            $discDisplay = $discVal !== null ? rtrim(rtrim(number_format($discVal, 2), '0'), '.') . '%' : '';
-                        ?>
-                        <tr>
-                            <td><?= esc($code) ?></td>
-                            <td><img src="<?= esc($img) ?>" alt="" style="width:46px;height:36px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'"></td>
-                            <td>
-                                <?php
-                                    $lineName = $ln['product_name'] ?? '';
-                                    $lineDesc = $ln['description'] ?? '';
-                                    $lineText = trim($lineName) !== '' ? $lineName : $lineDesc;
-                                    if (trim($lineText) === '') {
-                                        $lineText = $code !== '' ? $code : '—';
-                                    }
-                                ?>
-                                <div class="fw-semibold" style="line-height:1.2;">
-                                    <?= esc($lineText) ?>
-                                </div>
-                                <?php if (trim($lineDesc) !== '' && $lineDesc !== $lineText): ?>
-                                    <div class="text-muted" style="font-size:0.8rem; line-height:1.2;">
-                                        <?= esc($lineDesc) ?>
-                                    </div>
-                                <?php endif; ?>
-                            </td>
-                            <td><?= esc($ln['unit'] ?? 'pcs') ?></td>
-                            <td class="text-end"><?= number_format($qty, 2) ?></td>
-                            <td class="text-end"><?= esc($fmtMoney($unitPrice)) ?></td>
-                            <td class="text-end"><?= esc($discDisplay) ?></td>
-                            <td class="text-end"><?= number_format($discAmt, 2) ?></td>
-                            <?php
-                                $taxRateDisp = rtrim(rtrim(number_format((float)$taxRate, 2), '0'), '.');
-                                if ($taxRateDisp !== '') $taxRateDisp .= '%';
-                            ?>
-                            <td class="text-end"><?= esc($taxRateDisp) ?></td>
-                            <td class="text-end"><?= number_format($taxAmt, 2) ?></td>
-                            <td class="text-end fw-semibold"><?= esc($fmtMoney($lineTotal)) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr><td colspan="11" class="text-muted">No lines</td></tr>
-                <?php endif; ?>
+                <?php
+                    echo view('partials/document_lines/rows', [
+                        'docType' => 'customer_invoice',
+                        'lines' => $lines ?? [],
+                        'sectionSubtotals' => [],
+                    ]);
+                ?>
                 </tbody>
             </table>
         </div>
 
         <?php
-            $subtotal = (float)($invoice['subtotal'] ?? 0);
-            $tax = (float)($invoice['tax_total'] ?? 0);
-            $shipping = (float)($invoice['shipping_cost'] ?? 0);
-            $discount = (float)($invoice['discount_total'] ?? ($invoice['discount'] ?? 0));
+            $subtotal = $invoiceSubtotal;
+            $tax = $invoiceTax;
+            $shipping = $invoiceShipping;
+            $discount = $invoiceDiscount;
             $total = (float)($invoice['total_amount'] ?? ($subtotal + $tax + $shipping - $discount));
             if ($discount <= 0 && $total > 0) {
                 // derive discount if missing but totals are present
                 $derived = ($subtotal + $tax + $shipping) - $total;
                 if (abs($derived) > 0.0001) $discount = $derived;
             }
-
-            // Derive a single effective document tax rate for display when line tax_rate is unreliable
-            // (e.g., invoices created from sales_order_lines without original quotation line rates).
-            $effectiveTaxRate = 0.0;
-            $taxableDoc = max(0.0, $subtotal - $discount);
-            if ($tax > 0 && $taxableDoc > 0) {
-                $effectiveTaxRate = round(($tax / $taxableDoc) * 100.0, 2);
-            }
+            $showDiscountBreakdown = ($lineDiscountTotal > 0) || ($documentDiscountAmount > 0) || ($documentDiscountValue > 0);
         ?>
         <div class="row g-3 align-items-start">
             <div class="col-lg-7">
@@ -402,9 +429,30 @@
                 <div style="min-width:320px;" class="table-responsive">
                     <table class="table table-sm table-borderless mb-0 so-totals-box">
                         <tr><td class="text-muted">Subtotal</td><td class="text-end"><?= esc($fmtMoney($subtotal)) ?></td></tr>
-                        <tr><td class="text-muted">Discount</td><td class="text-end text-danger">-<?= esc($fmtMoney($discount)) ?></td></tr>
+                        <?php if ($showDiscountBreakdown): ?>
+                            <tr><td class="text-muted">Discount Source</td><td class="text-end"><?= esc($discountSourceLabel) ?></td></tr>
+                            <?php if ($lineDiscountTotal > 0): ?>
+                                <tr><td class="text-muted">Line Discount</td><td class="text-end text-danger">-<?= esc($fmtMoney($lineDiscountTotal)) ?></td></tr>
+                            <?php endif; ?>
+                            <?php if ($documentDiscountAmount > 0 || $documentDiscountValue > 0): ?>
+                                <tr><td class="text-muted">Document Discount</td><td class="text-end text-danger">-<?= esc($fmtMoney($documentDiscountAmount)) ?></td></tr>
+                                <tr>
+                                    <td class="text-muted">Doc Disc Type</td>
+                                    <td class="text-end">
+                                        <?= esc($documentDiscountType === 'fixed' ? 'Fixed' : 'Percent') ?>
+                                        <?= esc($documentDiscountType === 'fixed' ? $fmtMoney($documentDiscountValue) : (rtrim(rtrim(number_format($documentDiscountValue, 2), '0'), '.') . '%')) ?>
+                                        <?= esc($discountExcludeShipping ? '(Excl Shipping)' : '(Incl Shipping)') ?>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        <?php elseif ($discount > 0): ?>
+                            <tr><td class="text-muted">Discount</td><td class="text-end text-danger">-<?= esc($fmtMoney($discount)) ?></td></tr>
+                        <?php endif; ?>
                         <tr><td class="text-muted">Tax</td><td class="text-end"><?= esc($fmtMoney($tax)) ?></td></tr>
                         <tr><td class="text-muted">Shipping</td><td class="text-end"><?= esc($fmtMoney($shipping)) ?></td></tr>
+                        <?php if (!empty($orderedWeightKg) && (float)$orderedWeightKg > 0): ?>
+                            <tr><td class="text-muted">Shipment Weight</td><td class="text-end"><?= esc($fmtShipmentWeight($orderedWeightKg)) ?></td></tr>
+                        <?php endif; ?>
                         <tr><td class="fw-bold">Total</td><td class="text-end fw-bold fs-5"><?= esc($fmtMoney($total)) ?></td></tr>
                     </table>
                 </div>
@@ -477,8 +525,80 @@
     if (toggleSellerBtn && sellerBlock) {
         toggleSellerBtn.addEventListener('click', function(){ toggle(sellerBlock, toggleSellerBtn); });
     }
+
+    function initInvoiceImageHoverPreview(){
+        if (window.__invoiceImagePreviewBound) return;
+        window.__invoiceImagePreviewBound = true;
+
+        var card = document.createElement('div');
+        card.className = 'inv-image-hover-card';
+        card.id = 'inv-image-hover-card';
+        card.innerHTML = '<img alt="Preview" id="inv-image-hover-img">';
+        document.body.appendChild(card);
+
+        var cardImg = document.getElementById('inv-image-hover-img');
+        var active = null;
+
+        function positionCard(x, y){
+            var gap = 14;
+            var maxLeft = window.innerWidth - card.offsetWidth - 10;
+            var maxTop = window.innerHeight - card.offsetHeight - 10;
+            var left = Math.min(Math.max(10, x + gap), Math.max(10, maxLeft));
+            var top = Math.min(Math.max(10, y + gap), Math.max(10, maxTop));
+            card.style.left = left + 'px';
+            card.style.top = top + 'px';
+        }
+
+        function hideCard(){
+            card.style.display = 'none';
+            active = null;
+        }
+
+        document.addEventListener('mouseover', function(e){
+            var img = e.target && e.target.closest ? e.target.closest('img.inv-line-image') : null;
+            if (!img) return;
+            var src = img.getAttribute('data-preview-src') || img.getAttribute('src') || '';
+            if (!src) return;
+            active = img;
+            cardImg.src = src;
+            card.style.display = 'block';
+            positionCard(e.clientX || 0, e.clientY || 0);
+        });
+
+        document.addEventListener('mousemove', function(e){
+            if (!active || card.style.display === 'none') return;
+            positionCard(e.clientX || 0, e.clientY || 0);
+        });
+
+        document.addEventListener('mouseout', function(e){
+            if (!active) return;
+            if (!e.target || e.target !== active) return;
+            hideCard();
+        });
+
+        document.addEventListener('scroll', function(){ if (active) hideCard(); }, true);
+        window.addEventListener('blur', hideCard);
+    }
+
+    function createCustomsInvoiceFromOriginal(mode){
+        var form = document.getElementById('createCustomsInvoiceForm');
+        var modeInput = document.getElementById('customsModeInput');
+        if (!form || !modeInput) {
+            alert('Customs invoice form is missing.');
+            return;
+        }
+        modeInput.value = (mode === 'FULL_REWRITE') ? 'FULL_REWRITE' : 'VALUE_ONLY';
+        form.submit();
+    }
+    window.createCustomsInvoiceFromOriginal = createCustomsInvoiceFromOriginal;
+
+    initInvoiceImageHoverPreview();
 })();
 </script>
+
+<?php if (!empty($canEditInvoice)): ?>
+<script src="<?= base_url('assets/js/document_line_tools.js') ?>"></script>
+<?php endif; ?>
 
 <?= $this->include('partials/_document_log') ?>
 

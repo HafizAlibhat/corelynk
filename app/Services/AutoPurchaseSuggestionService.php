@@ -61,6 +61,44 @@ class AutoPurchaseSuggestionService
     }
 
     /**
+     * Returns a map of product_id => true for products that have variants.
+     *
+     * @param array $productIds
+     * @return array<int,bool>
+     */
+    private function getVariantRequiredProductMap(array $productIds): array
+    {
+        $map = [];
+        $ids = array_values(array_unique(array_filter(array_map('intval', $productIds), static function ($v) {
+            return $v > 0;
+        })));
+
+        if (empty($ids) || !$this->db->tableExists('product_variants')) {
+            return $map;
+        }
+
+        try {
+            $rows = $this->db->table('product_variants')
+                ->select('product_id, COUNT(*) AS cnt')
+                ->whereIn('product_id', $ids)
+                ->groupBy('product_id')
+                ->get()
+                ->getResultArray();
+            foreach ($rows as $row) {
+                $pid = (int)($row['product_id'] ?? 0);
+                $cnt = (int)($row['cnt'] ?? 0);
+                if ($pid > 0 && $cnt > 0) {
+                    $map[$pid] = true;
+                }
+            }
+        } catch (\Throwable $_) {
+            return [];
+        }
+
+        return $map;
+    }
+
+    /**
     * Create draft RFQs from Sales Order shortages
      * 
      * @param int $salesOrderId
@@ -90,6 +128,61 @@ class AutoPurchaseSuggestionService
                 'created_pos' => [],
                 'message' => 'No order lines found.'
             ];
+        }
+
+        $lineProductIds = array_values(array_unique(array_filter(array_map(static function ($line) {
+            return isset($line['product_id']) ? (int)$line['product_id'] : 0;
+        }, $lines))));
+        $variantRequiredMap = $this->getVariantRequiredProductMap($lineProductIds);
+
+        if (!empty($variantRequiredMap)) {
+            $productsById = [];
+            try {
+                $productRows = $this->productModel->whereIn('id', array_keys($variantRequiredMap))->findAll();
+                foreach ($productRows as $p) {
+                    $productsById[(int)($p['id'] ?? 0)] = $p;
+                }
+            } catch (\Throwable $_) {
+                $productsById = [];
+            }
+
+            $missingVariantItems = [];
+            foreach ($lines as $line) {
+                $productId = isset($line['product_id']) ? (int)$line['product_id'] : 0;
+                if ($productId <= 0 || empty($variantRequiredMap[$productId])) {
+                    continue;
+                }
+
+                $variantId = isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
+                $orderedQty = (float)($line['quantity'] ?? 0);
+                if ($variantId > 0 || $orderedQty <= 0) {
+                    continue;
+                }
+
+                $prod = $productsById[$productId] ?? [];
+                $label = (string)($prod['code'] ?? ($prod['name'] ?? ('Product #' . $productId)));
+                $missingVariantItems[] = [
+                    'line_id' => (int)($line['id'] ?? 0),
+                    'product_id' => $productId,
+                    'code' => $label,
+                ];
+            }
+
+            if (!empty($missingVariantItems)) {
+                $codes = array_values(array_unique(array_column($missingVariantItems, 'code')));
+                $message = 'Cannot create RFQ. Variant required for: ' . implode(', ', array_slice($codes, 0, 8));
+                if (count($codes) > 8) {
+                    $message .= '...';
+                }
+                $message .= '. Please select a specific variant on quotation/sales-order line, then retry RFQ generation.';
+
+                return [
+                    'success' => false,
+                    'created_pos' => [],
+                    'message' => $message,
+                    'missing_variant_items' => $missingVariantItems,
+                ];
+            }
         }
 
         // Recompute availability and detect shortages

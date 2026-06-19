@@ -77,6 +77,40 @@ class PreparationProfileModel extends Model
         return $builder->orderBy('pp.id', 'DESC')->get()->getResultArray();
     }
 
+    /**
+     * Return all variant-scoped profiles for a product, keyed by variant_id.
+     */
+    public function getWithCountsByAllVariantsForProduct(int $productId, bool $activeOnly = true): array
+    {
+        if (! $this->db->fieldExists('variant_id', $this->table)) {
+            return [];
+        }
+
+        $builder = $this->db->table($this->table . ' pp')
+            ->select('pp.*')
+            ->select('(SELECT COUNT(*) FROM preparation_components pc WHERE pc.profile_id = pp.id) AS materials_count', false)
+            ->select('(SELECT COUNT(*) FROM preparation_steps ps WHERE ps.profile_id = pp.id) AS steps_count', false)
+            ->where('pp.product_id', $productId)
+            ->where('pp.variant_id IS NOT NULL', null, false);
+
+        if ($activeOnly) {
+            $builder->where('pp.is_active', 1);
+        }
+
+        $rows = $builder->orderBy('pp.variant_id', 'ASC')->orderBy('pp.id', 'DESC')->get()->getResultArray();
+
+        // Group by variant_id
+        $grouped = [];
+        foreach ($rows as $row) {
+            $vid = (int) ($row['variant_id'] ?? 0);
+            if ($vid > 0) {
+                $grouped[$vid][] = $row;
+            }
+        }
+
+        return $grouped;
+    }
+
     public function createProfile(array $data): int
     {
         $this->insert($data);

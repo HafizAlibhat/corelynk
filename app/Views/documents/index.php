@@ -8,6 +8,101 @@ Documents
 <?= view('components/search_styles') ?>
 
 <style>
+    #documentsTable th,
+    #documentsTable td {
+        font-size: 12.5px;
+    }
+
+    #documentsTable td {
+        white-space: nowrap;
+    }
+
+    #documentsTable .products-col {
+        max-width: 360px;
+    }
+
+    #latestOrdersModal .modal-dialog {
+        max-width: 1180px;
+    }
+
+    #latestOrdersModal .latest-orders-table {
+        font-size: 12px;
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    #latestOrdersModal .latest-orders-table th,
+    #latestOrdersModal .latest-orders-table td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+
+    .latest-order-row-new {
+        background: rgba(255, 193, 7, 0.16) !important;
+        box-shadow: inset 4px 0 0 #ffc107;
+    }
+
+    .latest-order-row-new td {
+        font-weight: 600;
+    }
+
+    .new-order-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #2d2100;
+        background: #ffc107;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin-left: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+
+    .order-alert-btn {
+        border-width: 2px;
+    }
+
+    .order-alert-btn.order-alert-active {
+        background: #dc3545 !important;
+        color: #ffffff !important;
+        border-color: #dc3545 !important;
+        animation: orderAlarmBlink 0.9s ease-in-out infinite;
+    }
+
+    .order-alert-btn.order-alert-active i {
+        animation: orderAlarmBellShake 1s ease-in-out infinite;
+    }
+
+    .order-alert-btn .order-alert-text {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
+
+    @keyframes orderAlarmBlink {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.55); }
+        50% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0.18); }
+    }
+
+    @keyframes orderAlarmBellShake {
+        0%, 100% { transform: rotate(0deg); }
+        20% { transform: rotate(-12deg); }
+        40% { transform: rotate(10deg); }
+        60% { transform: rotate(-8deg); }
+        80% { transform: rotate(6deg); }
+    }
+
+    .order-alert-btn .order-alert-badge {
+        font-size: 10px;
+    }
+
     .filter-tab {
         padding: 8px 16px;
         background: transparent;
@@ -248,6 +343,19 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <div class="container-fluid py-3">
+    <?php
+        $latestSalesOrders = array_values(array_filter($documents ?? [], static function($doc) {
+            if (($doc['doc_type'] ?? '') !== 'sales_order') {
+                return false;
+            }
+            $status = strtolower((string)($doc['status'] ?? 'confirmed'));
+            return !in_array($status, ['shipped', 'completed', 'cancelled'], true);
+        }));
+        $latestSalesOrders = array_slice($latestSalesOrders, 0, 10);
+        $unreadOrderAlerts = isset($unreadOrderAlerts) ? (int)$unreadOrderAlerts : 0;
+        $newOrderIds = isset($newOrderIds) && is_array($newOrderIds) ? array_map('intval', $newOrderIds) : [];
+    ?>
+
     <!-- Page Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -255,6 +363,24 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="small text-muted">Quotations and sales orders</div>
         </div>
         <div class="d-flex gap-2">
+            <button
+                type="button"
+                id="orderAlarmButton"
+                class="btn btn-outline-warning position-relative order-alert-btn <?= $unreadOrderAlerts > 0 ? 'order-alert-active' : '' ?>"
+                data-bs-toggle="modal"
+                data-bs-target="#latestOrdersModal"
+                title="Latest 10 sales orders"
+            >
+                <i class="bi bi-bell"></i>
+                <?php if ($unreadOrderAlerts > 0): ?>
+                    <span id="orderAlarmText" class="order-alert-text">ALERT</span>
+                <?php endif; ?>
+                <?php if ($unreadOrderAlerts > 0): ?>
+                    <span id="orderAlarmBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger order-alert-badge">
+                        <?= $unreadOrderAlerts ?>
+                    </span>
+                <?php endif; ?>
+            </button>
             <a href="<?= site_url('warehouse/ready-to-ship') ?>" class="btn btn-outline-success" title="View orders ready to ship">
                 <i class="bi bi-truck me-2"></i>Ready to Ship
             </a>
@@ -364,6 +490,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 $quotationIdentifier = (!empty($d['public_id']) && featureEnabled('enable_public_ids')) ? urlencode($d['public_id']) : $id;
                                 $viewUrl = $isQuote ? site_url('quotations/view/'.$quotationIdentifier) : site_url('sales-orders/view/'.$soIdentifier);
                                 $editUrl = $isQuote ? site_url('quotations/edit/'.$quotationIdentifier) : null;
+                                $quotePrintUrl = site_url('quotations/print/' . $quotationIdentifier);
+                                $quoteWarehouseUrl = site_url('quotations/warehouse-document/' . $quotationIdentifier);
+                                $soPrintUrl = site_url('sales-orders/print/' . $soIdentifier);
+                                $soWarehouseUrl = site_url('sales-orders/warehouse-document/' . $soIdentifier);
                                 $convertedSoId = $isQuote ? (int)($d['converted_sales_order_id'] ?? 0) : 0;
                             ?>
                             <tr data-doc-type="<?= esc($d['doc_type']) ?>" data-status="<?= esc($status) ?>">
@@ -373,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <td class="products-col">
                                     <?php $plist = $d['product_list'] ?? []; ?>
                                     <?php if (!empty($plist) && count($plist) > 0): ?>
-                                        <span class="d-inline-block text-truncate" style="max-width:220px;"><?= esc($plist[0]) ?></span>
+                                        <span class="d-inline-block text-truncate" style="max-width:340px;" title="<?= esc($plist[0]) ?>"><?= esc($plist[0]) ?></span>
                                         <?php if (count($plist) > 1): ?>
                                             <?php $extra = count($plist) - 1; ?>
                                             <a href="#" class="small ms-2 view-more-products view-more-link" data-products='<?= esc(json_encode($plist)) ?>' title="View <?= $extra ?> more product<?= $extra > 1 ? 's' : '' ?>">View <?= $extra ?> more</a>
@@ -399,6 +529,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <li><a class="dropdown-item doc-view" href="<?= $viewUrl ?>"><i class="bi bi-eye me-2"></i>View</a></li>
                                             <?php if ($isQuote): ?>
                                                 <li><a class="dropdown-item" href="<?= $editUrl ?>"><i class="bi bi-pencil me-2"></i>Edit</a></li>
+                                                <li><a class="dropdown-item" href="<?= $quotePrintUrl ?>" target="_blank" rel="noopener"><i class="bi bi-printer me-2"></i>Print View</a></li>
+                                                <li><a class="dropdown-item" href="<?= $quoteWarehouseUrl ?>" target="_blank" rel="noopener"><i class="bi bi-box-seam me-2"></i>Warehouse PDF</a></li>
                                                 <?php if ($convertedSoId > 0): ?>
                                                     <li><a class="dropdown-item" href="<?= site_url('sales-orders/view/'.$convertedSoId) ?>"><i class="bi bi-box-arrow-up-right me-2"></i>View Sales Order</a></li>
                                                 <?php else: ?>
@@ -411,6 +543,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 </li>
                                             <?php else: ?>
                                                 <li><a class="dropdown-item" href="<?= site_url('sales-orders/invoice/'.$id) ?>"><i class="bi bi-receipt me-2"></i>Invoice</a></li>
+                                                <li><a class="dropdown-item" href="<?= $soPrintUrl ?>" target="_blank" rel="noopener"><i class="bi bi-printer me-2"></i>Print View</a></li>
+                                                <li><a class="dropdown-item" href="<?= $soWarehouseUrl ?>" target="_blank" rel="noopener"><i class="bi bi-box-seam me-2"></i>Warehouse PDF</a></li>
                                                 <li>
                                                     <form action="<?= site_url('sales-orders/cancel/'.$id) ?>" method="post" onsubmit="return confirm('Cancel this sales order?');">
                                                         <button class="dropdown-item text-danger" type="submit"><i class="bi bi-x-circle me-2"></i>Cancel</button>
@@ -425,6 +559,94 @@ document.addEventListener('DOMContentLoaded', function() {
                     <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Latest 10 Sales Orders modal -->
+<div class="modal fade" id="latestOrdersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-receipt-cutoff me-2"></i>Latest 10 Sales Orders</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <?php if (!empty($newOrderIds)): ?>
+                    <div id="newOrdersBanner" class="alert alert-warning py-2 px-3 mb-3" role="alert" style="font-size:12px;">
+                        Highlighted rows are new since your last &ldquo;I have seen it&rdquo; action.
+                    </div>
+                <?php else: ?>
+                    <div id="newOrdersBanner" class="alert alert-warning py-2 px-3 mb-3" role="alert" style="font-size:12px;display:none;">
+                        Highlighted rows are new since your last &ldquo;I have seen it&rdquo; action.
+                    </div>
+                <?php endif; ?>
+                <?php if (empty($latestSalesOrders)): ?>
+                    <div class="text-muted">No recent sales orders found.</div>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 latest-orders-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Order No</th>
+                                    <th>Customer</th>
+                                    <th>Country</th>
+                                    <th>Created By</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($latestSalesOrders as $idx => $order): ?>
+                                    <?php
+                                        $sid = (int)($order['id'] ?? 0);
+                                        $isNewOrder = in_array($sid, $newOrderIds, true);
+                                        $soIdentifier = (!empty($order['public_id']) && featureEnabled('enable_public_ids')) ? $order['public_id'] : $sid;
+                                        $status = strtolower((string)($order['status'] ?? 'confirmed'));
+                                        $statusBadge = 'text-bg-secondary';
+                                        if (in_array($status, ['confirmed','approved','completed'], true)) {
+                                            $statusBadge = 'text-bg-success';
+                                        } elseif (in_array($status, ['draft','pending'], true)) {
+                                            $statusBadge = 'text-bg-warning';
+                                        } elseif ($status === 'cancelled') {
+                                            $statusBadge = 'text-bg-danger';
+                                        }
+                                        $code = strtoupper(trim((string)($order['currency'] ?? '')));
+                                        $sym = $currencySymbols[$code] ?? ($code !== '' ? $code . ' ' : '');
+                                    ?>
+                                    <tr class="<?= $isNewOrder ? 'latest-order-row-new' : '' ?>" data-order-id="<?= $sid ?>">
+                                        <td><?= $idx + 1 ?></td>
+                                        <td>
+                                            <strong><?= esc((string)($order['number'] ?? '')) ?></strong>
+                                            <span class="new-order-chip" style="<?= $isNewOrder ? '' : 'display:none' ?>"><i class="bi bi-exclamation-circle"></i>New</span>
+                                        </td>
+                                        <td><?= esc((string)($order['customer'] ?? '-')) ?></td>
+                                        <td><?= esc(trim((string)($order['customer_country'] ?? '')) !== '' ? (string)$order['customer_country'] : '-') ?></td>
+                                        <td><?= esc(trim((string)($order['created_by_name'] ?? '')) !== '' ? (string)$order['created_by_name'] : '-') ?></td>
+                                        <td><?= !empty($order['date']) ? esc(date('M d, Y', strtotime((string)$order['date']))) : '-' ?></td>
+                                        <td><span class="badge <?= esc($statusBadge) ?>"><?= esc(ucfirst($status)) ?></span></td>
+                                        <td class="text-end"><strong><?= esc($sym) ?><?= number_format((float)($order['total'] ?? 0), 2) ?></strong></td>
+                                        <td class="text-end">
+                                            <a href="<?= site_url('sales-orders/view/' . $soIdentifier) ?>" class="btn btn-sm btn-outline-secondary" title="View"><i class="bi bi-eye"></i></a>
+                                            <a href="<?= site_url('sales-orders/print/' . $soIdentifier) ?>" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" title="Print View"><i class="bi bi-printer"></i></a>
+                                            <a href="<?= site_url('sales-orders/warehouse-document/' . $soIdentifier) ?>" class="btn btn-sm btn-outline-warning" target="_blank" rel="noopener" title="Warehouse PDF"><i class="bi bi-box-seam"></i></a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="acknowledgeOrderAlarmBtn" class="btn btn-danger" <?= $unreadOrderAlerts > 0 ? '' : 'disabled' ?>>
+                    <i class="bi bi-check2-circle me-1"></i>I have seen it, stop alarm
+                </button>
             </div>
         </div>
     </div>
@@ -682,6 +904,152 @@ document.addEventListener('DOMContentLoaded', function() {
             if (productsModal) productsModal.show();
         });
     });
+
+    const orderAlarmButton = document.getElementById('orderAlarmButton');
+    const acknowledgeOrderAlarmBtn = document.getElementById('acknowledgeOrderAlarmBtn');
+    const latestOrdersModalEl = document.getElementById('latestOrdersModal');
+
+    // Live set of new order IDs — seeded from PHP at page load, refreshed by polling.
+    let currentNewOrderIds = new Set(<?= json_encode(array_values($newOrderIds)) ?>);
+
+    function applyNewOrderHighlights() {
+        const rows = document.querySelectorAll('#latestOrdersModal tbody tr[data-order-id]');
+        rows.forEach(function(row) {
+            const id = parseInt(row.dataset.orderId, 10);
+            const isNew = currentNewOrderIds.has(id);
+            row.classList.toggle('latest-order-row-new', isNew);
+            const chip = row.querySelector('.new-order-chip');
+            if (chip) chip.style.display = isNew ? '' : 'none';
+        });
+        // Show/hide the "highlighted rows are new" banner
+        const banner = document.getElementById('newOrdersBanner');
+        if (banner) banner.style.display = currentNewOrderIds.size > 0 ? '' : 'none';
+    }
+
+    function updateOrderAlarm(unreadCount) {
+        if (!orderAlarmButton) return;
+
+        const count = Math.max(0, parseInt(unreadCount, 10) || 0);
+        let badge = document.getElementById('orderAlarmBadge');
+
+        if (count > 0) {
+            orderAlarmButton.classList.add('order-alert-active');
+            orderAlarmButton.classList.remove('btn-outline-warning');
+            orderAlarmButton.classList.add('btn-danger');
+            let text = document.getElementById('orderAlarmText');
+            if (!text) {
+                text = document.createElement('span');
+                text.id = 'orderAlarmText';
+                text.className = 'order-alert-text';
+                text.textContent = 'ALERT';
+                orderAlarmButton.appendChild(text);
+            }
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.id = 'orderAlarmBadge';
+                badge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger order-alert-badge';
+                orderAlarmButton.appendChild(badge);
+            }
+            badge.textContent = String(count);
+        } else {
+            orderAlarmButton.classList.remove('order-alert-active');
+            orderAlarmButton.classList.remove('btn-danger');
+            orderAlarmButton.classList.add('btn-outline-warning');
+            const text = document.getElementById('orderAlarmText');
+            if (text) {
+                text.remove();
+            }
+            if (badge) {
+                badge.remove();
+            }
+        }
+
+        if (acknowledgeOrderAlarmBtn) {
+            acknowledgeOrderAlarmBtn.disabled = count <= 0;
+        }
+    }
+
+    function pollOrderAlarmState() {
+        fetch('<?= site_url('documents/order-alert-state') ?>', {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.success) {
+                updateOrderAlarm(data.unreadOrderAlerts || 0);
+                // Update live new-order IDs so modal highlights are always fresh
+                if (Array.isArray(data.newOrderIds)) {
+                    currentNewOrderIds = new Set(data.newOrderIds.map(Number));
+                    applyNewOrderHighlights();
+                }
+            }
+        })
+        .catch(() => {
+            // Keep the last known UI state; polling retries automatically.
+        });
+    }
+
+    if (acknowledgeOrderAlarmBtn) {
+        acknowledgeOrderAlarmBtn.addEventListener('click', function() {
+            if (acknowledgeOrderAlarmBtn.disabled) return;
+
+            const originalHtml = acknowledgeOrderAlarmBtn.innerHTML;
+            acknowledgeOrderAlarmBtn.disabled = true;
+            acknowledgeOrderAlarmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving...';
+
+            fetch('<?= site_url('documents/acknowledge-orders-alarm') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: encodeURIComponent(window.csrfToken || '<?= csrf_token() ?>') + '=' + encodeURIComponent(window.csrfHash || '<?= csrf_hash() ?>')
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.csrfToken && data.csrfHash) {
+                    window.csrfToken = data.csrfToken;
+                    window.csrfHash = data.csrfHash;
+                }
+
+                if (data && data.success) {
+                    currentNewOrderIds = new Set();
+                    applyNewOrderHighlights();
+                    updateOrderAlarm(0);
+                    if (latestOrdersModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const modal = bootstrap.Modal.getOrCreateInstance(latestOrdersModalEl);
+                        modal.hide();
+                    }
+                    return;
+                }
+
+                acknowledgeOrderAlarmBtn.disabled = false;
+                acknowledgeOrderAlarmBtn.innerHTML = originalHtml;
+                alert((data && data.message) ? data.message : 'Failed to acknowledge order alerts.');
+            })
+            .catch(() => {
+                acknowledgeOrderAlarmBtn.disabled = false;
+                acknowledgeOrderAlarmBtn.innerHTML = originalHtml;
+                alert('Failed to acknowledge order alerts. Please try again.');
+            });
+        });
+    }
+
+    // Apply initial highlights from PHP-rendered new order IDs
+    applyNewOrderHighlights();
+
+    // Re-apply highlights every time the modal is opened (in case poll already updated IDs)
+    if (latestOrdersModalEl) {
+        latestOrdersModalEl.addEventListener('show.bs.modal', function() {
+            applyNewOrderHighlights();
+        });
+    }
+
+    // Poll so newly added sales orders trigger alarm without page refresh.
+    pollOrderAlarmState();
+    setInterval(pollOrderAlarmState, 30000);
 });
 </script>
 

@@ -494,6 +494,8 @@ class DocumentStudio extends BaseController
                 ];
             }
 
+            $customerLocked = count($lines) > 0;
+
             $issueDate = $quote['issue_date'] ?? date('Y-m-d');
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate)) {
                 $issueDate = date('d-m-Y', strtotime($issueDate));
@@ -504,6 +506,7 @@ class DocumentStudio extends BaseController
                 'id'             => $id,
                 'quote_number'   => $quote['quote_number'] ?? '',
                 'customer_id'    => $customerId,
+                'customer_locked'=> $customerLocked,
                 'customer_label' => $customerLabel,
                 'issue_date'     => $issueDate,
                 'currency'       => $quote['currency'] ?? ($quote['quote_currency'] ?? 'USD'),
@@ -564,14 +567,27 @@ class DocumentStudio extends BaseController
                 }
             }
 
+            $currentCustomerId = (int) ($quote['customer_id'] ?? 0);
+            $requestedCustomerId = $customerId;
+            $hasExistingLines = (int) $lineModel->where('quotation_id', $id)->countAllResults() > 0;
+            if ($requestedCustomerId > 0 && $requestedCustomerId !== $currentCustomerId && $hasExistingLines) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'Customer cannot be changed after lines are added. Create a new quotation for a different customer.',
+                ]);
+            }
+
             $db->transStart();
 
             // Update header
             $headerUpd = [
-                'customer_id'   => $customerId ?: ($quote['customer_id'] ?? null),
+                'customer_id'   => $currentCustomerId,
                 'issue_date'    => $this->normalizeDate($post['issue_date'] ?? ''),
                 'status'        => $status,
             ];
+            if (!$hasExistingLines && $requestedCustomerId > 0) {
+                $headerUpd['customer_id'] = $requestedCustomerId;
+            }
             if (in_array('notes', $cols))            $headerUpd['notes'] = $post['notes'] ?? ($quote['notes'] ?? null);
             if (in_array('currency', $cols))         $headerUpd['currency'] = $currency;
             if (in_array('quote_currency', $cols))   $headerUpd['quote_currency'] = $currency;

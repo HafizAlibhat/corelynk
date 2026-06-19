@@ -130,11 +130,89 @@ class AccountingPurchaseOrders extends BaseController
       return redirect()->to('/accounting/purchase-orders')->with('error','Failed to create issue');
     }
   }
-  public function create(){if($this->request->getMethod()!=='post'){return redirect()->to('/accounting/purchase-orders');}
+  public function create(){
+    if($this->request->getMethod()!=='post'){return redirect()->to('/accounting/purchase-orders');}
     if(method_exists($this,'checkPermission')&&!$this->checkPermission('accounting.purchase_orders.create')){return redirect()->to('/accounting/purchase-orders')->with('error','Permission denied');}
-    $vendor_id=(int)$this->request->getPost('vendor_id');$order_date=$this->request->getPost('order_date')?:date('Y-m-d');$currency_code=$this->request->getPost('currency_code')?:'PKR';$lines=$this->request->getPost('lines');$errors=[];if($vendor_id<=0)$errors['vendor_id']='Vendor required';if(!is_array($lines)||count($lines)===0)$errors['lines']='At least one line required';if($errors){return redirect()->to('/accounting/purchase-orders')->with('error','Fix the errors')->with('form_errors',$errors)->withInput();}
-    $subtotal=0;$tax_total=0;$total=0;$clean=[];foreach($lines as $ln){$qty=isset($ln['qty'])?(float)$ln['qty']:0;$price=isset($ln['unit_price'])?(float)$ln['unit_price']:0;if($qty<=0||$price<0)continue;$lt=$qty*$price;$subtotal+=$lt;$clean[]=['product_id'=>isset($ln['product_id'])?(int)$ln['product_id']:null,'description'=>trim((string)($ln['description']??'')),'qty'=>$qty,'unit_price'=>$price,'tax_code_id'=>null,'line_total'=>$lt];}
-    $total=$subtotal+$tax_total;$db=Database::connect('accounting');$db->transBegin();try{$poModel=new PurchaseOrderModel();$poId=$poModel->insert(['vendor_id'=>$vendor_id,'order_date'=>$order_date,'status'=>'draft','currency_code'=>$currency_code,'subtotal'=>$subtotal,'tax_total'=>$tax_total,'total'=>$total],true);if(!$poId)throw new \RuntimeException('PO insert failed');$lineModel=new PurchaseOrderLineModel();foreach($clean as $cl){$cl['po_id']=$poId;$lineModel->insert($cl);}if($db->transStatus()===false)throw new \RuntimeException('PO transaction failed');$db->transCommit();return redirect()->to('/accounting/purchase-orders')->with('success','PO created ID '.$poId);}catch(\Throwable $e){$db->transRollback();log_message('error','PO create failed: '.$e->getMessage());return redirect()->to('/accounting/purchase-orders')->with('error','Failed to create PO');}}
+
+    $vendor_id=(int)$this->request->getPost('vendor_id');
+    $order_date=$this->request->getPost('order_date')?:date('Y-m-d');
+    $currency_code=$this->request->getPost('currency_code')?:'PKR';
+    $shipping_amount=(float)($this->request->getPost('shipping_amount')?:0);
+    $document_discount_type=strtolower((string)($this->request->getPost('document_discount_type')?:'fixed'));
+    if(!in_array($document_discount_type,['percent','fixed'],true)) $document_discount_type='fixed';
+    $document_discount_value=(float)($this->request->getPost('document_discount_value')?:0);
+    $discount_exclude_shipping=!empty($this->request->getPost('discount_exclude_shipping')) ? 1 : 0;
+    $lines=$this->request->getPost('lines');
+
+    $errors=[];
+    if($vendor_id<=0)$errors['vendor_id']='Vendor required';
+    if(!is_array($lines)||count($lines)===0)$errors['lines']='At least one line required';
+    if($errors){return redirect()->to('/accounting/purchase-orders')->with('error','Fix the errors')->with('form_errors',$errors)->withInput();}
+
+    $subtotal=0.0;$line_discount_total=0.0;$tax_total=0.0;$clean=[];
+    foreach($lines as $ln){
+      $qty=isset($ln['qty'])?(float)$ln['qty']:0;
+      $price=isset($ln['unit_price'])?(float)$ln['unit_price']:0;
+      if($qty<=0||$price<0)continue;
+      $raw=$qty*$price;
+      $line_discount_type=strtolower((string)($ln['discount_type']??'percent'));
+      if(!in_array($line_discount_type,['percent','fixed'],true)) $line_discount_type='percent';
+      $line_discount_value=isset($ln['discount_value'])?(float)$ln['discount_value']:0.0;
+      $line_discount_amount=$line_discount_type==='fixed' ? $line_discount_value : ($raw*($line_discount_value/100.0));
+      $line_discount_amount=max(0.0,min($raw,$line_discount_amount));
+      $line_total=max(0.0,$raw-$line_discount_amount);
+      $subtotal+=$raw;
+      $line_discount_total+=$line_discount_amount;
+      $clean[]=[
+        'product_id'=>isset($ln['product_id'])?(int)$ln['product_id']:null,
+        'description'=>trim((string)($ln['description']??'')),
+        'qty'=>$qty,
+        'unit_price'=>$price,
+        'discount_type'=>$line_discount_type,
+        'discount_value'=>$line_discount_value,
+        'discount_amount'=>round($line_discount_amount,2),
+        'tax_code_id'=>null,
+        'line_total'=>round($line_total,2)
+      ];
+    }
+
+    $line_net=max(0.0,$subtotal-$line_discount_total);
+    $doc_base=$line_net+($discount_exclude_shipping?0.0:$shipping_amount);
+    $doc_discount_amount=$document_discount_type==='percent' ? ($doc_base*($document_discount_value/100.0)) : $document_discount_value;
+    $doc_discount_amount=max(0.0,min($line_net+$shipping_amount,$doc_discount_amount));
+    $discount_total=$line_discount_total+$doc_discount_amount;
+    $total=round($line_net+$shipping_amount-$doc_discount_amount+$tax_total,2);
+
+    $db=Database::connect('accounting');
+    $db->transBegin();
+    try{
+      $poModel=new PurchaseOrderModel();
+      $poId=$poModel->insert([
+        'vendor_id'=>$vendor_id,
+        'order_date'=>$order_date,
+        'status'=>'draft',
+        'currency_code'=>$currency_code,
+        'subtotal'=>round($subtotal,2),
+        'discount_total'=>round($discount_total,2),
+        'document_discount_type'=>$document_discount_type,
+        'document_discount_value'=>round($document_discount_value,2),
+        'discount_exclude_shipping'=>$discount_exclude_shipping,
+        'shipping_amount'=>round($shipping_amount,2),
+        'tax_total'=>round($tax_total,2),
+        'total'=>$total
+      ],true);
+      if(!$poId)throw new \RuntimeException('PO insert failed');
+
+      $lineModel=new PurchaseOrderLineModel();
+      foreach($clean as $cl){$cl['po_id']=$poId;$lineModel->insert($cl);}if($db->transStatus()===false)throw new \RuntimeException('PO transaction failed');
+      $db->transCommit();
+      return redirect()->to('/accounting/purchase-orders')->with('success','PO created ID '.$poId);
+    }catch(\Throwable $e){
+      $db->transRollback();
+      log_message('error','PO create failed: '.$e->getMessage());
+      return redirect()->to('/accounting/purchase-orders')->with('error','Failed to create PO');
+    }
+  }
 
   public function pdf($id){
     $poId=(int)$id; if($poId<=0) return redirect()->to('/accounting/purchase-orders')->with('error','Invalid PO');

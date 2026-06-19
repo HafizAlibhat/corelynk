@@ -39,6 +39,7 @@ class DocumentLogger
     const ACTION_CONFIRMED      = 'confirmed';
     const ACTION_SENT           = 'sent';
     const ACTION_POSTED         = 'posted';
+    const ACTION_DELETED        = 'deleted';
 
     // ── Write ────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,9 @@ class DocumentLogger
 
             case self::ACTION_CANCELLED:
                 return 'Cancelled this document.';
+
+            case self::ACTION_DELETED:
+                return 'Deleted this document.';
 
             case self::ACTION_LINE_ADDED:
                 $prod = esc((string) ($ctx['product'] ?? 'item'));

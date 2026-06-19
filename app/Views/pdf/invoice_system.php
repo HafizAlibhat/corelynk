@@ -8,6 +8,13 @@ $hideCompanyLogo = !empty($hide_company_logo);
 $hideCompanyWebsite = !empty($hide_company_website);
 $pdfShowHeader = isset($pdf_show_header_address) ? (bool)$pdf_show_header_address : (!isset($company['pdf_show_header_address']) || $company['pdf_show_header_address']);
 $pdfShowFooter = isset($pdf_show_footer) ? (bool)$pdf_show_footer : (!isset($company['pdf_show_footer']) || $company['pdf_show_footer']);
+$warehousePdf = isset($warehouse_pdf) ? ((int)$warehouse_pdf === 1) : false;
+$normalizePickText = static function (string $text): string {
+    // Drop leading symbol/punctuation glyphs that can render as '?' in PDF fonts.
+    $clean = preg_replace('/^[\p{P}\p{S}\s]+/u', '', trim($text));
+    $clean = is_string($clean) ? trim($clean) : trim($text);
+    return $clean !== '' ? $clean : 'Not in stock';
+};
 
 $gdLoaded = extension_loaded('gd');
 $canRenderImages = true;
@@ -52,7 +59,18 @@ if ($invoiceNo !== '') {
         $invoiceNo = (stripos($invoiceNo, $documentPrefix) === 0) ? $invoiceNo : $documentPrefix . ltrim($invoiceNo, '# ');
     }
 }
-$issueDate = $invoice['issue_date'] ?? '';
+// Format issue_date properly: parse raw date and format as d-m-Y
+$issueDateRaw = trim((string)($invoice['issue_date'] ?? ''));
+$issueDate = '';
+if (!empty($issueDateRaw) && $issueDateRaw !== '0000-00-00' && $issueDateRaw !== '0000-00-00 00:00:00') {
+    // Try parsing as YYYY-MM-DD or YYYY-MM-DD HH:MM:SS
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $issueDateRaw, $m)) {
+        // Direct format without strtotime to avoid timezone issues
+        $issueDate = sprintf('%02d-%02d-%04d', (int)$m[3], (int)$m[2], (int)$m[1]);
+    } elseif ($ts = strtotime($issueDateRaw)) {
+        $issueDate = date('d-m-Y', $ts);
+    }
+}
 $currency = 'USD';
 $currencyCandidates = [
     $invoice['currency_code'] ?? null,
@@ -151,37 +169,71 @@ if (isset($invoice['shipping_amount'])) {
 } elseif (isset($invoice['shipping'])) {
     $shipping = (float)$invoice['shipping'];
 }
-$discountTotal = isset($invoice['discount_total']) ? (float)$invoice['discount_total'] : (isset($invoice['discount']) ? (float)$invoice['discount'] : 0.0);
+// Separate line-level and document-level discounts
+$documentDiscountType = isset($invoice['document_discount_type']) ? (string)$invoice['document_discount_type'] : 'fixed';
+$documentDiscountValue = isset($invoice['document_discount_value']) ? (float)$invoice['document_discount_value'] : 0.0;
+$documentDiscountAmount = 0.0;
 
 $computedSubtotal = 0.0;
-$computedDiscount = 0.0;
+$computedLineDiscount = 0.0;
 $computedTax = 0.0;
 if (!empty($lines)) {
     foreach ($lines as $ln) {
         $qty = (float)($ln['quantity'] ?? 0);
         $unitPrice = (float)($ln['unit_price'] ?? 0);
         $lineBase = $qty * $unitPrice;
+        // Only count line discount if the line actually has discount data
         $discAmt = isset($ln['discount_amount']) ? (float)$ln['discount_amount'] : 0.0;
         if ($discAmt === 0.0 && isset($ln['discount_value'])) {
-            $discAmt = $lineBase * ((float)$ln['discount_value'] / 100.0);
+            $discValue = (float)$ln['discount_value'];
+            if ($discValue > 0) {
+                $discAmt = $lineBase * ($discValue / 100.0);
+            }
         }
         $taxRate = isset($ln['tax_rate']) ? (float)$ln['tax_rate'] : (isset($ln['tax']) ? (float)$ln['tax'] : 0.0);
         $taxAmt = isset($ln['tax_amount']) ? (float)$ln['tax_amount'] : (($lineBase - $discAmt) * ($taxRate / 100.0));
         $computedSubtotal += $lineBase;
-        $computedDiscount += $discAmt;
+        $computedLineDiscount += $discAmt;
         $computedTax += $taxAmt;
     }
 }
 
+$lineDiscountTotal = $computedLineDiscount;
+
+// Calculate document-level discount if present
+// IMPORTANT: Match QuotationModel::calculateTotals() logic
+// documentBase = (subtotal - lineDiscount) + tax + (shipping if not excluded)
+if ($documentDiscountValue > 0) {
+    // Get discount_exclude_shipping flag
+    $discountExcludeShipping = (int)($invoice['discount_exclude_shipping'] ?? 1);
+    
+    // Build the document discount base: lineNet + tax + (shipping if applicable)
+    $lineNet = $computedSubtotal - $lineDiscountTotal;
+    $documentBase = $lineNet + $computedTax + ($discountExcludeShipping ? 0.0 : $shipping);
+    
+    // Calculate document discount from correct base
+    if ($documentDiscountType === 'percent') {
+        $documentDiscountAmount = $documentBase * ($documentDiscountValue / 100.0);
+    } else {
+        $documentDiscountAmount = $documentDiscountValue;
+    }
+    // Ensure document discount doesn't exceed the base
+    $documentDiscountAmount = min(max(0.0, $documentDiscountAmount), $documentBase);
+} else {
+    $documentDiscountAmount = 0.0;
+}
+
+// Ensure subtotal reflects computed value if not set
 if ($subtotal == 0.0 && $computedSubtotal > 0) {
     $subtotal = $computedSubtotal;
-}
-if ($discountTotal == 0.0 && $computedDiscount > 0) {
-    $discountTotal = $computedDiscount;
 }
 if ($tax == 0.0 && $computedTax > 0) {
     $tax = $computedTax;
 }
+
+// Total discount = line-level + document-level
+$discountTotal = $lineDiscountTotal + $documentDiscountAmount;
+$totalRowLabel = ($discountTotal > 0.0005) ? 'Total (After Discounts)' : 'Total';
 
 // If shipping wasn't provided but total_amount exists, derive shipping so the PDF shows the real charge
 $derivedTotal = isset($invoice['total_amount']) ? (float)$invoice['total_amount'] : null;
@@ -630,6 +682,7 @@ if ($paymentStatus === 'paid') {
             letter-spacing: 0.03em;
         }
     </style>
+    <link rel="stylesheet" href="<?= base_url('assets/css/product-image-hover-preview.css') ?>?v=1">
 </head>
 <body>
     <div class="page">
@@ -678,7 +731,7 @@ if ($paymentStatus === 'paid') {
                 </td>
                 <td class="meta-strip-right">
                     <?php if ($issueDate !== ''): ?>
-                        <span class="lbl"><?= esc($documentDateLabel) ?></span>&nbsp;<strong><?= esc($fmtDate($issueDate)) ?></strong>
+                        <span class="lbl"><?= esc($documentDateLabel) ?></span>&nbsp;<strong><?= esc($issueDate) ?></strong>
                     <?php endif; ?>
                     <?php if (!empty($invoice['delivery_date']) && strpos($invoice['delivery_date'], '0000') === false): ?>
                         <br><br><span class="lbl">Delivery Date:</span>&nbsp;<strong><?= esc($fmtDate($invoice['delivery_date'])) ?></strong>
@@ -726,7 +779,17 @@ if ($paymentStatus === 'paid') {
             </thead>
             <tbody>
                 <?php if (!empty($lines)): ?>
-                    <?php foreach ($lines as $ln):
+                    <?php
+                        $activeSectionTitle = '';
+                        $activeSectionSubtotal = 0.0;
+                        $totalColumns = 5 + ($canRenderImages ? 1 : 0) + ($hasAnyDiscount ? 1 : 0) + ($hasAnyTax ? 1 : 0);
+                    ?>
+                    <?php foreach ($lines as $idx => $ln):
+                        $displayType = strtolower((string)($ln['display_type'] ?? 'line'));
+                        $isSection = $displayType === 'section';
+                        if ($isSection):
+                            continue;
+                        endif;
                         $qty = (float)($ln['quantity'] ?? 0);
                         $unitPrice = (float)($ln['unit_price'] ?? 0);
                         $lineBase = $qty * $unitPrice;
@@ -741,6 +804,7 @@ if ($paymentStatus === 'paid') {
                         $lineTotal = ($lineTotalRaw !== null && $lineTotalRaw > 0)
                             ? $lineTotalRaw
                             : $lineTotalComputed;
+
 
                         // PRODUCT IMAGE: Prefer controller-enriched paths (variant first, then product).
                         // Images are converted to base64 data URIs for reliable Dompdf rendering on all platforms.
@@ -800,6 +864,9 @@ if ($paymentStatus === 'paid') {
 
                         $code = trim((string)($ln['product_code'] ?? $ln['code'] ?? ($ln['product_sku'] ?? ($ln['sku'] ?? ($ln['item_code'] ?? '')))));
                         $description = trim((string)($ln['product_name'] ?? ($ln['description'] ?? '')));
+                        if ($description === '') {
+                            $description = trim((string)($ln['name'] ?? ($ln['item_name'] ?? '')));
+                        }
                         $variantAttrs = !empty($ln['variant_attrs']) && is_array($ln['variant_attrs']) ? $ln['variant_attrs'] : [];
                     ?>
                         <tr>
@@ -807,7 +874,7 @@ if ($paymentStatus === 'paid') {
                             <?php if ($canRenderImages): ?>
                                 <td class="image-cell">
                                     <?php if (!empty($imgPath)): ?>
-                                        <img src="<?= esc($imgPath) ?>" width="32" height="32">
+                                        <img src="<?= esc($imgPath) ?>" width="40" height="40" class="js-product-hover-thumb" data-preview-src="<?= esc($imgPath) ?>">
                                     <?php else: ?>
                                         <span class="no-img">No Img</span>
                                     <?php endif; ?>
@@ -815,6 +882,22 @@ if ($paymentStatus === 'paid') {
                             <?php endif; ?>
                             <td>
                                 <?= esc($description) ?>
+                                <?php if ($warehousePdf): ?>
+                                    <?php
+                                        $pickLocations = (array)($ln['pick_locations'] ?? []);
+                                        $pickLocations = array_values(array_filter(array_map(static function ($loc) use ($normalizePickText) {
+                                            return $normalizePickText((string)$loc);
+                                        }, $pickLocations), static fn($v) => $v !== ''));
+                                    ?>
+                                    <div style="margin-top:3px; font-size:7.5px; color:#0f766e; line-height:1.45;">
+                                        <strong>Pick Location:</strong>
+                                        <?php if (!empty($pickLocations)): ?>
+                                            <?= esc(implode(' | ', $pickLocations)) ?>
+                                        <?php else: ?>
+                                            <?= esc($normalizePickText((string)($ln['pick_location_text'] ?? 'Not in stock'))) ?>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
                                 <?php if (!empty($variantAttrs)): ?>
                                     <div style="margin-top:3px; font-size:7.5px; color:#64748b; line-height:1.5;">
                                         <?php foreach ($variantAttrs as $_attrK => $_attrV): ?>
@@ -848,10 +931,27 @@ if ($paymentStatus === 'paid') {
                     <td class="label">Subtotal</td>
                     <td class="value"><?= esc($fmtMoney($subtotal)) ?></td>
                 </tr>
-                <?php if ($discountTotal > 0): ?>
+                <?php if ($lineDiscountTotal > 0.0005): ?>
                 <tr>
-                    <td class="label">Discount</td>
-                    <td class="value">-<?= esc($fmtMoney($discountTotal)) ?></td>
+                    <td class="label">Line Discounts</td>
+                    <td class="value">-<?= esc($fmtMoney($lineDiscountTotal)) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($documentDiscountAmount > 0.0005): ?>
+                <tr>
+                    <td class="label">
+                        Document Discount
+                        <?php if ($documentDiscountType === 'percent'): ?>
+                            (<?= number_format($documentDiscountValue, 1) ?>%)
+                        <?php endif; ?>
+                    </td>
+                    <td class="value">-<?= esc($fmtMoney($documentDiscountAmount)) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($discountTotal > 0.0005): ?>
+                <tr style="background: #f0fdf4; font-weight: 700;">
+                    <td class="label" style="color: #166534; font-weight: 700;">Total Discount</td>
+                    <td class="value" style="color: #166534; font-weight: 700;">-<?= esc($fmtMoney($discountTotal)) ?></td>
                 </tr>
                 <?php endif; ?>
                 <?php if ($tax > 0): ?>
@@ -867,7 +967,7 @@ if ($paymentStatus === 'paid') {
                 </tr>
                 <?php endif; ?>
                 <tr class="total-row">
-                    <td class="label" style="font-weight:700; color:#0f172a;">Total</td>
+                    <td class="label" style="font-weight:700; color:#0f172a;"><?= esc($totalRowLabel) ?></td>
                     <td class="value" style="font-weight:700; color:#0f172a; font-size:13px;">
                         <?= esc($fmtMoney($total)) ?>
                     </td>
@@ -945,5 +1045,6 @@ if ($paymentStatus === 'paid') {
             <div class="footer-inner"><?= esc($footerText) ?></div>
         </div>
     <?php endif; ?>
+    <script src="<?= base_url('assets/js/product-image-hover-preview.js') ?>?v=1"></script>
 </body>
 </html>

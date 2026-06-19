@@ -258,6 +258,31 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-12">
+                            <div class="card p-3" id="activityCenterCard">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0"><i class="bi bi-bell"></i> Corelynk Activity Center</h6>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge rounded-pill bg-danger" id="activityUnreadBadge" style="display:none;">0 unread</span>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="activityMarkAllBtn">Mark all read</button>
+                                    </div>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-lg-6">
+                                        <h6 class="small text-uppercase text-muted mb-2">Last 10 Active Sales Orders</h6>
+                                        <div class="list-group list-group-flush" id="activityActiveOrders">
+                                            <div class="text-muted small">Loading...</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6">
+                                        <h6 class="small text-uppercase text-muted mb-2">Last 10 Ready-to-Ship Orders</h6>
+                                        <div class="list-group list-group-flush" id="activityReadyOrders">
+                                            <div class="text-muted small">Loading...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -562,6 +587,36 @@
         .dashboard-clock { width: 100%; text-align: left !important; }
         #tzTime { letter-spacing: 1px !important; }
     }
+
+    .activity-item {
+        border: 1px solid transparent;
+        border-radius: .5rem;
+        padding: .55rem .65rem;
+        margin-bottom: .35rem;
+        transition: border-color .2s ease, background-color .2s ease;
+    }
+
+    .activity-item.is-unread {
+        background: rgba(245, 158, 11, 0.10);
+        border-color: rgba(245, 158, 11, 0.45);
+        animation: activityBlink 1.2s step-end infinite;
+    }
+
+    .activity-item .activity-meta {
+        font-size: .72rem;
+        color: #6b7280;
+    }
+
+    @keyframes activityBlink {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
+        50% { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.40); }
+    }
+
+    body.theme-dark .activity-item.is-unread,
+    [data-theme="dark"] .activity-item.is-unread {
+        background: rgba(251, 191, 36, 0.16);
+        border-color: rgba(251, 191, 36, 0.60);
+    }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
@@ -697,6 +752,204 @@
                 options: { plugins:{ legend:{ position:'bottom' } } }
             });
         }
+
+        // Corelynk Activity Center (AJAX + per-user read state)
+        (function initActivityCenter(){
+            const activeWrap = document.getElementById('activityActiveOrders');
+            const readyWrap = document.getElementById('activityReadyOrders');
+            const unreadBadge = document.getElementById('activityUnreadBadge');
+            const markAllBtn = document.getElementById('activityMarkAllBtn');
+            const feedUrl = <?= json_encode(site_url('corelynk/activity-center/feed?limit=10')) ?>;
+            const markReadBase = <?= json_encode(site_url('corelynk/activity-center/read')) ?>;
+            const markAllUrl = <?= json_encode(site_url('corelynk/activity-center/read-all')) ?>;
+
+            if (!activeWrap || !readyWrap || !unreadBadge || !markAllBtn) {
+                return;
+            }
+
+            const state = {
+                csrfToken: window.csrfToken || '',
+                csrfHash: window.csrfHash || '',
+                feed: null,
+            };
+
+            function updateCsrfFromPayload(payload) {
+                if (!payload || !payload.csrf) return;
+                if (payload.csrf.token) {
+                    state.csrfToken = payload.csrf.token;
+                    window.csrfToken = payload.csrf.token;
+                }
+                if (payload.csrf.hash) {
+                    state.csrfHash = payload.csrf.hash;
+                    window.csrfHash = payload.csrf.hash;
+                }
+            }
+
+            function fmtDate(value) {
+                if (!value) return 'recent';
+                const dt = new Date(value.replace(' ', 'T'));
+                if (Number.isNaN(dt.getTime())) return 'recent';
+                return dt.toLocaleString();
+            }
+
+            function rowTemplate(item) {
+                const unreadClass = item.is_read ? '' : 'is-unread';
+                const orderText = item.order_number || ('SO-' + (item.source_id || ''));
+                const customer = item.customer_name || 'Customer';
+                const viewUrl = item.view_url || '#';
+                const markBtn = item.is_read
+                    ? ''
+                    : '<button type="button" class="btn btn-xs btn-outline-danger activity-mark-read" data-id="' + item.notification_id + '">Mark read</button>';
+
+                return '' +
+                    '<div class="activity-item ' + unreadClass + '" data-id="' + item.notification_id + '">' +
+                        '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                            '<div>' +
+                                '<div class="fw-semibold">' + orderText + '</div>' +
+                                '<div class="small">' + customer + '</div>' +
+                                '<div class="activity-meta">' + (item.status || 'open') + ' • ' + fmtDate(item.created_at) + '</div>' +
+                            '</div>' +
+                            '<div class="text-end">' +
+                                '<a class="btn btn-xs btn-outline-secondary mb-1" href="' + viewUrl + '">Open</a><br>' +
+                                markBtn +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
+            }
+
+            function renderList(wrap, items, emptyText) {
+                if (!Array.isArray(items) || items.length === 0) {
+                    wrap.innerHTML = '<div class="text-muted small">' + emptyText + '</div>';
+                    return;
+                }
+                wrap.innerHTML = items.map(rowTemplate).join('');
+            }
+
+            function renderFeed() {
+                const data = state.feed || { active_sales_orders: [], ready_to_ship_orders: [], unread_total: 0 };
+                renderList(activeWrap, data.active_sales_orders || [], 'No active sales order signals right now.');
+                renderList(readyWrap, data.ready_to_ship_orders || [], 'No ready-to-ship signals right now.');
+
+                const unread = Number(data.unread_total || 0);
+                if (unread > 0) {
+                    unreadBadge.style.display = 'inline-block';
+                    unreadBadge.textContent = unread + ' unread';
+                } else {
+                    unreadBadge.style.display = 'none';
+                }
+            }
+
+            function recalcUnread() {
+                const all = [];
+                if (state.feed && Array.isArray(state.feed.active_sales_orders)) {
+                    all.push(...state.feed.active_sales_orders);
+                }
+                if (state.feed && Array.isArray(state.feed.ready_to_ship_orders)) {
+                    all.push(...state.feed.ready_to_ship_orders);
+                }
+                state.feed.unread_total = all.filter((i) => !i.is_read).length;
+            }
+
+            async function loadFeed() {
+                try {
+                    const res = await fetch(feedUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    const payload = await res.json();
+                    updateCsrfFromPayload(payload);
+                    if (!res.ok || !payload || !payload.success) {
+                        throw new Error(payload && payload.message ? payload.message : 'Failed to load activity feed');
+                    }
+                    state.feed = payload.data || {};
+                    renderFeed();
+                } catch (err) {
+                    activeWrap.innerHTML = '<div class="text-danger small">Failed to load activity data.</div>';
+                    readyWrap.innerHTML = '<div class="text-danger small">Failed to load activity data.</div>';
+                    console.error(err);
+                }
+            }
+
+            async function postJson(url, body) {
+                const payload = Object.assign({}, body || {});
+                if (state.csrfToken && state.csrfHash) {
+                    payload[state.csrfToken] = state.csrfHash;
+                }
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': state.csrfHash || ''
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const json = await res.json();
+                updateCsrfFromPayload(json);
+                if (!res.ok || !json || !json.success) {
+                    throw new Error(json && json.message ? json.message : 'Request failed');
+                }
+                return json;
+            }
+
+            document.addEventListener('click', async function(e) {
+                const btn = e.target.closest('.activity-mark-read');
+                if (!btn) return;
+
+                e.preventDefault();
+                const id = Number(btn.getAttribute('data-id') || 0);
+                if (!id) return;
+
+                try {
+                    btn.disabled = true;
+                    await postJson(markReadBase + '/' + id, {});
+
+                    const sets = ['active_sales_orders', 'ready_to_ship_orders'];
+                    sets.forEach((key) => {
+                        if (!state.feed || !Array.isArray(state.feed[key])) return;
+                        state.feed[key] = state.feed[key].map((item) => {
+                            if (Number(item.notification_id) === id) {
+                                return Object.assign({}, item, { is_read: true });
+                            }
+                            return item;
+                        });
+                    });
+                    recalcUnread();
+                    renderFeed();
+                } catch (err) {
+                    btn.disabled = false;
+                    console.error(err);
+                }
+            });
+
+            markAllBtn.addEventListener('click', async function() {
+                try {
+                    markAllBtn.disabled = true;
+                    await postJson(markAllUrl, {});
+
+                    if (state.feed) {
+                        ['active_sales_orders', 'ready_to_ship_orders'].forEach((key) => {
+                            if (!Array.isArray(state.feed[key])) return;
+                            state.feed[key] = state.feed[key].map((item) => Object.assign({}, item, { is_read: true }));
+                        });
+                    }
+                    recalcUnread();
+                    renderFeed();
+                } catch (err) {
+                    console.error(err);
+                } finally {
+                    markAllBtn.disabled = false;
+                }
+            });
+
+            loadFeed();
+        })();
     });
 </script>
 <?= $this->endSection() ?>

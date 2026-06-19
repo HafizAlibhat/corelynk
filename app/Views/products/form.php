@@ -2810,6 +2810,8 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-warning" id="batchExcludeExistingBtn" disabled>Exclude Selected Existing</button>
+                <button type="button" class="btn btn-outline-success" id="batchAllowExcludedBtn" disabled>Allow Selected Excluded</button>
                 <button type="button" class="btn btn-primary" id="createVariantsConfirmBtn">Create Selected Variants</button>
             </div>
         </div>
@@ -2891,6 +2893,8 @@ document.addEventListener('DOMContentLoaded', function(){
     const previewModal = bootstrap.Modal.getOrCreateInstance(previewModalEl);
     const previewBody = document.getElementById('variantsPreviewBody');
     const createBtn = document.getElementById('createVariantsConfirmBtn');
+    const batchExcludeBtn = document.getElementById('batchExcludeExistingBtn');
+    const batchAllowBtn = document.getElementById('batchAllowExcludedBtn');
     const attrHelpers = window.CorelynkAttributes || {};
     const syncGlobalAttributes = typeof attrHelpers.syncMissingGlobalAttributes === 'function'
         ? attrHelpers.syncMissingGlobalAttributes
@@ -2949,9 +2953,49 @@ document.addEventListener('DOMContentLoaded', function(){
                 const attrNames = Object.keys((combos[0] && combos[0].attributes) ? combos[0].attributes : {});
                 const defaultGroupAttr = attrNames.find(a => String(a || '').toLowerCase() === 'size') || attrNames[0] || '';
                 const selectedState = {};
+                const excludeSelectedState = {};
+                const allowSelectedState = {};
                 combos.forEach((c, idx) => {
                     selectedState[idx] = (c.exists !== true && c.excluded !== true);
+                    excludeSelectedState[idx] = false;
+                    allowSelectedState[idx] = false;
                 });
+                const excludableExistingCount = combos.filter(c => c && c.exists === true && c.existing_can_remove === true && c.existing_variant_id).length;
+                const excludedCountRows = combos.filter(c => c && c.excluded === true).length;
+
+                function appendComboExclusionToInput(attrs) {
+                    if (!attrs || typeof attrs !== 'object') return;
+                    const input = document.getElementById('excluded_combos');
+                    if (!input) return;
+
+                    let arr = [];
+                    try { arr = JSON.parse(input.value || '[]'); } catch (_) { arr = []; }
+                    if (!Array.isArray(arr)) arr = [];
+
+                    const key = JSON.stringify(attrs);
+                    const exists = arr.some(x => x && x.type === 'combo' && JSON.stringify(x.attributes || {}) === key);
+                    if (!exists) {
+                        arr.push({ type: 'combo', attributes: attrs });
+                        input.value = JSON.stringify(arr);
+                    }
+                }
+
+                function appendForceAllowToInput(attrs) {
+                    if (!attrs || typeof attrs !== 'object') return;
+                    const input = document.getElementById('excluded_combos');
+                    if (!input) return;
+
+                    let arr = [];
+                    try { arr = JSON.parse(input.value || '[]'); } catch (_) { arr = []; }
+                    if (!Array.isArray(arr)) arr = [];
+
+                    const key = JSON.stringify(attrs);
+                    const exists = arr.some(x => x && x.type === 'force_allow_combo' && JSON.stringify(x.attributes || {}) === key);
+                    if (!exists) {
+                        arr.push({ type: 'force_allow_combo', attributes: attrs });
+                        input.value = JSON.stringify(arr);
+                    }
+                }
 
                 function renderPreviewRows(groupAttr, filterText) {
                     const q = String(filterText || '').trim().toLowerCase();
@@ -2974,16 +3018,33 @@ document.addEventListener('DOMContentLoaded', function(){
                     function renderLeaf(c, idx) {
                         const isExisting = c.exists === true;
                         const isExcluded = c.excluded === true;
-                        const disabled = isExisting || isExcluded;
-                        const isChecked = disabled ? false : !!selectedState[idx];
+                        const isExcludableExisting = isExisting && c.existing_can_remove === true && !!c.existing_variant_id;
+                        const disabled = isExcluded || (isExisting && !isExcludableExisting);
+                        const isCreatableChecked = !isExisting && !isExcluded ? !!selectedState[idx] : false;
+                        const isExcludeChecked = isExcludableExisting ? !!excludeSelectedState[idx] : false;
+                        const isAllowChecked = isExcluded ? !!allowSelectedState[idx] : false;
                         const art = c.simulated_art || c.existing_art || '';
                         const artHtml = art
                             ? `<code class="badge bg-dark bg-opacity-75 font-monospace fw-normal px-2">${escapeVariantHtml(art)}</code>`
                             : `<span class="text-muted small">—</span>`;
 
+                        let selectHtml = `<input type="checkbox" class="form-check-input flex-shrink-0 mt-0" disabled title="${escapeVariantHtml(c.display || '')}">`;
+                        if (!isExisting && !isExcluded) {
+                            selectHtml = `<input type="checkbox" class="variant-select form-check-input flex-shrink-0 mt-0" data-idx="${idx}" ${isCreatableChecked ? 'checked' : ''} title="${escapeVariantHtml(c.display || '')}">`;
+                        } else if (isExcludableExisting) {
+                            selectHtml = `<input type="checkbox" class="exclude-existing-select form-check-input flex-shrink-0 mt-0" data-idx="${idx}" ${isExcludeChecked ? 'checked' : ''} title="Select existing variant for batch exclude">`;
+                        } else if (isExcluded) {
+                            selectHtml = `<input type="checkbox" class="allow-excluded-select form-check-input flex-shrink-0 mt-0" data-idx="${idx}" ${isAllowChecked ? 'checked' : ''} title="Select excluded variant for batch allow">`;
+                        }
+
                         let statusHtml, actionHtml = '';
                         if (isExisting) {
                             statusHtml = `<span class="badge bg-secondary">${escapeVariantHtml(c.status_label || 'Exists')}</span>`;
+                            if (c.existing_can_remove === true && c.existing_variant_id) {
+                                actionHtml = `<button type="button" class="btn btn-sm btn-outline-warning py-0 exclude-existing-btn" data-idx="${idx}" style="font-size:.7rem;line-height:1.4">Exclude</button>`;
+                            } else if (c.existing_block_reason) {
+                                statusHtml += `<span class="text-muted small ms-1">(${escapeVariantHtml(c.existing_block_reason)})</span>`;
+                            }
                         } else if (isExcluded) {
                             const cls = (c.excluded_reason || '').indexOf('Only Allow') !== -1
                                 ? 'bg-warning text-dark' : 'bg-danger-subtle text-danger-emphasis';
@@ -2999,7 +3060,7 @@ document.addEventListener('DOMContentLoaded', function(){
                         const leafVal = String((c.attributes || {})[leafAttr] ?? (c.display || ''));
 
                         return `<div class="pv-leaf d-flex align-items-center gap-1 px-1 py-0 rounded${disabled ? ' pv-leaf-disabled' : ''}" data-idx="${idx}">
-                            <input type="checkbox" class="variant-select form-check-input flex-shrink-0 mt-0" data-idx="${idx}" ${disabled ? 'disabled' : ''} ${isChecked ? 'checked' : ''} title="${escapeVariantHtml(c.display || leafVal)}">
+                            ${selectHtml}
                             <i class="bi bi-tag-fill pv-leaf-icon flex-shrink-0"></i>
                             <span class="pv-leaf-label flex-grow-1 small fw-medium">${escapeVariantHtml(leafAttr)}: <span class="text-body">${escapeVariantHtml(leafVal)}</span></span>
                             <span class="flex-shrink-0">${artHtml}</span>
@@ -3115,6 +3176,8 @@ document.addEventListener('DOMContentLoaded', function(){
                 html += `<span class="badge bg-success-subtle text-success-emphasis">Creatable: <span id="pvCreatableCount">${creatableCount}</span></span>`;
                 html += `<span class="badge bg-primary">Selected: <span id="pvSelectedCount">${creatableCount}</span></span>`;
                 html += `<span class="badge bg-danger-subtle text-danger-emphasis">Skipped (unchecked): <span id="pvUncheckedCount">0</span></span>`;
+                html += `<span class="badge bg-warning-subtle text-warning-emphasis">Existing selected for exclude: <span id="pvSelectedExistingExcludeCount">0</span></span>`;
+                html += `<span class="badge bg-success-subtle text-success-emphasis">Excluded selected for allow: <span id="pvSelectedAllowCount">0</span></span>`;
                 html += `<span class="badge bg-dark">Already Exists: <span id="pvExistingCount">${existingCount}</span></span>`;
                 html += `<span class="badge bg-warning text-dark">Excluded by rules: <span id="pvExcludedCount">${excludedCount}</span></span>`;
                 html += '</div>';
@@ -3125,15 +3188,21 @@ document.addEventListener('DOMContentLoaded', function(){
                     '</select>';
                 html += '<input type="search" id="previewVariantFilter" class="form-control form-control-sm" placeholder="Filter combinations" style="width:260px;max-width:100%">';
                 html += '<div class="form-check ms-2"><input class="form-check-input" type="checkbox" id="variantsSelectAll" checked><label class="form-check-label small" for="variantsSelectAll">Select all creatable</label></div>';
+                html += '<div class="form-check ms-2"><input class="form-check-input" type="checkbox" id="variantsSelectAllExistingExclude"><label class="form-check-label small" for="variantsSelectAllExistingExclude">Select all excludable existing</label></div>';
+                html += '<div class="form-check ms-2"><input class="form-check-input" type="checkbox" id="variantsSelectAllAllowExcluded"><label class="form-check-label small" for="variantsSelectAllAllowExcluded">Select all excluded for allow</label></div>';
+                html += '<div class="form-check ms-2"><input class="form-check-input" type="checkbox" id="previewParentChildAutoSelect" checked><label class="form-check-label small" for="previewParentChildAutoSelect">Parent -> child auto select</label></div>';
                 html += '</div>';
                 if (onlyAllowMode) {
                     html += '<div class="alert alert-info py-2 small mb-2"><strong>Only Allow mode is ON:</strong> combinations not in your Only Allow list are automatically excluded.</div>';
                 }
                 html += `<div id="previewGroupedRows">${renderPreviewRows(defaultGroupAttr, '')}</div>`;
-                html += '<div class="form-text small text-muted">Only checked rows that are Creatable will be created. Already Exists and Excluded rows are locked.</div>';
+                html += '<div class="form-text small text-muted">Only checked rows that are Creatable will be created. Existing rows can be excluded only when they are not used in sales/purchase and have no stock impact.</div>';
                 previewBody.innerHTML = html;
 
                 const selectAllEl = document.getElementById('variantsSelectAll');
+                const selectAllExistingExcludeEl = document.getElementById('variantsSelectAllExistingExclude');
+                const selectAllAllowExcludedEl = document.getElementById('variantsSelectAllAllowExcluded');
+                const parentChildAutoEl = document.getElementById('previewParentChildAutoSelect');
                 const groupByEl = document.getElementById('previewGroupBy');
                 const filterEl = document.getElementById('previewVariantFilter');
                 const groupedRowsEl = document.getElementById('previewGroupedRows');
@@ -3141,15 +3210,49 @@ document.addEventListener('DOMContentLoaded', function(){
                 function updateSelectionStats() {
                     const selected = Object.keys(selectedState).filter(k => selectedState[k]).length;
                     const unchecked = Math.max(0, creatableCount - selected);
+                    const selectedExistingExclude = Object.keys(excludeSelectedState).filter(k => excludeSelectedState[k]).length;
+                    const selectedAllow = Object.keys(allowSelectedState).filter(k => allowSelectedState[k]).length;
 
                     const selectedNode = document.getElementById('pvSelectedCount');
                     const uncheckedNode = document.getElementById('pvUncheckedCount');
+                    const selectedExistingExcludeNode = document.getElementById('pvSelectedExistingExcludeCount');
+                    const selectedAllowNode = document.getElementById('pvSelectedAllowCount');
                     if (selectedNode) selectedNode.textContent = String(selected);
                     if (uncheckedNode) uncheckedNode.textContent = String(unchecked);
+                    if (selectedExistingExcludeNode) selectedExistingExcludeNode.textContent = String(selectedExistingExclude);
+                    if (selectedAllowNode) selectedAllowNode.textContent = String(selectedAllow);
 
                     if (selectAllEl) {
                         selectAllEl.checked = creatableCount > 0 && selected === creatableCount;
                         selectAllEl.indeterminate = selected > 0 && selected < creatableCount;
+                    }
+
+                    if (selectAllExistingExcludeEl) {
+                        selectAllExistingExcludeEl.checked = excludableExistingCount > 0 && selectedExistingExclude === excludableExistingCount;
+                        selectAllExistingExcludeEl.indeterminate = selectedExistingExclude > 0 && selectedExistingExclude < excludableExistingCount;
+                    }
+
+                    if (selectAllAllowExcludedEl) {
+                        selectAllAllowExcludedEl.checked = excludedCountRows > 0 && selectedAllow === excludedCountRows;
+                        selectAllAllowExcludedEl.indeterminate = selectedAllow > 0 && selectedAllow < excludedCountRows;
+                    }
+
+                    if (batchExcludeBtn) {
+                        if (batchExcludeBtn.getAttribute('data-busy') !== '1') {
+                            batchExcludeBtn.disabled = selectedExistingExclude === 0;
+                            batchExcludeBtn.innerHTML = selectedExistingExclude > 0
+                                ? 'Exclude Selected Existing (' + selectedExistingExclude + ')'
+                                : 'Exclude Selected Existing';
+                        }
+                    }
+
+                    if (batchAllowBtn) {
+                        if (batchAllowBtn.getAttribute('data-busy') !== '1') {
+                            batchAllowBtn.disabled = selectedAllow === 0;
+                            batchAllowBtn.innerHTML = selectedAllow > 0
+                                ? 'Allow Selected Excluded (' + selectedAllow + ')'
+                                : 'Allow Selected Excluded';
+                        }
                     }
                 }
 
@@ -3177,6 +3280,36 @@ document.addEventListener('DOMContentLoaded', function(){
                     });
                 }
 
+                if (selectAllExistingExcludeEl) {
+                    selectAllExistingExcludeEl.addEventListener('change', function(e){
+                        const shouldCheck = !!e.target.checked;
+                        combos.forEach((combo, idx) => {
+                            const canExclude = combo && combo.exists === true && combo.existing_can_remove === true && !!combo.existing_variant_id;
+                            if (!canExclude) return;
+                            excludeSelectedState[idx] = shouldCheck;
+                        });
+                        previewBody.querySelectorAll('.exclude-existing-select').forEach(ch => {
+                            ch.checked = shouldCheck;
+                        });
+                        updateSelectionStats();
+                    });
+                }
+
+                if (selectAllAllowExcludedEl) {
+                    selectAllAllowExcludedEl.addEventListener('change', function(e){
+                        const shouldCheck = !!e.target.checked;
+                        combos.forEach((combo, idx) => {
+                            const canAllow = combo && combo.excluded === true;
+                            if (!canAllow) return;
+                            allowSelectedState[idx] = shouldCheck;
+                        });
+                        previewBody.querySelectorAll('.allow-excluded-select').forEach(ch => {
+                            ch.checked = shouldCheck;
+                        });
+                        updateSelectionStats();
+                    });
+                }
+
                 if (groupByEl) groupByEl.addEventListener('change', rerenderGroupedRows);
                 if (filterEl) filterEl.addEventListener('input', rerenderGroupedRows);
 
@@ -3193,15 +3326,60 @@ document.addEventListener('DOMContentLoaded', function(){
                         return;
                     }
 
+                    if (target.classList.contains('exclude-existing-select')) {
+                        const idx = parseInt(target.getAttribute('data-idx'), 10);
+                        if (!isNaN(idx) && !target.disabled) {
+                            excludeSelectedState[idx] = !!target.checked;
+                        }
+                        updateSelectionStats();
+                        return;
+                    }
+
+                    if (target.classList.contains('allow-excluded-select')) {
+                        const idx = parseInt(target.getAttribute('data-idx'), 10);
+                        if (!isNaN(idx) && !target.disabled) {
+                            allowSelectedState[idx] = !!target.checked;
+                        }
+                        updateSelectionStats();
+                        return;
+                    }
+
                     if (target.classList.contains('group-select') && target.getAttribute('data-tree-node')) {
+                        if (parentChildAutoEl && !parentChildAutoEl.checked) {
+                            updateSelectionStats();
+                            return;
+                        }
+
                         // Traverse up to find the parent <details> and select all .variant-select within it
                         const parentDetails = target.closest('details');
                         if (parentDetails) {
+                            parentDetails.querySelectorAll('.group-select[data-tree-node]').forEach(ch => {
+                                if (ch === target) return;
+                                ch.checked = target.checked;
+                                ch.indeterminate = false;
+                            });
+
                             parentDetails.querySelectorAll('.variant-select').forEach(ch => {
                                 if (!ch.disabled) ch.checked = target.checked;
                                 const idx = parseInt(ch.getAttribute('data-idx'), 10);
                                 if (!isNaN(idx) && !ch.disabled) {
                                     selectedState[idx] = !!target.checked;
+                                }
+                            });
+
+                            parentDetails.querySelectorAll('.exclude-existing-select').forEach(ch => {
+                                if (!ch.disabled) ch.checked = target.checked;
+                                const idx = parseInt(ch.getAttribute('data-idx'), 10);
+                                if (!isNaN(idx) && !ch.disabled) {
+                                    excludeSelectedState[idx] = !!target.checked;
+                                }
+                            });
+
+                            parentDetails.querySelectorAll('.allow-excluded-select').forEach(ch => {
+                                if (!ch.disabled) ch.checked = target.checked;
+                                const idx = parseInt(ch.getAttribute('data-idx'), 10);
+                                if (!isNaN(idx) && !ch.disabled) {
+                                    allowSelectedState[idx] = !!target.checked;
                                 }
                             });
                         }
@@ -3233,6 +3411,147 @@ document.addEventListener('DOMContentLoaded', function(){
                         if (previewBtn) previewBtn.click();
                     });
                 });
+
+                previewBody.querySelectorAll('.exclude-existing-btn').forEach(btn => {
+                    btn.addEventListener('click', function(){
+                        const idx = parseInt(this.getAttribute('data-idx'));
+                        if (isNaN(idx) || !combos[idx]) return;
+                        const combo = combos[idx];
+                        const variantId = parseInt(combo.existing_variant_id || 0, 10);
+                        if (!variantId || !combo.attributes) return;
+
+                        if (!confirm('Exclude this existing variant from future lists and remove the current variant record?')) {
+                            return;
+                        }
+
+                        const btnEl = this;
+                        btnEl.disabled = true;
+
+                        fetch('<?= base_url('/product-variants') ?>/' + encodeURIComponent(variantId) + '/exclude-from-list', {
+                            method: 'POST',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        }).then(r => r.json()).then(data => {
+                            if (!data || data.success !== true) {
+                                alert((data && data.message) ? data.message : 'Failed to exclude variant');
+                                btnEl.disabled = false;
+                                return;
+                            }
+
+                            appendComboExclusionToInput(combo.attributes);
+
+                            if (previewBtn) previewBtn.click();
+                        }).catch(() => {
+                            alert('Failed to exclude variant');
+                            btnEl.disabled = false;
+                        });
+                    });
+                });
+
+                if (batchExcludeBtn) {
+                    batchExcludeBtn.onclick = function () {
+                        const selectedIndexes = Object.keys(excludeSelectedState)
+                            .filter(k => excludeSelectedState[k])
+                            .map(k => parseInt(k, 10))
+                            .filter(k => !isNaN(k));
+
+                        const variantIds = [];
+                        const seen = {};
+                        selectedIndexes.forEach(idx => {
+                            const combo = combos[idx];
+                            if (!combo || combo.exists !== true || combo.existing_can_remove !== true || !combo.existing_variant_id) return;
+                            const vid = parseInt(combo.existing_variant_id, 10);
+                            if (!vid || seen[vid]) return;
+                            seen[vid] = true;
+                            variantIds.push(vid);
+                        });
+
+                        if (variantIds.length === 0) {
+                            alert('No excludable existing variants selected');
+                            return;
+                        }
+
+                        if (!confirm('Exclude ' + variantIds.length + ' existing variant(s) from future lists and remove current records?')) {
+                            return;
+                        }
+
+                        batchExcludeBtn.setAttribute('data-busy', '1');
+                        batchExcludeBtn.disabled = true;
+                        batchExcludeBtn.innerHTML = 'Excluding...';
+
+                        fetch('<?= base_url('/product-variants/bulk-exclude-from-list') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({ ids: variantIds })
+                        }).then(r => r.json()).then(data => {
+                            if (!data || data.success !== true) {
+                                alert((data && data.message) ? data.message : 'Failed to batch exclude variants');
+                                return;
+                            }
+
+                            const excludedItems = Array.isArray(data.excluded_items) ? data.excluded_items : [];
+                            excludedItems.forEach(item => {
+                                if (!item || !item.excluded_entry || !item.excluded_entry.attributes) return;
+                                appendComboExclusionToInput(item.excluded_entry.attributes);
+                            });
+
+                            if ((data.blocked_count || 0) > 0 || (data.failed_count || 0) > 0) {
+                                alert((data.message || 'Batch exclude completed with some issues'));
+                            }
+
+                            if (previewBtn) previewBtn.click();
+                        }).catch(() => {
+                            alert('Failed to batch exclude variants');
+                        }).finally(() => {
+                            batchExcludeBtn.setAttribute('data-busy', '0');
+                            updateSelectionStats();
+                        });
+                    };
+                }
+
+                if (batchAllowBtn) {
+                    batchAllowBtn.onclick = function () {
+                        const selectedIndexes = Object.keys(allowSelectedState)
+                            .filter(k => allowSelectedState[k])
+                            .map(k => parseInt(k, 10))
+                            .filter(k => !isNaN(k));
+
+                        const attrsList = [];
+                        const seen = {};
+                        selectedIndexes.forEach(idx => {
+                            const combo = combos[idx];
+                            if (!combo || combo.excluded !== true || !combo.attributes) return;
+                            const key = JSON.stringify(combo.attributes);
+                            if (seen[key]) return;
+                            seen[key] = true;
+                            attrsList.push(combo.attributes);
+                        });
+
+                        if (attrsList.length === 0) {
+                            alert('No excluded variants selected');
+                            return;
+                        }
+
+                        if (!confirm('Allow ' + attrsList.length + ' excluded variant(s) back into the generated list?')) {
+                            return;
+                        }
+
+                        batchAllowBtn.setAttribute('data-busy', '1');
+                        batchAllowBtn.disabled = true;
+                        batchAllowBtn.innerHTML = 'Allowing...';
+
+                        attrsList.forEach(attrs => appendForceAllowToInput(attrs));
+
+                        if (previewBtn) previewBtn.click();
+
+                        batchAllowBtn.setAttribute('data-busy', '0');
+                        updateSelectionStats();
+                    };
+                }
+
+                updateSelectionStats();
 
                 // store combos on modal element for later
                 previewModalEl._combinations = combos;

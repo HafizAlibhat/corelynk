@@ -78,9 +78,11 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link <?= $activeTab === 'preparation' ? 'active' : '' ?>" id="tab-preparation-btn" data-bs-toggle="tab" data-bs-target="#tab-preparation" type="button" role="tab" aria-controls="tab-preparation" aria-selected="<?= $activeTab === 'preparation' ? 'true' : 'false' ?>">Preparation</button>
                 </li>
+                <?php if (!empty($can_view_assets)): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link <?= $activeTab === 'assets' ? 'active' : '' ?>" id="tab-assets-btn" data-bs-toggle="tab" data-bs-target="#tab-assets" type="button" role="tab" aria-controls="tab-assets" aria-selected="<?= $activeTab === 'assets' ? 'true' : 'false' ?>">Assets</button>
                 </li>
+                <?php endif; ?>
             </ul>
 
             <div class="tab-content">
@@ -89,6 +91,7 @@
                 <!-- Product Information -->
                 <div class="col-lg-8">
                     <?php $isVariable = isset($product['product_type']) && $product['product_type'] === 'variable'; ?>
+                    <?php $canViewSensitiveOverview = !empty($can_view_sensitive_overview); ?>
                     <div class="card mb-3">
                         <div class="card-header">
                             <h5 class="card-title mb-0">Template Product</h5>
@@ -146,7 +149,7 @@
                                 </div>
                             </div>
                             
-                            <?php if (!empty($product['description'])): ?>
+                            <?php if ($canViewSensitiveOverview && !empty($product['description'])): ?>
                                 <div class="mt-3">
                                     <h6>Description:</h6>
                                     <p class="text-muted"><?= nl2br(esc($product['description'])) ?></p>
@@ -159,6 +162,7 @@
                     <div id="productViewSections" class="border border-top-0 rounded-bottom bg-white shadow-sm p-2">
                         <div id="overviewSection">
                             <!-- Weight & Pricing (compact) -->
+                            <?php if ($canViewSensitiveOverview): ?>
                             <div class="card mt-2">
                                 <div class="card-body py-2">
                                     <div class="row g-2">
@@ -192,10 +196,24 @@
                                                 <small class="text-muted"><?= esc($saleCurr) ?></small>
                                             </div>
                                         </div>
+                                        <div class="col-6">
+                                            <small class="text-muted">Units Sold</small>
+                                            <div>
+                                                <strong class="text-success"><?= esc(number_format((float)($sales_units_total ?? 0), 2)) ?></strong>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <small class="text-muted">Units Purchased</small>
+                                            <div>
+                                                <strong class="text-info"><?= esc(number_format((float)($purchased_units_total ?? 0), 2)) ?></strong>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            <?php endif; ?>
 
+                            <?php if ($canViewSensitiveOverview): ?>
                             <div class="card mt-3">
                                 <div class="card-header d-flex justify-content-between align-items-center">
                                     <h6 class="mb-0"><i class="bi bi-geo-alt me-1"></i>Available Stock by Location</h6>
@@ -229,6 +247,7 @@
                                     <?php endif; ?>
                                 </div>
                             </div>
+                            <?php endif; ?>
                         </div>
 
                         <div id="variantsSection" class="d-none">
@@ -318,6 +337,7 @@
                     </div>
 
                     <!-- Category / vendor (read-only on view page) -->
+                    <?php if ($canViewSensitiveOverview): ?>
                     <div class="card border-0 shadow-sm mt-3">
                         <div class="card-body py-3">
                             <div class="row gy-3">
@@ -356,6 +376,7 @@
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Related Information -->
@@ -435,14 +456,18 @@
                 <div class="tab-pane fade <?= $activeTab === 'preparation' ? 'show active' : '' ?>" id="tab-preparation" role="tabpanel" aria-labelledby="tab-preparation-btn">
                     <?= view('preparation_profiles/_product_tab', [
                         'product' => $product,
+                        'variants' => $variants ?? [],
                         'preparation_profiles' => $preparation_profiles ?? [],
+                        'variant_preparation_profiles' => $variant_preparation_profiles ?? [],
                     ]) ?>
                 </div>
+                <?php if (!empty($can_view_assets)): ?>
                 <div class="tab-pane fade <?= $activeTab === 'assets' ? 'show active' : '' ?>" id="tab-assets" role="tabpanel" aria-labelledby="tab-assets-btn">
                     <?= view('product_assets/_product_tab', [
                         'productIdentifier' => $productIdentifier,
                     ]) ?>
                 </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

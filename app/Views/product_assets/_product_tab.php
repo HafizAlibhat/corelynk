@@ -7,6 +7,12 @@ if (!$productIdentifier) {
     echo '<div class="alert alert-danger">Error: Product identifier not found</div>';
     return;
 }
+
+$variantId = isset($variantId) ? (int) $variantId : 0;
+$scopeLabel = $variantId > 0 ? 'Variant Assets' : 'Product Assets';
+$scopeHint = $variantId > 0
+    ? 'Manage assets for this variant. Common product assets are also visible.'
+    : 'Upload images, manage versions, and organize files';
 ?>
 
 <style>
@@ -118,8 +124,8 @@ if (!$productIdentifier) {
         <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h5 class="mb-0" style="color: #e5e7eb;"><i class="bi bi-images"></i> Product Assets</h5>
-                <small style="color: #9ca3af;">Upload images, manage versions, and organize files</small>
+                <h5 class="mb-0" style="color: #e5e7eb;"><i class="bi bi-images"></i> <?= esc($scopeLabel) ?></h5>
+                <small style="color: #9ca3af;"><?= esc($scopeHint) ?></small>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button type="button" class="btn btn-sm asset-refresh-btn" id="refreshAssetsBtn" style="background-color:#1e293b;border-color:#334155;color:#cbd5e1;">
@@ -228,7 +234,7 @@ if (!$productIdentifier) {
                             </div>
                             <small id="commonRawProgressText" style="color:#9ca3af;">Uploading...</small>
                         </div>
-                        <input type="file" id="commonRawInput" class="d-none" multiple>
+                        <input type="file" id="commonRawInput" class="d-none" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.gif,.tif,.tiff,.mp4,.mov,.webm,.m4v,.avi,.mkv,image/*,video/*">
                         <div id="commonRawGrid" class="d-flex flex-wrap gap-2"></div>
                     </div>
                 </div>
@@ -426,7 +432,11 @@ if (!$productIdentifier) {
                 <div class="d-flex align-items-center justify-content-between gap-2">
                     <button type="button" class="btn btn-sm" id="lightboxPrevBtn" style="background:#1f2937;color:#e5e7eb;border-color:#374151;">Prev</button>
                     <div style="flex:1; min-height:70vh; display:flex; align-items:center; justify-content:center; background:#111827; border:1px solid #374151; border-radius:8px;">
-                        <img id="assetLightboxImg" src="" alt="Image" style="max-width:100%; max-height:68vh; object-fit:contain;">
+                        <img id="assetLightboxImg" src="" alt="Image" style="max-width:100%; max-height:68vh; object-fit:contain; display:none;">
+                        <video id="assetLightboxVideo" style="max-width:100%; max-height:68vh; object-fit:contain; display:none;" controls>
+                            <source id="assetLightboxVideoSource" src="" type="">
+                            Your browser does not support the video tag.
+                        </video>
                     </div>
                     <button type="button" class="btn btn-sm" id="lightboxNextBtn" style="background:#1f2937;color:#e5e7eb;border-color:#374151;">Next</button>
                 </div>
@@ -456,19 +466,15 @@ if (!$productIdentifier) {
                             <label class="form-label small">Short Code</label>
                             <input type="text" id="channelCodeInput" name="short_code" class="form-control form-control-sm" maxlength="20" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;" placeholder="AB">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label small">Width (px)</label>
                             <input type="number" min="1" name="width" id="channelWidthInput" class="form-control form-control-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label small">Height (px)</label>
                             <input type="number" min="1" name="height" id="channelHeightInput" class="form-control form-control-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label small">Final Max Size (MB)</label>
-                            <input type="number" min="1" name="final_max_file_size_mb" id="channelMaxSizeInput" value="50" class="form-control form-control-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;" required>
-                        </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label small">Background Rule</label>
                             <select name="background_rule" id="channelBackgroundInput" class="form-select form-select-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;">
                                 <option value="any">Any</option>
@@ -589,6 +595,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Product Assets Manager initializing...');
     
     const productId = '<?= esc($productIdentifier) ?>';
+    const variantId = <?= (int) $variantId ?>;
     console.log('Product ID:', productId);
     
     if (!productId) {
@@ -597,6 +604,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const apiBase = <?= json_encode(site_url('products/' . rawurlencode((string) $productIdentifier) . '/assets')) ?>;
+    const scopedDataUrl = `${apiBase}/data${variantId > 0 ? `?variant_id=${variantId}` : ''}`;
 
     const selectChannel = document.getElementById('selectChannel');
     const selectBrand = document.getElementById('selectBrand');
@@ -677,7 +685,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const channelCodeInput = document.getElementById('channelCodeInput');
     const channelWidthInput = document.getElementById('channelWidthInput');
     const channelHeightInput = document.getElementById('channelHeightInput');
-    const channelMaxSizeInput = document.getElementById('channelMaxSizeInput');
     const finalFormatsInput = document.getElementById('finalFormatsInput');
     const sourceFormatsInput = document.getElementById('sourceFormatsInput');
     const extraFinalSectionsInput = document.getElementById('extraFinalSectionsInput');
@@ -795,6 +802,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const fd = new FormData();
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
         fd.append('name', name);
+        if (variantId > 0) {
+            fd.append('variant_id', String(variantId));
+        }
 
         fetch(`${apiBase}/groups`, {
             method: 'POST',
@@ -981,7 +991,6 @@ document.addEventListener('DOMContentLoaded', function() {
         channelSettingsMode.value = isEdit ? 'edit' : 'create';
         channelSettingsId.value = isEdit ? String(channel.id || '') : '';
         channelSettingsForm.reset();
-        channelMaxSizeInput.value = '50';
         finalFormatsInput.value = 'jpg,jpeg,png,webp,pdf';
         sourceFormatsInput.value = 'psd,ai,cdr,pdf,svg,eps';
         channelSettingsForm.querySelector('input[name="enable_final_watermark"]').checked = true;
@@ -1005,7 +1014,6 @@ document.addEventListener('DOMContentLoaded', function() {
             channelWidthInput.value = channel.width || '';
             channelHeightInput.value = channel.height || '';
             channelBackgroundInput.value = channel.background_rule || 'any';
-            channelMaxSizeInput.value = Math.round(((rules.final?.max_file_size_bytes || (50 * 1024 * 1024)) / 1024 / 1024));
             finalFormatsInput.value = (rules.final?.formats || ['jpg', 'jpeg', 'png', 'webp', 'pdf']).join(',');
             sourceFormatsInput.value = (rules.source?.formats || ['psd', 'ai', 'cdr', 'pdf', 'svg', 'eps']).join(',');
             extraFinalSectionsInput.value = extra;
@@ -1140,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const prevBrand = selectBrand.value;
         const prevChannel = selectChannel.value;
         const prevSection = uploadSectionSelect.value;
-        return fetch(`${apiBase}/data`)
+        return fetch(scopedDataUrl)
             .then(r => {
                 console.log('API Response status:', r.status, r.statusText);
                 if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
@@ -1294,6 +1302,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentChannel.width && currentChannel.height) {
             parts.push(`${currentChannel.width}x${currentChannel.height}px`);
         }
+
+        if (cfg.raw?.max_file_size_bytes) {
+            const rawMb = (cfg.raw.max_file_size_bytes / 1024 / 1024).toFixed(1);
+            parts.push(`Raw max ${rawMb}MB`);
+        }
         
         if (cfg.final?.max_file_size_bytes) {
             const mb = (cfg.final.max_file_size_bytes / 1024 / 1024).toFixed(1);
@@ -1318,6 +1331,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const fullDetail = [
             currentChannel.width && currentChannel.height ? `Dimensions ${currentChannel.width}x${currentChannel.height}px` : null,
+            cfg.raw?.max_file_size_bytes ? `Raw max ${(cfg.raw.max_file_size_bytes / 1024 / 1024).toFixed(1)}MB` : null,
             cfg.final?.max_file_size_bytes ? `Final max ${(cfg.final.max_file_size_bytes / 1024 / 1024).toFixed(1)}MB` : null,
             Array.isArray(cfg.final?.formats) ? `Final formats ${cfg.final.formats.join(', ').toUpperCase()}` : null,
             Array.isArray(cfg.source?.formats) ? `Source formats ${cfg.source.formats.join(', ').toUpperCase()}` : null,
@@ -1365,6 +1379,20 @@ document.addEventListener('DOMContentLoaded', function() {
         channelUploadNowBtn.style.opacity = '0.5';
     }
 
+    function parseJsonFromXhrResponse(xhr) {
+        const text = String(xhr.responseText || '').trim();
+        if (!text) {
+            return {};
+        }
+
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            const preview = text.replace(/\s+/g, ' ').slice(0, 180);
+            throw new Error(`Server returned non-JSON response (HTTP ${xhr.status}). ${preview || 'No response body.'}`);
+        }
+    }
+
     function uploadCommonAssets(sectionKey, inputEl, sourceInputEl = null) {
         if (!canManage) {
             showError('You do not have permission to upload files.');
@@ -1396,6 +1424,12 @@ document.addEventListener('DOMContentLoaded', function() {
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
         fd.append('section_key', sectionKey);
         fd.append('type', 'final');
+        if (selectChannel.value) {
+            fd.append('channel_id', String(selectChannel.value));
+        }
+        if (variantId > 0) {
+            fd.append('variant_id', String(variantId));
+        }
         if (!isRaw && sourceFile) {
             fd.append('source_file', sourceFile);
         }
@@ -1426,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', function() {
         xhr.addEventListener('load', () => {
             inputEl.value = '';
             try {
-                const data = JSON.parse(xhr.responseText || '{}');
+                const data = parseJsonFromXhrResponse(xhr);
                 if (!(xhr.status === 200 || xhr.status === 201) || !data.success) {
                     const msg = data.message || (Array.isArray(data.errors) && data.errors.length > 0 ? data.errors.join(' | ') : 'Upload failed');
                     throw new Error(msg);
@@ -1562,6 +1596,9 @@ document.addEventListener('DOMContentLoaded', function() {
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
         fd.append('asset_group_id', selectBrand.value);
         fd.append('channel_id', selectChannel.value);
+        if (variantId > 0) {
+            fd.append('variant_id', String(variantId));
+        }
         const selectedSection = sectionOptions.find(s => s.key === uploadSectionSelect.value);
         fd.append('section_key', uploadSectionSelect.value);
         fd.append('type', selectedSection ? selectedSection.type : 'final');
@@ -1591,14 +1628,16 @@ document.addEventListener('DOMContentLoaded', function() {
         xhr.addEventListener('load', () => {
             uploadBrowseBtn.disabled = false;
             let payload = null;
+            let parseError = null;
             try {
-                payload = JSON.parse(xhr.responseText || '{}');
-            } catch (e) {
+                payload = parseJsonFromXhrResponse(xhr);
+            } catch (err) {
                 payload = null;
+                parseError = err;
             }
 
             if (!(xhr.status === 200 || xhr.status === 201)) {
-                const message = payload?.message || xhr.statusText || 'Upload failed';
+                const message = payload?.message || parseError?.message || xhr.statusText || 'Upload failed';
                 uploadStatus.textContent = '❌ Upload failed: ' + message;
                 uploadStatus.style.color = '#ef4444';
                 return;
@@ -1607,7 +1646,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const uploadedCount = parseInt(payload?.uploaded || '0', 10);
             const errors = Array.isArray(payload?.errors) ? payload.errors : [];
             if (!payload || payload.success !== true || uploadedCount <= 0) {
-                const reason = payload?.message || (errors.length ? errors.join(' | ') : 'No files were saved');
+                const reason = payload?.message || parseError?.message || (errors.length ? errors.join(' | ') : 'No files were saved');
                 uploadStatus.textContent = '❌ Upload failed: ' + reason;
                 uploadStatus.style.color = '#ef4444';
                 showError('Channel upload failed: ' + reason);
@@ -1649,13 +1688,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function loadAssets() {
         console.log('📡 Loading assets...');
-        fetch(`${apiBase}/data`)
+        fetch(scopedDataUrl)
             .then(r => r.json())
             .then(data => {
                 if (!data.success) return;
                 const assets = data.data.assets || [];
                 window.__assetsCache = assets;
-                lightboxItems = assets.filter(a => String(a.mime_type || '').startsWith('image/') && (a.file_url || a.thumbnail_url));
+                lightboxItems = assets.filter(a => {
+                    const mime = String(a.mime_type || '').toLowerCase();
+                    const isImageOrVideo = mime.startsWith('image/') || mime.startsWith('video/');
+                    return isImageOrVideo && (a.file_url || a.thumbnail_url);
+                });
                 renderAssets(assets, channels, brands);
                 renderCommonGalleries(assets, channels, brands);
                 if (setupManagerModalEl.classList.contains('show')) {
@@ -1711,6 +1754,39 @@ document.addEventListener('DOMContentLoaded', function() {
         const color = s ? s.color : '#93c5fd';
         const bg = s ? s.bg : '#111827';
         return `<span class="asset-type-mini" style="color:${color};background:${bg};border-color:${color}33;" title="${s ? s.title : label}">${label}</span>`;
+    }
+
+    function getAssetPreviewHtml(asset, size = '34px', assetId = null) {
+        const previewUrl = asset.file_url || asset.thumbnail_url || '';
+        const mime = String(asset.mime_type || '').toLowerCase();
+        const isImage = mime.startsWith('image/');
+        const isVideo = mime.startsWith('video/');
+        const id = assetId || asset.id;
+        const alt = (asset.file_name || 'Asset').replace(/"/g, '&quot;');
+        const szPx = parseInt(size) || 34;
+
+        if (isVideo) {
+            // Always show a clickable play button icon for videos (with or without thumbnail)
+            const thumbSrc = asset.thumbnail_url || '';
+            const inner = thumbSrc
+                ? `<img src="${thumbSrc}" alt="${alt}" style="width:100%;height:100%;object-fit:cover;display:block;">`
+                : `<div style="width:100%;height:100%;background:#0a1628;display:flex;align-items:center;justify-content:center;"><span style="font-size:${Math.max(10, szPx * 0.35)}px;font-weight:800;color:#22d3ee;letter-spacing:-0.5px;">MP4</span></div>`;
+            const playSize = Math.max(16, Math.round(szPx * 0.55)) + 'px';
+            const iconSize = Math.max(10, Math.round(szPx * 0.32)) + 'px';
+            return `<div style="position:relative;display:inline-block;width:${size};height:${size};border-radius:4px;overflow:hidden;border:2px solid #10b981;cursor:pointer;" data-asset-id="${id}" data-preview-url="${previewUrl}" class="asset-preview-image" title="Play video">
+                ${inner}
+                <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${playSize};height:${playSize};background:rgba(16,185,129,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+                    <i class="bi bi-play-fill" style="color:#fff;font-size:${iconSize};margin-left:2px;"></i>
+                </div>
+            </div>`;
+        }
+
+        if ((asset.thumbnail_url || (isImage && asset.file_url)) && previewUrl) {
+            return `<div style="position:relative;display:inline-block;width:${size};height:${size};border-radius:4px;overflow:hidden;border:1px solid #374151;cursor:zoom-in;" data-asset-id="${id}" data-preview-url="${previewUrl}" class="asset-preview-image">
+                <img src="${previewUrl}" alt="${alt}" style="width:100%;height:100%;object-fit:cover;display:block;">
+            </div>`;
+        }
+        return getFileTypeIcon(asset.file_name);
     }
 
     function renderCommonGalleries(assets, chList, brList) {
@@ -1776,11 +1852,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </thead>
                         <tbody>
                             ${list.map((asset, index) => {
-                                const previewUrl = asset.file_url || asset.thumbnail_url || '';
-                                const isImageType = String(asset.mime_type || '').startsWith('image/');
-                                const preview = (asset.thumbnail_url || (isImageType && asset.file_url))
-                                    ? `<img src="${asset.thumbnail_url || asset.file_url}" alt="${(asset.file_name || '').replace(/"/g, '&quot;')}" class="asset-preview-image" data-asset-id="${asset.id}" data-preview-url="${previewUrl}" style="width:34px;height:34px;object-fit:cover;border-radius:4px;border:1px solid #374151;cursor:zoom-in;">`
-                                    : getFileTypeIcon(asset.file_name);
+                                const preview = getAssetPreviewHtml(asset, '34px');
                                 // find linked source file
                                 const srcId = parseInt(asset.source_asset_id || '0', 10);
                                 const srcAsset = srcId && allAssets ? (allAssets || []).find(a => parseInt(a.id) === srcId) : null;
@@ -1829,11 +1901,7 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         } else {
             container.innerHTML = list.map(asset => {
-            const previewUrl = asset.file_url || asset.thumbnail_url || '';
-            const isImageType = String(asset.mime_type || '').startsWith('image/');
-            const preview = (asset.thumbnail_url || (isImageType && asset.file_url))
-                ? `<img src="${asset.thumbnail_url || asset.file_url}" alt="${(asset.file_name || '').replace(/"/g, '&quot;')}" class="asset-preview-image" data-asset-id="${asset.id}" data-preview-url="${previewUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid #374151;cursor:zoom-in;">`
-                : getFileTypeIconLg(asset.file_name);
+            const preview = getAssetPreviewHtml(asset, '44px');
             const srcId = parseInt(asset.source_asset_id || '0', 10);
             const srcAsset = srcId && allAssets ? (allAssets || []).find(a => parseInt(a.id) === srcId) : null;
             const isFinal = String(asset.section_key || '') === 'final_plain';
@@ -1962,11 +2030,7 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             group.items.forEach((asset, idx) => {
                 const br = brList.find(b => String(b.id) === String(asset.asset_group_id)) || { name: '?' };
-                const previewUrl = asset.file_url || asset.thumbnail_url || '';
-                const isImgType = String(asset.mime_type || '').startsWith('image/');
-                const preview = (asset.thumbnail_url || (isImgType && asset.file_url))
-                    ? `<img src="${asset.thumbnail_url || asset.file_url}" class="asset-preview-image" data-asset-id="${asset.id}" data-preview-url="${previewUrl}" style="width:34px;height:34px;object-fit:cover;border-radius:4px;border:1px solid #374151;cursor:zoom-in;">`
-                    : getFileTypeIcon(asset.file_name);
+                const preview = getAssetPreviewHtml(asset, '34px');
                 // Find source asset
                 const srcId = parseInt(asset.source_asset_id || '0', 10);
                 const srcAsset = srcId ? assets.find(a => parseInt(a.id) === srcId) : null;
@@ -2082,6 +2146,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
         fetch(`${apiBase}/${assetId}/delete`, {
             method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             body: fd,
         })
             .then(r => r.json())
@@ -2270,8 +2335,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const item = lightboxItems[lightboxIndex];
         const src = item.file_url || item.thumbnail_url || '';
-        assetLightboxImg.src = src;
-        assetLightboxTitle.textContent = `${item.file_name || 'Image'} (${lightboxIndex + 1}/${lightboxItems.length})`;
+        const mime = String(item.mime_type || '').toLowerCase();
+        const isVideo = mime.startsWith('video/');
+        
+        if (isVideo) {
+            assetLightboxImg.style.display = 'none';
+            assetLightboxVideo.style.display = 'block';
+            const videoSource = document.getElementById('assetLightboxVideoSource');
+            videoSource.src = src;
+            videoSource.type = mime;
+            assetLightboxVideo.load();
+        } else {
+            assetLightboxVideo.style.display = 'none';
+            assetLightboxImg.style.display = 'block';
+            assetLightboxImg.src = src;
+        }
+        
+        assetLightboxTitle.textContent = `${item.file_name || 'Media'} (${lightboxIndex + 1}/${lightboxItems.length})`;
     }
 
     function formatFileSize(bytes) {

@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function(){
     const recalc = debounce(function(){
         const payload = { lines: [] };
         document.querySelectorAll('tr.quote-line').forEach(function(row){
-            const productId = row.querySelector('select.product-select') ? row.querySelector('select.product-select').value : '';
+            const productId = row.querySelector('.product-id') ? row.querySelector('.product-id').value : '';
             const qty = parseFloat(row.querySelector('.line-qty').value) || 0;
             const price = parseFloat(row.querySelector('.line-price').value) || 0;
             const discountType = row.querySelector('[name*="[discount_type]"]') ? row.querySelector('[name*="[discount_type]"]').value : 'percent';
@@ -105,9 +105,10 @@ document.addEventListener('DOMContentLoaded', function(){
         });
         payload.document_discount_type = document.querySelector('[name="document_discount_type"]') ? document.querySelector('[name="document_discount_type"]').value : 'percent';
         payload.document_discount_value = document.querySelector('[name="document_discount_value"]') ? parseFloat(document.querySelector('[name="document_discount_value"]').value) || 0 : 0;
+        payload.discount_exclude_shipping = document.querySelector('[name="discount_exclude_shipping"]') ? (document.querySelector('[name="discount_exclude_shipping"]').checked ? 1 : 0) : 1;
         payload.document_tax_type = document.querySelector('[name="document_tax_type"]') ? document.querySelector('[name="document_tax_type"]').value : 'percent';
         payload.document_tax_value = document.querySelector('[name="document_tax_value"]') ? parseFloat(document.querySelector('[name="document_tax_value"]').value) || 0 : 0;
-        payload.shipping_cost = parseFloat(document.querySelector('[name="shipping_cost"]') ? document.querySelector('[name="shipping_cost"]').value : 0) || 0;
+        payload.shipping_amount = parseFloat(document.querySelector('[name="shipping_amount"]') ? document.querySelector('[name="shipping_amount"]').value : 0) || 0;
 
         fetch('/quotations/calculate', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
             .then(r=>r.json()).then(resp=>{

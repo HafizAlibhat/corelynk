@@ -27,6 +27,10 @@ Shipped Orders
         background: #d1fae5;
         color: #065f46;
     }
+    .status-shipped {
+        background: #cffafe;
+        color: #155e75;
+    }
     .status-delivered {
         background: #bfdbfe;
         color: #1e3a8a;
@@ -128,7 +132,6 @@ Shipped Orders
                         <?php if (!empty($do['tracking_number'])): ?>
                         <div class="mb-2">
                             <small class="text-muted"><i class="bi bi-upc-scan me-1"></i><?= esc($do['tracking_number']) ?></small>
-                            <button type="button" class="copy-tracking-btn btn btn-link p-0 ms-1" data-tracking="<?= esc($do['tracking_number']) ?>" title="Copy tracking number" style="font-size:.8rem;color:#60a5fa;vertical-align:middle;line-height:1;"><i class="bi bi-clipboard"></i></button>
                         </div>
                         <?php endif; ?>
 
@@ -152,26 +155,5 @@ Shipped Orders
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
-
-<script>
-document.querySelectorAll('.copy-tracking-btn').forEach(function(btn){
-    btn.addEventListener('click',function(e){
-        e.preventDefault();e.stopPropagation();
-        const tn=this.dataset.tracking||'';
-        if(!tn)return;
-        navigator.clipboard.writeText(tn).then(()=>{
-            const icon=this.querySelector('i');
-            if(icon){icon.className='bi bi-clipboard-check';icon.style.color='#34d399';}
-            setTimeout(()=>{if(icon){icon.className='bi bi-clipboard';icon.style.color='';}},2000);
-        }).catch(()=>{
-            const ta=document.createElement('textarea');ta.value=tn;ta.style.position='fixed';ta.style.opacity='0';
-            document.body.appendChild(ta);ta.focus();ta.select();document.execCommand('copy');document.body.removeChild(ta);
-            const icon=this.querySelector('i');
-            if(icon){icon.className='bi bi-clipboard-check';icon.style.color='#34d399';}
-            setTimeout(()=>{if(icon){icon.className='bi bi-clipboard';icon.style.color='';}},2000);
-        });
-    });
-});
-</script>
 
 <?= $this->endSection() ?>

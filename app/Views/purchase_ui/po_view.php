@@ -229,6 +229,7 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
   </div>
   <div class="card-body">
     <div id="poMessage"></div>
+    <div class="d-flex justify-content-end mb-2" data-doc-line-toolbar></div>
     <div id="poContainer">Loading PO...</div>
   </div>
 </div>
@@ -376,7 +377,8 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
   const grnId = j.data.po.grn_id || null;
   const grnPublicId = j.data.po.grn_public_id || null;
 
-      let html = `<div class="table-responsive"><table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;"><thead><tr style="white-space:nowrap;">
+      let html = `<div class="table-responsive" data-doc-lines-root><table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;" data-doc-line-type="purchase_order" data-doc-id="${id}"><thead><tr style="white-space:nowrap;">
+        <th style="width:4%" class="text-center">No.</th>
         <th style="width:6%; padding-right:6px;" class="col-code">Code</th>
         <th style="width:5%; padding-left:6px;" class="col-img">Image</th>
         <th style="width:22%">Product / Description</th>
@@ -391,8 +393,17 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
       // compute totals from lines to avoid relying only on server-provided totals
       let computedSubtotal = 0, computedTotalTax = 0, computedDiscount = 0, computedGrand = 0;
       let totalOrdered = 0, totalReceived = 0;
+      let lineNo = 0;
+      let activeSectionId = 0;
+      let activeSectionSubtotal = 0;
+      const sectionLabelColspan = showReceiptCols ? 9 : 5;
+      const sectionRowColspan = showReceiptCols ? 10 : 6;
       
-      lines.forEach(ln=>{
+      lines.forEach((ln, idx)=>{
+        const isSection = String(ln.display_type || 'line').toLowerCase() === 'section';
+        if (isSection) {
+          return;
+        }
         const qty = parseNumber(ln.qty);
         const qtyReceived = parseNumber(ln.qty_received);
         const qtyPending = Math.max(0, qty - qtyReceived);
@@ -452,9 +463,11 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
         }
         let lineText = lineName || subText || (code ? code : '—');
 
-        html += `<tr>`;
-        html += `<td class="col-code" style="padding-right:6px;"><small class="text-muted">${code || '—'}</small></td>`;
-        html += `<td class="col-img" style="padding-left:6px;"><img src="${img}" alt="" style="width:46px;height:36px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'"></td>`;
+        lineNo++;
+        html += `<tr data-line-id="${ln.id || ''}" data-display-type="line" data-line-updated-at="${ln.updated_at || ''}">`;
+        html += `<td class="text-center text-muted">${lineNo}</td>`;
+        html += `<td class="col-code" style="padding-right:6px;"><span class="doc-drag-handle me-1" title="Drag line" style="cursor:grab;opacity:.65;"><i class="bi bi-grip-vertical"></i></span><small class="text-muted">${code || '—'}</small></td>`;
+        html += `<td class="col-img" style="padding-left:6px;"><img src="${img}" alt="" class="js-product-hover-thumb" data-preview-src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>')"></td>`;
         html += `<td><div class="fw-semibold" style="line-height:1.2;">${lineText}</div>`;
         if (subText && subText !== lineText) {
           html += `<div class="text-muted" style="font-size:0.8rem; line-height:1.2;">${subText}</div>`;
@@ -467,8 +480,9 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
           html += `<td class="text-end"><span class="badge bg-warning text-dark">${fmt(qtyPending)}</span></td>`;
         }
         html += `<td class="text-end">${fmt(unit_price)}</td>`;
-        html += `<td class="text-end">${fmt(lineTotal)}</td>`;
+        html += `<td class="text-end"><span>${fmt(lineTotal)}</span></td>`;
         html += `</tr>`;
+
       });
       html += `</tbody></table></div>`;
 
@@ -830,8 +844,10 @@ body.theme-dark .po-doc-type-badge.mixed { background: rgba(217,119,6,.22); colo
         }
       } catch (e) { console.error('Button setup error:', e); }
       
-      // wire print
-      document.getElementById('printBtn').addEventListener('click', function(){ window.print(); });
+      // wire print — open clean HTML print view in new tab
+      document.getElementById('printBtn').addEventListener('click', function(){
+        window.open('<?= site_url('new-purchase-orders/') ?>' + id + '/print', '_blank');
+      });
 
       // confirm bill from PO bills table with editable date
       document.querySelectorAll('.js-confirm-bill').forEach((btn)=>{
@@ -932,5 +948,6 @@ function receiveRemaining(poId) {
     .catch(function() { logEl.innerHTML = '<div class="text-muted small">Could not load activity log.</div>'; });
 })();
 </script>
+<script src="<?= base_url('assets/js/document_line_tools.js') ?>"></script>
 
 <?= $this->endSection() ?>

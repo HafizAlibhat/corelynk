@@ -159,7 +159,11 @@ class WarehouseApi extends BaseApiController
                     so.order_date,
                     COUNT(DISTINCT do.id) AS delivery_count,
                     SUM(CASE WHEN do.status = 'ready' THEN 1 ELSE 0 END) AS ready_count,
-                    SUM(CASE WHEN do.status = 'shipped' THEN 1 ELSE 0 END) AS shipped_count,
+                    SUM(CASE
+                            WHEN do.status IN ('shipped', 'delivered') THEN 1
+                            WHEN do.status = 'confirmed' AND (do.shipped_at IS NOT NULL OR COALESCE(do.tracking_number, '') <> '') THEN 1
+                            ELSE 0
+                        END) AS shipped_count,
                     SUM(CASE WHEN do.status = 'draft' THEN 1 ELSE 0 END) AS draft_count
                 FROM sales_orders so
                 LEFT JOIN customers c ON c.id = so.customer_id

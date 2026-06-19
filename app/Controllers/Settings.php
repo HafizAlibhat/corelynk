@@ -2,7 +2,6 @@
 
 namespace App\Controllers;
 
-use CodeIgniter\Controller;
 use Config\Database;
 use App\Models\CompanySettingsModel;
 use App\Models\FiscalYearModel;
@@ -11,9 +10,15 @@ use App\Models\PaymentMethodModel;
 use App\Models\ExchangeRateModel;
 use App\Models\OdooSettingsModel;
 use App\Models\FeatureFlagModel;
+use App\Models\SystemBackupJobModel;
+use App\Models\SystemBackupScheduleModel;
+use App\Models\SystemSyncEnvironmentModel;
+use App\Models\SystemSyncScanModel;
 use App\Models\Accounting\CurrencyModel;
+use App\Services\SystemBackupService;
+use App\Services\SystemSyncService;
 
-class Settings extends Controller
+class Settings extends BaseController
 {
     protected $db;
 
@@ -79,6 +84,9 @@ class Settings extends Controller
         // Load mobile API URL + global date format from system_settings
         $mobileApiUrl = '';
         $globalDateFormat = 'Y-m-d';
+        $productAssetsRawMaxMb = 1000;
+        $productAssetsFinalMaxMb = 500;
+        $productAssetsChannelMaxMb = 2500;
         try {
             $row = $this->db->table('system_settings')
                 ->where('setting_key', 'mobile_api_url')
@@ -94,9 +102,60 @@ class Settings extends Controller
                 $globalDateFormat = $candidate;
             }
         } catch (\Throwable $_) {}
+        try {
+            $rows = $this->db->table('system_settings')
+                ->whereIn('setting_key', [
+                    'product_assets_raw_max_mb',
+                    'product_assets_final_max_mb',
+                    'product_assets_channel_max_mb',
+                ])
+                ->get()->getResultArray();
+            $kv = [];
+            foreach ($rows as $r) {
+                $kv[(string) ($r['setting_key'] ?? '')] = (string) ($r['setting_value'] ?? '');
+            }
+
+            $rawMb = (int) ($kv['product_assets_raw_max_mb'] ?? $productAssetsRawMaxMb);
+            if ($rawMb > 0) {
+                $productAssetsRawMaxMb = $rawMb;
+            }
+
+            $finalMb = (int) ($kv['product_assets_final_max_mb'] ?? $productAssetsFinalMaxMb);
+            if ($finalMb > 0) {
+                $productAssetsFinalMaxMb = $finalMb;
+            }
+
+            $channelMb = (int) ($kv['product_assets_channel_max_mb'] ?? $productAssetsChannelMaxMb);
+            if ($channelMb > 0) {
+                $productAssetsChannelMaxMb = $channelMb;
+            }
+        } catch (\Throwable $_) {}
+
+        $backupJobs = [];
+        $backupSchedules = [];
+        $syncEnvironments = [];
+        $syncScans = [];
+        try {
+            $backupJobs = (new SystemBackupJobModel())
+                ->orderBy('id', 'DESC')
+                ->findAll(15);
+            $backupSchedules = (new SystemBackupScheduleModel())
+                ->orderBy('is_active', 'DESC')
+                ->orderBy('name', 'ASC')
+                ->findAll();
+            $syncEnvironments = (new SystemSyncEnvironmentModel())
+                ->orderBy('name', 'ASC')
+                ->findAll();
+            $syncScans = (new SystemSyncScanModel())
+                ->orderBy('id', 'DESC')
+                ->findAll(15);
+        } catch (\Throwable $e) {
+            log_message('error', 'Settings backup load error: ' . $e->getMessage());
+        }
 
         return view('settings/index', [
             'company' => $company,
+            'timezone_options' => $this->getTimezoneOptions(),
             'fy' => $fy,
             'security' => $security,
             'feature_flags' => $featureFlags,
@@ -113,6 +172,13 @@ class Settings extends Controller
             'current_ip' => $currentIp,
             'mobile_api_url' => $mobileApiUrl,
             'global_date_format' => $globalDateFormat,
+            'product_assets_raw_max_mb' => $productAssetsRawMaxMb,
+            'product_assets_final_max_mb' => $productAssetsFinalMaxMb,
+            'product_assets_channel_max_mb' => $productAssetsChannelMaxMb,
+            'backup_jobs' => $backupJobs,
+            'backup_schedules' => $backupSchedules,
+            'sync_environments' => $syncEnvironments,
+            'sync_scans' => $syncScans,
             'validation' => \Config\Services::validation(),
             'csrf' => csrf_hash()
         ]);
@@ -193,6 +259,7 @@ class Settings extends Controller
             'phone' => 'permit_empty|max_length[50]',
             'email' => 'permit_empty|valid_email',
             'website' => 'permit_empty|max_length[255]',
+            'timezone' => 'permit_empty|max_length[64]',
             'invoice_footer' => 'permit_empty|max_length[500]',
             'pdf_template' => 'permit_empty|in_list[default,modern_blue,classic_green,professional_gray,bold_red,elegant_purple]',
             'use_demo_data' => 'permit_empty|in_list[0,1]',
@@ -202,6 +269,13 @@ class Settings extends Controller
         }
         $model = new CompanySettingsModel();
         $companyRow = (new CompanySettingsModel())->first();
+        $timezoneInput = trim((string)$this->request->getPost('timezone'));
+        if ($timezoneInput !== '' && !in_array($timezoneInput, timezone_identifiers_list(), true)) {
+            return redirect()->back()->withInput()->with('error', 'Invalid timezone selected.');
+        }
+        $timezoneValue = $timezoneInput !== ''
+            ? $timezoneInput
+            : (trim((string)($companyRow['timezone'] ?? '')) ?: 'Asia/Karachi');
         $fallbackBase = $companyRow['base_currency'] ?? 'PKR';
         $fallbackSecondary = $companyRow['secondary_currency'] ?? 'USD';
         $payload = [
@@ -211,6 +285,7 @@ class Settings extends Controller
             'phone' => esc($this->request->getPost('phone')),
             'email' => esc($this->request->getPost('email')),
             'website' => esc($this->request->getPost('website')),
+            'timezone' => $timezoneValue,
             'invoice_footer' => esc($this->request->getPost('invoice_footer')),
             'pdf_template' => esc($this->request->getPost('pdf_template') ?? 'default'),
             'base_currency' => $fallbackBase,
@@ -535,6 +610,7 @@ class Settings extends Controller
                 address VARCHAR(500) NULL,
                 contact VARCHAR(150) NULL,
                 email VARCHAR(150) NULL,
+                timezone VARCHAR(64) NULL,
                 logo_path VARCHAR(255) NULL,
                 base_currency VARCHAR(10) DEFAULT 'PKR',
                 secondary_currency VARCHAR(10) DEFAULT 'USD',
@@ -561,6 +637,10 @@ class Settings extends Controller
             // Schema-safe: add columns if table existed before
             try {
                 $cols = $this->db->getFieldNames('company_settings');
+                if (!in_array('timezone', $cols)) {
+                    $this->db->query("ALTER TABLE company_settings ADD COLUMN timezone VARCHAR(64) NULL AFTER email");
+                    $this->db->query("UPDATE company_settings SET timezone = 'Asia/Karachi' WHERE timezone IS NULL OR timezone = ''");
+                }
                 if (!in_array('logo_path', $cols)) {
                     $this->db->query("ALTER TABLE company_settings ADD COLUMN logo_path VARCHAR(255) NULL AFTER email");
                 }
@@ -591,7 +671,6 @@ class Settings extends Controller
             } catch (\Throwable $_) {
                 // best-effort
             }
-
             $this->db->query("CREATE TABLE IF NOT EXISTS fiscal_year (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 start_date DATE NOT NULL,
@@ -646,6 +725,98 @@ class Settings extends Controller
             } catch (\Throwable $e) {
                 // some MySQL versions may not support IF NOT EXISTS on ALTER - ignore errors
             }
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS system_backup_jobs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                public_id CHAR(36) NOT NULL,
+                job_type VARCHAR(20) NOT NULL DEFAULT 'manual',
+                backup_type VARCHAR(20) NOT NULL DEFAULT 'full',
+                status VARCHAR(20) NOT NULL DEFAULT 'queued',
+                environment_name VARCHAR(50) NOT NULL DEFAULT 'production',
+                app_root VARCHAR(255) NULL,
+                db_name VARCHAR(128) NULL,
+                archive_path VARCHAR(500) NULL,
+                archive_name VARCHAR(255) NULL,
+                archive_size_bytes BIGINT NULL,
+                archive_sha256 CHAR(64) NULL,
+                manifest_path VARCHAR(500) NULL,
+                health_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                health_details_json LONGTEXT NULL,
+                schedule_id BIGINT NULL,
+                initiated_by INT NULL,
+                error_message TEXT NULL,
+                started_at DATETIME NULL,
+                completed_at DATETIME NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_system_backup_jobs_public_id (public_id),
+                KEY idx_system_backup_jobs_status (status),
+                KEY idx_system_backup_jobs_schedule (schedule_id),
+                KEY idx_system_backup_jobs_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS system_backup_schedules (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                backup_type VARCHAR(20) NOT NULL DEFAULT 'full',
+                frequency_type VARCHAR(20) NOT NULL DEFAULT 'daily',
+                interval_minutes INT NULL,
+                day_of_week TINYINT NULL,
+                time_of_day CHAR(5) NULL,
+                retention_count INT NOT NULL DEFAULT 5,
+                last_run_at DATETIME NULL,
+                next_run_at DATETIME NULL,
+                created_by INT NULL,
+                updated_by INT NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY idx_system_backup_schedules_active (is_active),
+                KEY idx_system_backup_schedules_next_run (next_run_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS system_sync_environments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(80) NOT NULL,
+                app_path VARCHAR(500) NOT NULL,
+                db_host VARCHAR(120) NOT NULL DEFAULT '127.0.0.1',
+                db_port INT NOT NULL DEFAULT 3306,
+                db_name VARCHAR(120) NOT NULL,
+                db_user VARCHAR(120) NOT NULL DEFAULT 'root',
+                db_password VARCHAR(255) NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_system_sync_env_name (name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS system_sync_scans (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                public_id CHAR(36) NOT NULL,
+                source_env_id INT NOT NULL,
+                destination_env_id INT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'scanned',
+                summary_json LONGTEXT NULL,
+                safe_operations_json LONGTEXT NULL,
+                report_path VARCHAR(500) NULL,
+                created_by INT NULL,
+                applied_by INT NULL,
+                applied_at DATETIME NULL,
+                error_message TEXT NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_system_sync_scans_public_id (public_id),
+                KEY idx_system_sync_scans_status (status),
+                KEY idx_system_sync_scans_source_dest (source_env_id, destination_env_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            $this->db->query("INSERT INTO system_sync_environments (name, app_path, db_host, db_port, db_name, db_user, db_password, is_active)
+                SELECT 'Production', 'C:\\\\xampp\\\\htdocs\\\\corelynk', '127.0.0.1', 3306, 'corelynk_db', 'root', '', 1
+                WHERE NOT EXISTS (SELECT 1 FROM system_sync_environments WHERE name = 'Production')");
+
+            $this->db->query("INSERT INTO system_sync_environments (name, app_path, db_host, db_port, db_name, db_user, db_password, is_active)
+                SELECT 'Development', 'C:\\\\xampp\\\\htdocs\\\\corelynk_dev', '127.0.0.1', 3306, 'corelynk_db_dev', 'root', '', 1
+                WHERE NOT EXISTS (SELECT 1 FROM system_sync_environments WHERE name = 'Development')");
 
             // Mapping/cache tables for Odoo follow-up screen
             $this->db->query("CREATE TABLE IF NOT EXISTS sales_cache (
@@ -721,6 +892,32 @@ class Settings extends Controller
         }
     }
 
+    /**
+     * Curated timezone list for company settings.
+     *
+     * @return array<string,string>
+     */
+    private function getTimezoneOptions(): array
+    {
+        return [
+            'Asia/Karachi' => 'Asia/Karachi (UTC+05:00)',
+            'Asia/Dubai' => 'Asia/Dubai (UTC+04:00)',
+            'Asia/Riyadh' => 'Asia/Riyadh (UTC+03:00)',
+            'Asia/Kolkata' => 'Asia/Kolkata (UTC+05:30)',
+            'Asia/Dhaka' => 'Asia/Dhaka (UTC+06:00)',
+            'Asia/Singapore' => 'Asia/Singapore (UTC+08:00)',
+            'Europe/London' => 'Europe/London',
+            'Europe/Berlin' => 'Europe/Berlin',
+            'Europe/Amsterdam' => 'Europe/Amsterdam',
+            'America/New_York' => 'America/New_York',
+            'America/Chicago' => 'America/Chicago',
+            'America/Denver' => 'America/Denver',
+            'America/Los_Angeles' => 'America/Los_Angeles',
+            'Australia/Sydney' => 'Australia/Sydney',
+            'UTC' => 'UTC',
+        ];
+    }
+
     // ─── Mobile App Settings ─────────────────────────────────────────────────
 
     public function saveMobileSettings()
@@ -740,27 +937,13 @@ class Settings extends Controller
         }
 
         try {
-            $existing = $this->db->table('system_settings')
-                ->where('setting_key', 'mobile_api_url')
-                ->get()->getRowArray();
-
             $userId = session()->get('user_id');
-
-            if ($existing) {
-                $this->db->table('system_settings')
-                    ->where('setting_key', 'mobile_api_url')
-                    ->update([
-                        'setting_value' => $url,
-                        'updated_by'    => $userId,
-                    ]);
-            } else {
-                $this->db->table('system_settings')->insert([
-                    'setting_key'   => 'mobile_api_url',
-                    'setting_value' => $url,
-                    'description'   => 'Mobile app API server base URL',
-                    'updated_by'    => $userId,
-                ]);
-            }
+            $this->saveSystemSetting(
+                'mobile_api_url',
+                $url,
+                'Mobile app API server base URL',
+                $userId
+            );
         } catch (\Throwable $e) {
             log_message('error', 'saveMobileSettings error: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to save setting.');
@@ -768,6 +951,266 @@ class Settings extends Controller
 
         return redirect()->to(base_url('settings') . '#mobile')
             ->with('success', $url ? 'Mobile server URL saved.' : 'Mobile server URL cleared.');
+    }
+
+    public function createBackup()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#backups');
+        }
+
+        $backupType = strtolower(trim((string) $this->request->getPost('backup_type')));
+        $userId = session()->get('user_id');
+
+        try {
+            $job = (new SystemBackupService())->createManualBackup($backupType ?: 'full', $userId ? (int) $userId : null);
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('success', 'Backup created: ' . ($job['archive_name'] ?? 'archive ready'));
+        } catch (\Throwable $e) {
+            log_message('error', 'createBackup error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('error', 'Backup creation failed: ' . $e->getMessage());
+        }
+    }
+
+    public function downloadBackup(string $publicId = null)
+    {
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#backups')->with('error', 'Missing backup reference.');
+        }
+
+        $job = (new SystemBackupJobModel())->where('public_id', $publicId)->first();
+        if (!$job || empty($job['archive_path']) || !is_file((string) $job['archive_path'])) {
+            return redirect()->to(base_url('settings') . '#backups')->with('error', 'Backup archive not found.');
+        }
+
+        return $this->response->download((string) $job['archive_path'], null)->setFileName((string) ($job['archive_name'] ?? basename((string) $job['archive_path'])));
+    }
+
+    public function verifyBackup(string $publicId = null)
+    {
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#backups')->with('error', 'Missing backup reference.');
+        }
+
+        try {
+            $job = (new SystemBackupService())->verifyBackup($publicId);
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('success', 'Backup verification completed with status: ' . ($job['health_status'] ?? 'unknown'));
+        } catch (\Throwable $e) {
+            log_message('error', 'verifyBackup error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('error', 'Backup verification failed: ' . $e->getMessage());
+        }
+    }
+
+    public function restoreBackup(string $publicId = null)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#backups');
+        }
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#backups')->with('error', 'Missing backup reference.');
+        }
+
+        $restoreMode = strtolower(trim((string) $this->request->getPost('restore_mode')));
+        $confirmation = trim((string) $this->request->getPost('restore_confirmation'));
+        if ($confirmation !== 'RESTORE') {
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('error', 'Restore confirmation text must be RESTORE.');
+        }
+
+        try {
+            $result = (new SystemBackupService())->restoreBackup($publicId, $restoreMode ?: 'db_only', session()->get('user_id') ? (int) session()->get('user_id') : null);
+            $message = 'Restore completed.';
+            if (!empty($result['safety_backup_public_id'])) {
+                $message .= ' Safety backup: ' . $result['safety_backup_public_id'];
+            }
+            if (!empty($result['application_files_restored'])) {
+                $message .= ' Files restored: ' . (int) $result['application_files_restored'] . '.';
+            }
+            return redirect()->to(base_url('settings') . '#backups')->with('success', $message);
+        } catch (\Throwable $e) {
+            log_message('error', 'restoreBackup error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('error', 'Backup restore failed: ' . $e->getMessage());
+        }
+    }
+
+    public function saveBackupSchedule()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#backups');
+        }
+
+        $scheduleId = (int) ($this->request->getPost('schedule_id') ?? 0);
+        $frequencyType = strtolower(trim((string) $this->request->getPost('frequency_type')));
+        $backupType = strtolower(trim((string) $this->request->getPost('backup_type')));
+        $timeOfDay = trim((string) $this->request->getPost('time_of_day'));
+        $intervalMinutes = (int) ($this->request->getPost('interval_minutes') ?? 0);
+        $retentionCount = (int) ($this->request->getPost('retention_count') ?? 5);
+        $dayOfWeek = $this->request->getPost('day_of_week');
+
+        if (!$this->validate([
+            'name' => 'required|min_length[3]|max_length[100]',
+        ])) {
+            return redirect()->to(base_url('settings') . '#backups')->withInput()->with('error', 'Schedule name is required.');
+        }
+
+        if (!in_array($backupType, ['full', 'db_only', 'code_only'], true)) {
+            return redirect()->to(base_url('settings') . '#backups')->withInput()->with('error', 'Invalid backup type.');
+        }
+
+        if (!in_array($frequencyType, ['daily', 'weekly', 'interval'], true)) {
+            return redirect()->to(base_url('settings') . '#backups')->withInput()->with('error', 'Invalid frequency type.');
+        }
+
+        if ($frequencyType === 'interval' && $intervalMinutes < 5) {
+            return redirect()->to(base_url('settings') . '#backups')->withInput()->with('error', 'Interval backups must be at least 5 minutes.');
+        }
+
+        if ($frequencyType !== 'interval' && !preg_match('/^\d{2}:\d{2}$/', $timeOfDay)) {
+            return redirect()->to(base_url('settings') . '#backups')->withInput()->with('error', 'Time of day must use HH:MM format.');
+        }
+
+        $userId = session()->get('user_id');
+        $model = new SystemBackupScheduleModel();
+        $payload = [
+            'name' => trim((string) $this->request->getPost('name')),
+            'is_active' => $this->request->getPost('is_active') ? 1 : 0,
+            'backup_type' => $backupType,
+            'frequency_type' => $frequencyType,
+            'interval_minutes' => $frequencyType === 'interval' ? $intervalMinutes : null,
+            'day_of_week' => $frequencyType === 'weekly' ? max(0, min(6, (int) $dayOfWeek)) : null,
+            'time_of_day' => $frequencyType === 'interval' ? null : $timeOfDay,
+            'retention_count' => max(1, $retentionCount),
+            'updated_by' => $userId ? (int) $userId : null,
+        ];
+
+        try {
+            $service = new SystemBackupService();
+            $payload['next_run_at'] = $payload['is_active'] ? $service->calculateNextRunAt($payload) : null;
+
+            if ($scheduleId > 0) {
+                $model->update($scheduleId, $payload);
+            } else {
+                $payload['created_by'] = $userId ? (int) $userId : null;
+                $model->insert($payload);
+            }
+
+            return redirect()->to(base_url('settings') . '#backups')->with('success', 'Backup schedule saved.');
+        } catch (\Throwable $e) {
+            log_message('error', 'saveBackupSchedule error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#backups')
+                ->withInput()
+                ->with('error', 'Failed to save backup schedule: ' . $e->getMessage());
+        }
+    }
+
+    public function saveSyncEnvironment()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#sync');
+        }
+
+        if (!$this->validate([
+            'name' => 'required|min_length[3]|max_length[80]',
+            'app_path' => 'required|max_length[500]',
+            'db_host' => 'required|max_length[120]',
+            'db_port' => 'required|integer',
+            'db_name' => 'required|max_length[120]',
+            'db_user' => 'required|max_length[120]',
+        ])) {
+            return redirect()->to(base_url('settings') . '#sync')->withInput()->with('error', 'Invalid sync environment values.');
+        }
+
+        $id = (int) ($this->request->getPost('environment_id') ?? 0);
+        $payload = [
+            'name' => trim((string) $this->request->getPost('name')),
+            'app_path' => trim((string) $this->request->getPost('app_path')),
+            'db_host' => trim((string) $this->request->getPost('db_host')),
+            'db_port' => (int) $this->request->getPost('db_port'),
+            'db_name' => trim((string) $this->request->getPost('db_name')),
+            'db_user' => trim((string) $this->request->getPost('db_user')),
+            'db_password' => (string) $this->request->getPost('db_password'),
+            'is_active' => $this->request->getPost('is_active') ? 1 : 0,
+        ];
+
+        try {
+            $model = new SystemSyncEnvironmentModel();
+            if ($id > 0) {
+                $model->update($id, $payload);
+            } else {
+                $model->insert($payload);
+            }
+            return redirect()->to(base_url('settings') . '#sync')->with('success', 'Sync environment saved.');
+        } catch (\Throwable $e) {
+            log_message('error', 'saveSyncEnvironment error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#sync')->withInput()->with('error', 'Failed to save sync environment: ' . $e->getMessage());
+        }
+    }
+
+    public function runSyncScan()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#sync');
+        }
+
+        $sourceId = (int) ($this->request->getPost('source_environment_id') ?? 0);
+        $destinationId = (int) ($this->request->getPost('destination_environment_id') ?? 0);
+        if ($sourceId <= 0 || $destinationId <= 0 || $sourceId === $destinationId) {
+            return redirect()->to(base_url('settings') . '#sync')->withInput()->with('error', 'Select valid and different source/destination environments.');
+        }
+
+        try {
+            $scan = (new SystemSyncService())->runScan($sourceId, $destinationId, session()->get('user_id') ? (int) session()->get('user_id') : null);
+            $summary = json_decode((string) ($scan['summary_json'] ?? ''), true);
+            $message = 'Sync scan complete.';
+            if (is_array($summary)) {
+                $message .= ' Files: ' . (int) ($summary['file_copy_count'] ?? 0) . ', SQL ops: '
+                    . ((int) ($summary['table_create_count'] ?? 0) + (int) ($summary['column_add_count'] ?? 0) + (int) ($summary['index_add_count'] ?? 0)) . '.';
+            }
+            return redirect()->to(base_url('settings') . '#sync')->with('success', $message);
+        } catch (\Throwable $e) {
+            log_message('error', 'runSyncScan error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#sync')->with('error', 'Sync scan failed: ' . $e->getMessage());
+        }
+    }
+
+    public function applySyncScan(string $publicId = null)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#sync');
+        }
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#sync')->with('error', 'Missing sync scan reference.');
+        }
+
+        $backupConfirmed = $this->request->getPost('backup_confirmed') ? true : false;
+        try {
+            $result = (new SystemSyncService())->applyScan($publicId, session()->get('user_id') ? (int) session()->get('user_id') : null, $backupConfirmed);
+            return redirect()->to(base_url('settings') . '#sync')
+                ->with('success', 'Sync apply completed. Files copied: ' . (int) ($result['file_results']['copied_file_count'] ?? 0)
+                    . ', SQL executed: ' . (int) ($result['schema_results']['executed_sql_count'] ?? 0) . '.');
+        } catch (\Throwable $e) {
+            log_message('error', 'applySyncScan error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#sync')->with('error', 'Sync apply failed: ' . $e->getMessage());
+        }
+    }
+
+    public function downloadSyncReport(string $publicId = null)
+    {
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#sync')->with('error', 'Missing sync scan reference.');
+        }
+
+        $scan = (new SystemSyncScanModel())->where('public_id', $publicId)->first();
+        if (!$scan || empty($scan['report_path']) || !is_file((string) $scan['report_path'])) {
+            return redirect()->to(base_url('settings') . '#sync')->with('error', 'Sync report file not found.');
+        }
+
+        return $this->response->download((string) $scan['report_path'], null)
+            ->setFileName('sync_report_' . $publicId . '.json');
     }
 
     public function saveDateFormat()
@@ -783,26 +1226,13 @@ class Settings extends Controller
         }
 
         try {
-            $existing = $this->db->table('system_settings')
-                ->where('setting_key', 'global_date_format')
-                ->get()->getRowArray();
             $userId = session()->get('user_id');
-
-            if ($existing) {
-                $this->db->table('system_settings')
-                    ->where('setting_key', 'global_date_format')
-                    ->update([
-                        'setting_value' => $format,
-                        'updated_by'    => $userId,
-                    ]);
-            } else {
-                $this->db->table('system_settings')->insert([
-                    'setting_key'   => 'global_date_format',
-                    'setting_value' => $format,
-                    'description'   => 'Global UI date format',
-                    'updated_by'    => $userId,
-                ]);
-            }
+            $this->saveSystemSetting(
+                'global_date_format',
+                $format,
+                'Global UI date format',
+                $userId
+            );
         } catch (\Throwable $e) {
             log_message('error', 'saveDateFormat error: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to save date format setting.');
@@ -810,5 +1240,94 @@ class Settings extends Controller
 
         return redirect()->to(base_url('settings') . '#security')
             ->with('success', 'Global date format updated.');
+    }
+
+    public function saveProductAssetUploadSettings()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#company');
+        }
+
+        $rawMb = (int) ($this->request->getPost('product_assets_raw_max_mb') ?? 0);
+        $finalMb = (int) ($this->request->getPost('product_assets_final_max_mb') ?? 0);
+        $channelMb = (int) ($this->request->getPost('product_assets_channel_max_mb') ?? 0);
+
+        if ($rawMb <= 0 || $finalMb <= 0 || $channelMb <= 0) {
+            return redirect()->to(base_url('settings') . '#company')
+                ->withInput()
+                ->with('error', 'Product asset upload limits must be positive numbers.');
+        }
+
+        $userId = session()->get('user_id');
+
+        try {
+            $items = [
+                'product_assets_raw_max_mb' => [
+                    'value' => (string) $rawMb,
+                    'description' => 'Global max upload size (MB) for product asset raw images',
+                ],
+                'product_assets_final_max_mb' => [
+                    'value' => (string) $finalMb,
+                    'description' => 'Global max upload size (MB) for product asset final files',
+                ],
+                'product_assets_channel_max_mb' => [
+                    'value' => (string) $channelMb,
+                    'description' => 'Global max upload request size (MB) for product asset channel uploads',
+                ],
+            ];
+
+            foreach ($items as $key => $item) {
+                $this->saveSystemSetting(
+                    $key,
+                    (string) $item['value'],
+                    (string) $item['description'],
+                    $userId
+                );
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'saveProductAssetUploadSettings error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#company')
+                ->withInput()
+                ->with('error', 'Failed to save product asset upload settings.');
+        }
+
+        return redirect()->to(base_url('settings') . '#company')
+            ->with('success', 'Product asset upload limits updated.');
+    }
+
+    /**
+     * Save/update a system setting across environments where `system_settings.id`
+     * may be a plain PK without AUTO_INCREMENT.
+     */
+    private function saveSystemSetting(string $key, string $value, string $description, ?int $userId): void
+    {
+        $table = $this->db->table('system_settings');
+        $existing = $table->where('setting_key', $key)->get()->getRowArray();
+
+        if ($existing) {
+            $table->where('setting_key', $key)->update([
+                'setting_value' => $value,
+                'description' => $description,
+                'updated_by' => $userId,
+            ]);
+            return;
+        }
+
+        $insert = [
+            'setting_key' => $key,
+            'setting_value' => $value,
+            'description' => $description,
+            'updated_by' => $userId,
+        ];
+
+        $fields = $this->db->getFieldNames('system_settings');
+        if (in_array('id', $fields, true)) {
+            $maxRow = $this->db->table('system_settings')
+                ->select('MAX(id) as max_id')
+                ->get()->getRowArray();
+            $insert['id'] = ((int) ($maxRow['max_id'] ?? 0)) + 1;
+        }
+
+        $table->insert($insert);
     }
 }

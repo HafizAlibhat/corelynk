@@ -111,6 +111,206 @@ class ProductVariants extends BaseController
         return $this->artService->generateForCategory($categoryId);
     }
 
+    private function firstVariantIdFromRow(array $row, array $columns): int
+    {
+        foreach ($columns as $col) {
+            $v = (int)($row[$col] ?? 0);
+            if ($v > 0) {
+                return $v;
+            }
+        }
+        return 0;
+    }
+
+    private function getVariantRemovalEligibility(array $variantIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $variantIds), static fn($v) => $v > 0)));
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = ['can_remove' => true, 'reasons' => []];
+        }
+        if (empty($ids)) {
+            return $out;
+        }
+
+        $db = Database::connect();
+        $addReason = static function (array &$slot, string $reason): void {
+            if (!in_array($reason, $slot['reasons'], true)) {
+                $slot['reasons'][] = $reason;
+            }
+        };
+
+        try {
+            if ($db->tableExists('sales_order_lines')) {
+                $salesColsAll = $db->getFieldNames('sales_order_lines');
+                $salesCols = array_values(array_filter(['product_variant_id', 'variant_id'], static fn($c) => in_array($c, $salesColsAll ?? [], true)));
+                if (!empty($salesCols)) {
+                    $qb = $db->table('sales_order_lines')->select(implode(', ', $salesCols));
+                    $qb->groupStart();
+                    foreach ($salesCols as $i => $col) {
+                        if ($i === 0) {
+                            $qb->whereIn($col, $ids);
+                        } else {
+                            $qb->orWhereIn($col, $ids);
+                        }
+                    }
+                    $qb->groupEnd();
+                    $rows = $qb->get()->getResultArray();
+                    foreach ($rows as $row) {
+                        $vid = $this->firstVariantIdFromRow($row, $salesCols);
+                        if ($vid > 0 && isset($out[$vid])) {
+                            $addReason($out[$vid], 'linked in sales orders');
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Variant eligibility sales-order check failed: ' . $e->getMessage());
+        }
+
+        try {
+            if ($db->tableExists('purchase_order_lines')) {
+                $poColsAll = $db->getFieldNames('purchase_order_lines');
+                $poCols = array_values(array_filter(['variant_id', 'product_variant_id'], static fn($c) => in_array($c, $poColsAll ?? [], true)));
+                if (!empty($poCols)) {
+                    $qb = $db->table('purchase_order_lines')->select(implode(', ', $poCols));
+                    $qb->groupStart();
+                    foreach ($poCols as $i => $col) {
+                        if ($i === 0) {
+                            $qb->whereIn($col, $ids);
+                        } else {
+                            $qb->orWhereIn($col, $ids);
+                        }
+                    }
+                    $qb->groupEnd();
+                    $rows = $qb->get()->getResultArray();
+                    foreach ($rows as $row) {
+                        $vid = $this->firstVariantIdFromRow($row, $poCols);
+                        if ($vid > 0 && isset($out[$vid])) {
+                            $addReason($out[$vid], 'linked in purchase orders');
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Variant eligibility purchase-order check failed: ' . $e->getMessage());
+        }
+
+        try {
+            if ($db->tableExists('variant_inventory')) {
+                $inv = $db->table('variant_inventory')
+                    ->select('variant_id, COALESCE(SUM(quantity), 0) as qty, COALESCE(SUM(reserved), 0) as res', false)
+                    ->whereIn('variant_id', $ids)
+                    ->groupBy('variant_id')
+                    ->get()->getResultArray();
+                foreach ($inv as $row) {
+                    $vid = (int)($row['variant_id'] ?? 0);
+                    if ($vid <= 0 || !isset($out[$vid])) {
+                        continue;
+                    }
+                    $qty = (float)($row['qty'] ?? 0);
+                    $res = (float)($row['res'] ?? 0);
+                    if (abs($qty) > 0.000001 || abs($res) > 0.000001) {
+                        $addReason($out[$vid], 'has stock or reserved quantity');
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Variant eligibility inventory check failed: ' . $e->getMessage());
+        }
+
+        try {
+            if ($db->tableExists('stock_balances')) {
+                $sbCols = $db->getFieldNames('stock_balances');
+                if (in_array('variant_id', $sbCols ?? [], true) && in_array('quantity', $sbCols ?? [], true)) {
+                    $sb = $db->table('stock_balances')
+                        ->select('variant_id, COALESCE(SUM(quantity), 0) as qty', false)
+                        ->whereIn('variant_id', $ids)
+                        ->groupBy('variant_id')
+                        ->get()->getResultArray();
+                    foreach ($sb as $row) {
+                        $vid = (int)($row['variant_id'] ?? 0);
+                        if ($vid <= 0 || !isset($out[$vid])) {
+                            continue;
+                        }
+                        $qty = (float)($row['qty'] ?? 0);
+                        if (abs($qty) > 0.000001) {
+                            $addReason($out[$vid], 'has stock balance entries');
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Variant eligibility stock-balance check failed: ' . $e->getMessage());
+        }
+
+        foreach ($out as &$slot) {
+            if (!empty($slot['reasons'])) {
+                $slot['can_remove'] = false;
+            }
+        }
+        unset($slot);
+
+        return $out;
+    }
+
+    private function appendComboExclusion(int $productId, array $attrs): array
+    {
+        $attrs = $this->normalizeAttributes($attrs);
+        $db = Database::connect();
+        $prod = $db->table('products')->select('excluded_combos')->where('id', $productId)->get()->getRowArray();
+        $arr = [];
+        if (!empty($prod['excluded_combos'])) {
+            try {
+                $arr = json_decode((string)$prod['excluded_combos'], true) ?? [];
+            } catch (\Throwable $e) {
+                $arr = [];
+            }
+        }
+        if (!is_array($arr)) {
+            $arr = [];
+        }
+
+        $needle = json_encode($attrs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $exists = false;
+        foreach ($arr as $item) {
+            if (!is_array($item) || (string)($item['type'] ?? '') !== 'combo' || !isset($item['attributes']) || !is_array($item['attributes'])) {
+                continue;
+            }
+            $candidate = json_encode($this->normalizeAttributes($item['attributes']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($candidate === $needle) {
+                $exists = true;
+                break;
+            }
+        }
+        if (!$exists) {
+            $arr[] = ['type' => 'combo', 'attributes' => $attrs];
+            $db->table('products')->where('id', $productId)->update(['excluded_combos' => json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+        }
+
+        return $arr;
+    }
+
+    private function purgeVariantRows(int $variantId): void
+    {
+        $db = Database::connect();
+        try {
+            if ($db->tableExists('variant_inventory')) {
+                $db->table('variant_inventory')->where('variant_id', $variantId)->delete();
+            }
+        } catch (\Throwable $e) {}
+        try {
+            if ($db->tableExists('stock_balances')) {
+                $cols = $db->getFieldNames('stock_balances');
+                if (in_array('variant_id', $cols ?? [], true)) {
+                    $db->table('stock_balances')->where('variant_id', $variantId)->delete();
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        $this->variants->delete($variantId);
+    }
+
     // List variants (if product_id provided, show for that product)
     public function index()
     {
@@ -131,34 +331,95 @@ class ProductVariants extends BaseController
         }
 
         $salesFields = [];
-        $hasSalesVariantCol = false;
+        $salesVariantCols = [];
+        $salesQtyCol = null;
         try {
             if ($db->tableExists('sales_order_lines')) {
                 $salesFields = $db->getFieldNames('sales_order_lines');
-                $hasSalesVariantCol = in_array('product_variant_id', $salesFields ?? [], true);
+                $salesVariantCols = array_values(array_filter(['product_variant_id', 'variant_id'], static fn($c) => in_array($c, $salesFields ?? [], true)));
+                $salesQtyCol = in_array('quantity', $salesFields ?? [], true) ? 'quantity' : (in_array('qty', $salesFields ?? [], true) ? 'qty' : null);
             }
         } catch (\Throwable $e) {
-            $hasSalesVariantCol = false;
+            $salesVariantCols = [];
+            $salesQtyCol = null;
         }
 
         $soldSub = null;
-        if ($hasSalesVariantCol) {
-            $soldSub = $db->table('sales_order_lines')
-                ->select('CASE WHEN product_variant_id IS NOT NULL THEN product_variant_id ELSE product_id END as variant_id', false)
-                ->select('SUM(quantity) as sold', false)
+        if (!empty($salesVariantCols) && $salesQtyCol !== null) {
+            $salesVariantExpr = 'COALESCE(' . implode(', ', $salesVariantCols) . ')';
+            $soldSubBuilder = $db->table('sales_order_lines sol')
+                ->select($salesVariantExpr . ' as variant_id', false)
+                ->select('SUM(COALESCE(sol.' . $salesQtyCol . ',0)) as sold', false);
+
+            if ($db->tableExists('sales_orders')) {
+                try {
+                    $soFields = $db->getFieldNames('sales_orders');
+                    $salesFk = in_array('sales_order_id', $salesFields ?? [], true) ? 'sales_order_id' : (in_array('so_id', $salesFields ?? [], true) ? 'so_id' : null);
+                    if ($salesFk !== null && in_array('status', $soFields ?? [], true)) {
+                        $soldSubBuilder->join('sales_orders so', 'so.id = sol.' . $salesFk, 'left')
+                            ->where("LOWER(COALESCE(so.status,'')) NOT IN ('draft','cancelled','canceled','rejected')", null, false);
+                    }
+                } catch (\Throwable $e) {}
+            }
+
+            $soldSubBuilder->where($salesVariantExpr . ' IS NOT NULL', null, false)
+                ->where($salesVariantExpr . ' > 0', null, false)
                 ->groupBy('variant_id');
+            $soldSub = $soldSubBuilder;
+        }
+
+        $purchaseFields = [];
+        $purchaseVariantCols = [];
+        $purchaseQtyCol = null;
+        try {
+            if ($db->tableExists('purchase_order_lines')) {
+                $purchaseFields = $db->getFieldNames('purchase_order_lines');
+                $purchaseVariantCols = array_values(array_filter(['variant_id', 'product_variant_id'], static fn($c) => in_array($c, $purchaseFields ?? [], true)));
+                $purchaseQtyCol = in_array('quantity', $purchaseFields ?? [], true) ? 'quantity' : (in_array('qty', $purchaseFields ?? [], true) ? 'qty' : null);
+            }
+        } catch (\Throwable $e) {
+            $purchaseVariantCols = [];
+            $purchaseQtyCol = null;
+        }
+
+        $purchasedSub = null;
+        if (!empty($purchaseVariantCols) && $purchaseQtyCol !== null) {
+            $purchaseVariantExpr = 'COALESCE(' . implode(', ', $purchaseVariantCols) . ')';
+            $purchaseSubBuilder = $db->table('purchase_order_lines pol')
+                ->select($purchaseVariantExpr . ' as variant_id', false)
+                ->select('SUM(COALESCE(pol.' . $purchaseQtyCol . ',0)) as purchased', false);
+
+            if ($db->tableExists('purchase_orders')) {
+                try {
+                    $poFields = $db->getFieldNames('purchase_orders');
+                    $poFk = in_array('po_id', $purchaseFields ?? [], true) ? 'po_id' : (in_array('purchase_order_id', $purchaseFields ?? [], true) ? 'purchase_order_id' : null);
+                    if ($poFk !== null && in_array('status', $poFields ?? [], true)) {
+                        $purchaseSubBuilder->join('purchase_orders po', 'po.id = pol.' . $poFk, 'left')
+                            ->where("LOWER(COALESCE(po.status,'')) NOT IN ('draft','cancelled','canceled','rejected')", null, false);
+                    }
+                } catch (\Throwable $e) {}
+            }
+
+            $purchaseSubBuilder->where($purchaseVariantExpr . ' IS NOT NULL', null, false)
+                ->where($purchaseVariantExpr . ' > 0', null, false)
+                ->groupBy('variant_id');
+            $purchasedSub = $purchaseSubBuilder;
         }
 
         $builder = $db->table('product_variants pv')
             ->select($select)
             ->select('p.name as product_name, p.code as product_code')
             ->select('COALESCE(SUM(vi.quantity), 0) as on_hand, COALESCE(SUM(vi.reserved), 0) as reserved')
-            ->select($hasSalesVariantCol ? 'COALESCE(sol.sold, 0) as sold' : '0 as sold')
+            ->select($soldSub ? 'COALESCE(sol.sold, 0) as sold' : '0 as sold')
+            ->select($purchasedSub ? 'COALESCE(polx.purchased, 0) as purchased' : '0 as purchased')
             ->join('products p', 'p.id = pv.product_id', 'left')
             ->join('variant_inventory vi', 'vi.variant_id = pv.id', 'left');
 
-        if ($hasSalesVariantCol && $soldSub) {
+        if ($soldSub) {
             $builder->join('(' . $soldSub->getCompiledSelect() . ') sol', 'sol.variant_id = pv.id', 'left');
+        }
+        if ($purchasedSub) {
+            $builder->join('(' . $purchasedSub->getCompiledSelect() . ') polx', 'polx.variant_id = pv.id', 'left');
         }
         if ($productId) {
             $builder->where('pv.product_id', (int)$productId);
@@ -373,10 +634,209 @@ class ProductVariants extends BaseController
     public function delete($id = null)
     {
         if (! $id) return redirect()->back()->with('error', 'Invalid variant');
-        $v = $this->variants->find($id);
+        $variantId = (int)$id;
+        $v = $this->variants->find($variantId);
         if (! $v) return redirect()->back()->with('error', 'Variant not found');
-        $this->variants->delete($id);
+
+        $eligibility = $this->getVariantRemovalEligibility([$variantId]);
+        $slot = $eligibility[$variantId] ?? ['can_remove' => false, 'reasons' => ['Unable to validate variant usage']];
+        if (!$slot['can_remove']) {
+            $msg = 'Variant cannot be removed: ' . implode(', ', $slot['reasons']);
+            if ($this->request->isAJAX()) {
+                return $this->response->setStatusCode(409)->setJSON(['success' => false, 'message' => $msg, 'reasons' => $slot['reasons']]);
+            }
+            return redirect()->back()->with('error', $msg);
+        }
+
+        $this->purgeVariantRows($variantId);
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => 'Variant deleted']);
+        }
         return redirect()->back()->with('success', 'Variant deleted');
+    }
+
+    /**
+     * Remove an existing variant and immediately add its attribute combination to
+     * products.excluded_combos so it stays hidden from future variant generation.
+     */
+    public function excludeFromList($id = null)
+    {
+        $this->requireAuth();
+
+        $variantId = (int)($id ?? 0);
+        if ($variantId <= 0) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Invalid variant id']);
+        }
+
+        $variant = $this->variants->find($variantId);
+        if (!$variant) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Variant not found']);
+        }
+
+        $eligibility = $this->getVariantRemovalEligibility([$variantId]);
+        $slot = $eligibility[$variantId] ?? ['can_remove' => false, 'reasons' => ['Unable to validate variant usage']];
+        if (!$slot['can_remove']) {
+            return $this->response->setStatusCode(409)->setJSON([
+                'success' => false,
+                'message' => 'Variant cannot be excluded/removed: ' . implode(', ', $slot['reasons']),
+                'reasons' => $slot['reasons'],
+            ]);
+        }
+
+        $attrs = [];
+        if (!empty($variant['attributes'])) {
+            try {
+                $attrs = json_decode((string)$variant['attributes'], true) ?? [];
+            } catch (\Throwable $e) {
+                $attrs = [];
+            }
+        }
+        if (!is_array($attrs)) {
+            $attrs = [];
+        }
+
+        $db = Database::connect();
+        $db->transStart();
+        $this->purgeVariantRows($variantId);
+        $excluded = $this->appendComboExclusion((int)$variant['product_id'], $attrs);
+        $db->transComplete();
+
+        if (!$db->transStatus()) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => 'Failed to exclude/remove variant']);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Variant removed and excluded from future variant lists',
+            'variant_id' => $variantId,
+            'excluded_entry' => ['type' => 'combo', 'attributes' => $this->normalizeAttributes($attrs)],
+            'excluded_combos' => $excluded,
+        ]);
+    }
+
+    /**
+     * Bulk remove existing variants and add their combinations to excluded_combos.
+     * Expects POST JSON/body: ids => [variantId, ...]
+     */
+    public function bulkExcludeFromList()
+    {
+        $this->requireAuth();
+
+        $body = $this->request->getJSON(true);
+        if (!is_array($body) || empty($body)) {
+            $body = $this->request->getPost();
+        }
+
+        $ids = $body['ids'] ?? [];
+        if (!is_array($ids) || empty($ids)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'message' => 'No variants selected',
+            ]);
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($id) => $id > 0)));
+        if (empty($ids)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'message' => 'Invalid variant IDs',
+            ]);
+        }
+
+        $variantRows = $this->variants->whereIn('id', $ids)->findAll();
+        $variantMap = [];
+        foreach ($variantRows as $row) {
+            $variantMap[(int)($row['id'] ?? 0)] = $row;
+        }
+
+        $eligibility = $this->getVariantRemovalEligibility($ids);
+        $db = Database::connect();
+
+        $excludedItems = [];
+        $blocked = [];
+        $failed = [];
+
+        foreach ($ids as $variantId) {
+            $variant = $variantMap[$variantId] ?? null;
+            if (!$variant) {
+                $blocked[] = [
+                    'variant_id' => $variantId,
+                    'message' => 'Variant not found',
+                    'reasons' => ['Variant not found'],
+                ];
+                continue;
+            }
+
+            $slot = $eligibility[$variantId] ?? ['can_remove' => false, 'reasons' => ['Unable to validate variant usage']];
+            if (!$slot['can_remove']) {
+                $blocked[] = [
+                    'variant_id' => $variantId,
+                    'art_number' => $variant['art_number'] ?? null,
+                    'message' => 'Variant cannot be excluded/removed',
+                    'reasons' => array_values((array)($slot['reasons'] ?? [])),
+                ];
+                continue;
+            }
+
+            $attrs = [];
+            if (!empty($variant['attributes'])) {
+                try {
+                    $attrs = json_decode((string)$variant['attributes'], true) ?? [];
+                } catch (\Throwable $e) {
+                    $attrs = [];
+                }
+            }
+            if (!is_array($attrs)) {
+                $attrs = [];
+            }
+
+            $db->transStart();
+            $this->purgeVariantRows($variantId);
+            $this->appendComboExclusion((int)$variant['product_id'], $attrs);
+            $db->transComplete();
+
+            if (!$db->transStatus()) {
+                $failed[] = [
+                    'variant_id' => $variantId,
+                    'art_number' => $variant['art_number'] ?? null,
+                    'message' => 'Failed to exclude/remove variant',
+                ];
+                continue;
+            }
+
+            $excludedItems[] = [
+                'variant_id' => $variantId,
+                'art_number' => $variant['art_number'] ?? null,
+                'product_id' => (int)($variant['product_id'] ?? 0),
+                'excluded_entry' => [
+                    'type' => 'combo',
+                    'attributes' => $this->normalizeAttributes($attrs),
+                ],
+            ];
+        }
+
+        $excludedCount = count($excludedItems);
+        $blockedCount = count($blocked);
+        $failedCount = count($failed);
+
+        $message = 'No variants were excluded';
+        if ($excludedCount > 0) {
+            $message = $excludedCount . ' variant(s) excluded successfully';
+            if ($blockedCount > 0 || $failedCount > 0) {
+                $message .= ' (' . $blockedCount . ' blocked, ' . $failedCount . ' failed)';
+            }
+        }
+
+        return $this->response->setJSON([
+            'success' => $excludedCount > 0,
+            'message' => $message,
+            'excluded_count' => $excludedCount,
+            'excluded_items' => $excludedItems,
+            'blocked_count' => $blockedCount,
+            'blocked' => $blocked,
+            'failed_count' => $failedCount,
+            'failed' => $failed,
+        ]);
     }
 
     /**
@@ -502,6 +962,8 @@ class ProductVariants extends BaseController
         // Existing combinations (for idempotent UX)
         $existingKeys = [];
         $existingArtByKey = [];
+        $existingIdByKey = [];
+        $existingVariantIds = [];
         if ($productId) {
             try {
                 $existing = $this->variants->where('product_id', $productId)->findAll();
@@ -514,12 +976,20 @@ class ProductVariants extends BaseController
                     $k = $this->combinationKeyFromAttributes($ea);
                     $existingKeys[$k] = true;
                     $existingArtByKey[$k] = $ev['art_number'] ?? null;
+                    $existingIdByKey[$k] = (int)($ev['id'] ?? 0);
+                    if (!empty($ev['id'])) {
+                        $existingVariantIds[] = (int)$ev['id'];
+                    }
                 }
             } catch (\Throwable $e) {
                 $existingKeys = [];
                 $existingArtByKey = [];
+                $existingIdByKey = [];
+                $existingVariantIds = [];
             }
         }
+
+        $existingEligibility = $this->getVariantRemovalEligibility($existingVariantIds);
 
         // Build arrays of values
         $valueLists = [];
@@ -677,6 +1147,9 @@ class ProductVariants extends BaseController
                 'simulated_art' => $simulatedArts[$idx] ?? null,
                 'exists' => $exists,
                 'existing_art' => $existingArtByKey[$ck] ?? null,
+                'existing_variant_id' => $exists ? (int)($existingIdByKey[$ck] ?? 0) : null,
+                'existing_can_remove' => $exists ? (bool)($existingEligibility[(int)($existingIdByKey[$ck] ?? 0)]['can_remove'] ?? false) : false,
+                'existing_block_reason' => $exists ? implode(', ', (array)($existingEligibility[(int)($existingIdByKey[$ck] ?? 0)]['reasons'] ?? [])) : null,
                 'excluded' => $isExcluded,
                 'excluded_reason' => $excludedReason,
                 'only_allow_mode' => $onlyAllowMode,
@@ -987,7 +1460,7 @@ class ProductVariants extends BaseController
         $row = $db->table('product_variants pv')
             ->select($select)
             // Alias template-level vendor_price/vendor_currency to avoid collision with variant columns
-            ->select('p.id as product_id, p.name as product_name, p.code as product_code, p.vendor_id as template_vendor_id, p.vendor_price as template_vendor_price, p.vendor_currency as template_vendor_currency')
+            ->select('p.id as product_id, p.public_id as product_public_id, p.name as product_name, p.code as product_code, p.vendor_id as template_vendor_id, p.vendor_price as template_vendor_price, p.vendor_currency as template_vendor_currency')
             ->select('v.name as vendor_name')
             ->select('vv.name as variant_vendor_name')
             ->join('products p', 'p.id = pv.product_id', 'left')
@@ -1019,6 +1492,7 @@ class ProductVariants extends BaseController
             'variant' => $row,
             'product' => [
                 'id' => $row['product_id'] ?? null,
+                'public_id' => $row['product_public_id'] ?? null,
                 'name' => $row['product_name'] ?? null,
                 'code' => $row['product_code'] ?? null,
                 'vendor_id' => $row['template_vendor_id'] ?? null,
@@ -1042,6 +1516,10 @@ class ProductVariants extends BaseController
             // Pass variant-level vendor price/currency explicitly (aliased to avoid collision)
             'variant_saved_vendor_price' => $row['variant_vendor_price'] ?? null,
             'variant_saved_vendor_currency' => $row['variant_vendor_currency'] ?? null,
+            'can_view_assets' => $this->hasPermission('product_assets.read')
+                || $this->hasPermission('product_assets.view')
+                || $this->hasPermission('products.edit'),
+            'product_identifier' => (string) ($row['product_public_id'] ?? ''),
         ];
 
         // compute stock aggregates for this variant

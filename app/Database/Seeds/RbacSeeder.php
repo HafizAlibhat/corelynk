@@ -42,7 +42,7 @@ class RbacSeeder extends Seeder
          * ================================================================ */
         $modules = [
             'dashboard', 'invoices', 'orders', 'sales_orders', 'quotations',
-            'purchase_orders', 'rfq', 'inventory', 'products', 'customers',
+            'purchase_orders', 'rfq', 'inventory', 'products', 'product_assets', 'customers',
             'vendors', 'grn', 'delivery_orders', 'work_orders', 'accounting',
             'reports', 'settings', 'users', 'pos', 'employees',
         ];

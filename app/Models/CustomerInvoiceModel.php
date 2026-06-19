@@ -11,9 +11,9 @@ class CustomerInvoiceModel extends Model
     protected $primaryKey = 'id';
     protected $useSoftDeletes = true;
     protected $allowedFields = [
-        'public_id', 'invoice_number', 'customer_id', 'parent_invoice_id', 'invoice_type',
+        'public_id', 'invoice_number', 'customer_id', 'sales_order_id', 'parent_invoice_id', 'invoice_type',
         'issue_date', 'due_date', 'payment_term_id', 'currency_code',
-        'subtotal', 'tax_total', 'total_amount', 'shipping_cost', 'customs_value',
+        'subtotal', 'discount_total', 'document_discount_type', 'document_discount_value', 'discount_exclude_shipping', 'tax_total', 'total_amount', 'shipping_cost', 'customs_value',
         'status', 'is_custom_adjusted', 'custom_notes', 'export_reference',
         'notes', 'posted_entry_id', 'created_by'
     ];

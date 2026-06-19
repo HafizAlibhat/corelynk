@@ -12,6 +12,8 @@
     <?php $nextUrl = $nextId ? base_url('product-variants/' . $nextId . '/edit') : '#'; ?>
     <?php $prevTitle = $variant_nav['prev_label'] ? 'Previous variant: ' . $variant_nav['prev_label'] : 'Previous variant'; ?>
     <?php $nextTitle = $variant_nav['next_label'] ? 'Next variant: ' . $variant_nav['next_label'] : 'Next variant'; ?>
+    <?php $productBackIdentifier = trim((string)($product_identifier ?? ($product['public_id'] ?? ''))); ?>
+    <?php $productBackUrl = $productBackIdentifier !== '' ? base_url('products/' . $productBackIdentifier) : base_url('products'); ?>
     <style>
         .variant-page {
             --vp-surface: #ffffff;
@@ -335,7 +337,7 @@
             </div>
             <span class="variant-action-label d-none d-md-inline">Go to</span>
             <div class="d-flex gap-2 flex-wrap">
-                <a href="<?= base_url('products/' . ($product['id'] ?? '')) ?>" class="btn variant-top-btn btn-sm"><i class="bi bi-box-arrow-left"></i><span>Back to Product</span></a>
+                <a href="<?= esc($productBackUrl) ?>" class="btn variant-top-btn btn-sm"><i class="bi bi-box-arrow-left"></i><span>Back to Product</span></a>
                 <a href="<?= base_url('product-variants?product_id=' . ($product['id'] ?? '')) ?>" class="btn variant-top-btn btn-sm"><i class="bi bi-grid-3x3-gap"></i><span>All Variants</span></a>
             </div>
         </div>
@@ -351,7 +353,32 @@
         <div class="alert alert-success py-2 mb-2"><?= esc(session()->getFlashdata('success')) ?></div>
     <?php endif; ?>
 
+    <?php
+        $activeTab = strtolower((string) (service('request')->getGet('tab') ?? 'details'));
+        if (!in_array($activeTab, ['details', 'preparation', 'assets'], true)) {
+            $activeTab = 'details';
+        }
+        $tabBaseUrl = base_url('product-variants/' . ($variant['id'] ?? '') . '/edit');
+    ?>
+
+    <div class="variant-panel shadow-sm mb-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Variant sections">
+            <a href="<?= esc($tabBaseUrl . '?tab=details') ?>" class="btn <?= $activeTab === 'details' ? 'btn-primary' : 'variant-top-btn' ?>">
+                <i class="bi bi-sliders2"></i> Details
+            </a>
+            <a href="<?= esc($tabBaseUrl . '?tab=preparation') ?>" class="btn <?= $activeTab === 'preparation' ? 'btn-primary' : 'variant-top-btn' ?>">
+                <i class="bi bi-list-check"></i> Preparation
+            </a>
+            <?php if (!empty($product_identifier)): ?>
+                <a href="<?= esc($tabBaseUrl . '?tab=assets') ?>" class="btn <?= $activeTab === 'assets' ? 'btn-primary' : 'variant-top-btn' ?>">
+                    <i class="bi bi-images"></i> Assets
+                </a>
+            <?php endif; ?>
+        </div>
+    </div>
+
     <?php $variantPrepProfiles = $variant_preparation_profiles ?? []; ?>
+    <div class="<?= $activeTab === 'preparation' ? '' : 'd-none' ?>">
     <div class="variant-panel shadow-sm mb-2">
         <div class="variant-panel-head">
             <div>
@@ -405,7 +432,26 @@
             </div>
         <?php endif; ?>
     </div>
+    </div>
 
+    <?php if (!empty($product_identifier)): ?>
+    <div class="<?= $activeTab === 'assets' ? '' : 'd-none' ?>">
+    <div class="variant-panel shadow-sm mb-2">
+        <div class="variant-panel-head">
+            <div>
+                <h5 class="variant-panel-title">Assets</h5>
+                <div class="variant-panel-hint">Variant-scoped assets with shared product common assets.</div>
+            </div>
+        </div>
+        <?= view('product_assets/_product_tab', [
+            'productIdentifier' => $product_identifier,
+            'variantId' => (int) ($variant['id'] ?? 0),
+        ]) ?>
+    </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="<?= $activeTab === 'details' ? '' : 'd-none' ?>">
     <form method="POST" action="<?= base_url('product-variants/' . ($variant['id'] ?? '') . '/update') ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <div class="variant-shell">
@@ -605,7 +651,7 @@
         </div>
 
         <div class="d-flex justify-content-end gap-2 mt-2">
-            <a href="<?= base_url('products/' . ($product['id'] ?? '')) ?>" class="btn btn-outline-secondary">Cancel</a>
+            <a href="<?= esc($productBackUrl) ?>" class="btn btn-outline-secondary">Cancel</a>
             <button type="submit" class="btn btn-primary">Save Changes</button>
         </div>
     </form>
@@ -657,6 +703,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 </div>
 

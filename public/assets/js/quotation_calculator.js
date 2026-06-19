@@ -21,6 +21,6 @@ document.addEventListener('DOMContentLoaded', function(){
     }, 200);
 
     // bind change/input events for recalculation (incl. discount/tax)
-    document.addEventListener('change', function(e){ if (e.target && (e.target.classList && (e.target.classList.contains('line-qty') || e.target.classList.contains('line-price') || e.target.classList.contains('line-discount') || e.target.classList.contains('line-tax') || e.target.classList.contains('line-discount-type') || e.target.id === 'shipping_amount'))) recalc(); });
+    document.addEventListener('change', function(e){ if (e.target && (e.target.classList && (e.target.classList.contains('line-qty') || e.target.classList.contains('line-price') || e.target.classList.contains('line-discount') || e.target.classList.contains('line-tax') || e.target.classList.contains('line-tax-type') || e.target.classList.contains('line-discount-type') || e.target.id === 'shipping_amount'))) recalc(); });
     document.addEventListener('input', function(e){ if (e.target && (e.target.classList && (e.target.classList.contains('line-qty') || e.target.classList.contains('line-price') || e.target.classList.contains('line-discount') || e.target.classList.contains('line-tax') || e.target.id === 'shipping_amount'))) recalc(); });
 });
