@@ -237,8 +237,9 @@ class InventoryStock extends BaseController
                 }
                 $nl = strtolower($db->escapeLikeString($attrN));
                 $vl = strtolower($db->escapeLikeString($attrV));
-                $builder->where("LOWER(pv.attributes) LIKE '%{$nl}%' ESCAPE '!'", null, false)
-                        ->where("LOWER(pv.attributes) LIKE '%{$vl}%' ESCAPE '!'", null, false);
+                $attrExpr = "LOWER(REPLACE(pv.attributes, CHAR(92), ''))";
+                $builder->where("{$attrExpr} LIKE '%{$nl}%' ESCAPE '!'", null, false)
+                        ->where("{$attrExpr} LIKE '%{$vl}%' ESCAPE '!'", null, false);
             }
         }
 

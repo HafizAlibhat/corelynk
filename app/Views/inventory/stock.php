@@ -45,6 +45,72 @@
     .stk-attr-tag-val { font-weight: 700; }
     .stk-attr-tag-rm { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: none; background: rgba(255,255,255,.22); color: #fff; font-size: .7rem; line-height: 1; cursor: pointer; }
     .stk-attr-tag-rm:hover { background: rgba(255,255,255,.42); }
+
+    /* Stock attribute filter dropdown (products-style) */
+    .stk-af-row { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+    .stk-af-name-sel { min-width: 180px; }
+    .stk-af-val-wrap { position: relative; min-width: 220px; }
+    .stk-af-val-ico {
+        position: absolute;
+        left: .55rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: .72rem;
+        color: var(--cl-text-muted);
+        pointer-events: none;
+        z-index: 2;
+    }
+    .stk-af-val-inp { padding-left: 1.7rem !important; padding-right: 1rem !important; }
+    .stk-af-drop {
+        display: none;
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        right: 0;
+        z-index: 1070;
+        margin: 0;
+        padding: .2rem 0;
+        list-style: none;
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 6px;
+        box-shadow: 0 10px 24px rgba(15,23,42,.16);
+        max-height: 230px;
+        overflow-y: auto;
+    }
+    .stk-af-drop.stk-af-open { display: block; }
+    .stk-af-drop li {
+        padding: .34rem .72rem;
+        font-size: .78rem;
+        cursor: pointer;
+        color: var(--cl-text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        border-radius: 3px;
+        margin: 0 .2rem;
+    }
+    .stk-af-drop li:hover,
+    .stk-af-drop li.stk-af-active {
+        background: #2563eb;
+        color: #fff;
+    }
+    .stk-af-drop li.stk-af-none {
+        color: var(--cl-text-muted);
+        font-style: italic;
+        cursor: default;
+        pointer-events: none;
+    }
+    .stk-af-drop li.stk-af-none:hover { background: transparent; color: var(--cl-text-muted); }
+    .stk-af-drop li mark {
+        background: rgba(255,230,0,.45);
+        color: inherit;
+        padding: 0;
+        border-radius: 2px;
+        font-weight: 700;
+    }
+    .stk-af-drop li.stk-af-active mark { background: rgba(255,255,255,.3); color: #fff; }
+    .stk-af-add-btn:disabled { opacity: .5; pointer-events: none; }
 </style>
 <div class="main-content-wrapper">
     <div class="page-header mb-3">
@@ -79,29 +145,29 @@
                     <a href="<?= base_url('inventory/stock') ?>" class="btn btn-link text-decoration-none mt-1">Reset</a>
                 </div>
 
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Attribute</label>
-                    <select class="form-select stk-attr-name" id="stkAttrNameSel">
-                        <option value="">Select Attribute</option>
-                        <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
-                            <option value="<?= esc($attrName) ?>"><?= esc($attrName) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Attribute Value</label>
-                    <input type="text" class="form-control stk-attr-value" id="stkAttrValueInp" list="stkAttrValueList" placeholder="e.g. Curved">
-                    <datalist id="stkAttrValueList"></datalist>
-                </div>
-                <div class="col-md-4 text-end">
-                    <button type="button" class="btn btn-outline-primary mt-1" id="stkAttrAddBtn" onclick="addStockAttributeFilter(event)">
-                        <i class="bi bi-plus"></i> Add Attribute Filter
-                    </button>
-                </div>
-
                 <div class="col-12">
-                    <div id="stkAttrTagsContainer" class="d-flex flex-wrap gap-2"></div>
-                    <div id="stkAttrHiddenInputs" style="display:none"></div>
+                    <label class="form-label fw-bold">Attribute Filter</label>
+                    <div class="stk-af-row" id="stkAfRow">
+                        <select class="form-select stk-af-name-sel" id="stkAfNameSel" title="Select attribute">
+                            <option value="">Attribute</option>
+                            <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
+                                <option value="<?= esc($attrName) ?>"><?= esc($attrName) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+
+                        <div class="stk-af-val-wrap">
+                            <i class="bi bi-search stk-af-val-ico"></i>
+                            <input type="text" class="form-control stk-af-val-inp" id="stkAfValueInp" placeholder="Search value…" autocomplete="off">
+                            <ul id="stkAfDrop" class="stk-af-drop" role="listbox" aria-label="Attribute values"></ul>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-primary mt-1 stk-af-add-btn" id="stkAfAddBtn" disabled>
+                            <i class="bi bi-plus"></i> Add Attribute Filter
+                        </button>
+                    </div>
+
+                    <div id="stkAfChips" class="d-flex flex-wrap gap-2 mt-2"></div>
+                    <div id="stkAfHidden" style="display:none"></div>
                     <div class="stk-filter-hint">Pro tip: This stock search now supports product code, variant code/name, and attribute filters exactly like products search.</div>
                 </div>
             </form>
@@ -263,118 +329,220 @@
     <div id="stockImgPreview"><img src="" alt="" id="stockImgPreviewImg"></div>
 
     <script>
-    // Multi-Attribute Filter Handler (same format as products page)
+    // Stock attribute filter handler (products-style interactive dropdown)
     (function() {
-        const attrMap = <?= json_encode($attributeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        const attrNameSel = document.getElementById('stkAttrNameSel');
-        const attrValueInp = document.getElementById('stkAttrValueInp');
-        const attrValueList = document.getElementById('stkAttrValueList');
-        const tagsContainer = document.getElementById('stkAttrTagsContainer');
-        const hiddenInputsDiv = document.getElementById('stkAttrHiddenInputs');
+        const attrMap = <?= json_encode($attributeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?> || {};
+        const nameSel = document.getElementById('stkAfNameSel');
+        const valInp = document.getElementById('stkAfValueInp');
+        const drop = document.getElementById('stkAfDrop');
+        const addBtn = document.getElementById('stkAfAddBtn');
+        const chipsRow = document.getElementById('stkAfChips');
+        const hiddenDiv = document.getElementById('stkAfHidden');
 
-        let currentAttributes = <?= json_encode($currentAttributes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        if (!Array.isArray(currentAttributes)) {
-            currentAttributes = [];
+        if (!nameSel || !valInp || !drop || !addBtn || !chipsRow || !hiddenDiv) {
+            return;
+        }
+
+        let activeIdx = -1;
+        let filters = <?= json_encode($currentAttributes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?>;
+        if (!Array.isArray(filters)) {
+            filters = [];
         }
 
         function esc(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = String(str);
-            return div.innerHTML;
+            const d = document.createElement('div');
+            d.textContent = String(str || '');
+            return d.innerHTML;
         }
 
-        function updateValueSuggestions() {
-            if (!attrNameSel || !attrValueList) return;
-            const selected = attrNameSel.value || '';
-            const values = selected && attrMap[selected] ? attrMap[selected] : [];
-            attrValueList.innerHTML = '';
-            values.forEach(function(v) {
-                const opt = document.createElement('option');
-                opt.value = v;
-                attrValueList.appendChild(opt);
-            });
+        function updateAddBtn() {
+            addBtn.disabled = !(nameSel.value.trim() && valInp.value.trim());
         }
 
-        function renderTags() {
-            if (!tagsContainer || !hiddenInputsDiv) return;
-            tagsContainer.innerHTML = '';
-            hiddenInputsDiv.innerHTML = '';
+        function showDrop(values, keyword) {
+            drop.innerHTML = '';
+            activeIdx = -1;
 
-            currentAttributes.forEach(function(attr, idx) {
-                const tag = document.createElement('span');
-                tag.className = 'stk-attr-tag';
-                tag.innerHTML = '<span style="opacity:.8">' + esc(attr.name) + '</span>'
-                    + '<span style="opacity:.5">:</span>'
-                    + '<span class="stk-attr-tag-val">' + esc(attr.value) + '</span>'
-                    + '<button type="button" class="stk-attr-tag-rm" data-idx="' + idx + '">&times;</button>';
-                tagsContainer.appendChild(tag);
-
-                const removeBtn = tag.querySelector('.stk-attr-tag-rm');
-                if (removeBtn) {
-                    removeBtn.addEventListener('click', function(e) {
+            if (!values.length) {
+                const li = document.createElement('li');
+                li.className = 'stk-af-none';
+                li.textContent = keyword ? ('No values match "' + keyword + '"') : 'No values available';
+                drop.appendChild(li);
+            } else {
+                values.forEach(function(v) {
+                    const li = document.createElement('li');
+                    li.setAttribute('role', 'option');
+                    li.innerHTML = highlight(esc(v), keyword);
+                    li.addEventListener('mousedown', function(e) {
                         e.preventDefault();
-                        currentAttributes.splice(parseInt(this.dataset.idx, 10), 1);
-                        renderTags();
+                        selectValue(v);
                     });
-                }
-
-                const nameInput = document.createElement('input');
-                nameInput.type = 'hidden';
-                nameInput.name = 'attr[' + idx + '][name]';
-                nameInput.value = attr.name;
-                hiddenInputsDiv.appendChild(nameInput);
-
-                const valueInput = document.createElement('input');
-                valueInput.type = 'hidden';
-                valueInput.name = 'attr[' + idx + '][value]';
-                valueInput.value = attr.value;
-                hiddenInputsDiv.appendChild(valueInput);
-            });
-        }
-
-        function addAttribute() {
-            const name = attrNameSel ? (attrNameSel.value || '').trim() : '';
-            const value = attrValueInp ? (attrValueInp.value || '').trim() : '';
-            if (!name || !value) {
-                alert('Please select an attribute and enter a value');
-                return;
+                    drop.appendChild(li);
+                });
             }
 
-            const isDuplicate = currentAttributes.some(function(a) {
-                return String(a.name).toLowerCase() === name.toLowerCase() && String(a.value).toLowerCase() === value.toLowerCase();
-            });
-            if (isDuplicate) {
-                alert('This attribute filter already exists');
+            drop.classList.add('stk-af-open');
+        }
+
+        function hideDrop() {
+            drop.classList.remove('stk-af-open');
+            activeIdx = -1;
+        }
+
+        function highlight(escapedHtml, keyword) {
+            if (!keyword) return escapedHtml;
+            const kw = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return escapedHtml.replace(new RegExp('(' + kw + ')', 'gi'), '<mark>$1</mark>');
+        }
+
+        function openList() {
+            const attr = nameSel.value.trim();
+            if (!attr) {
+                drop.innerHTML = '<li class="stk-af-none">Pick an attribute first</li>';
+                drop.classList.add('stk-af-open');
                 return;
             }
-
-            currentAttributes.push({ name: name, value: value });
-            renderTags();
-            if (attrNameSel) attrNameSel.value = '';
-            if (attrValueInp) attrValueInp.value = '';
-            updateValueSuggestions();
+            const values = Array.isArray(attrMap[attr]) ? attrMap[attr] : [];
+            const kw = valInp.value.trim().toLowerCase();
+            const filtered = kw ? values.filter(v => String(v).toLowerCase().indexOf(kw) !== -1) : values;
+            showDrop(filtered, kw);
         }
 
-        window.addStockAttributeFilter = function(e) {
-            if (e) e.preventDefault();
-            addAttribute();
-        };
-
-        if (attrNameSel) {
-            attrNameSel.addEventListener('change', updateValueSuggestions);
+        function moveCursor(dir) {
+            const items = drop.querySelectorAll('li:not(.stk-af-none)');
+            if (!items.length) return;
+            items.forEach(el => el.classList.remove('stk-af-active'));
+            activeIdx = Math.max(0, Math.min(items.length - 1, activeIdx + dir));
+            items[activeIdx].classList.add('stk-af-active');
+            items[activeIdx].scrollIntoView({ block: 'nearest' });
         }
-        if (attrValueInp) {
-            attrValueInp.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addAttribute();
-                }
+
+        function selectValue(v) {
+            valInp.value = v;
+            hideDrop();
+            updateAddBtn();
+            valInp.focus();
+        }
+
+        function renderChips() {
+            chipsRow.innerHTML = '';
+            hiddenDiv.innerHTML = '';
+
+            filters.forEach(function(f, idx) {
+                const chip = document.createElement('span');
+                chip.className = 'stk-attr-tag';
+                chip.innerHTML = '<span style="opacity:.8">' + esc(f.name) + '</span>'
+                    + '<span style="opacity:.5">:</span>'
+                    + '<span class="stk-attr-tag-val">' + esc(f.value) + '</span>'
+                    + '<button type="button" class="stk-attr-tag-rm" data-i="' + idx + '">&times;</button>';
+
+                const rm = chip.querySelector('.stk-attr-tag-rm');
+                rm.addEventListener('click', function() {
+                    filters.splice(parseInt(this.dataset.i, 10), 1);
+                    renderChips();
+                });
+
+                chipsRow.appendChild(chip);
+
+                const ni = document.createElement('input');
+                ni.type = 'hidden';
+                ni.name = 'attr[' + idx + '][name]';
+                ni.value = f.name;
+                hiddenDiv.appendChild(ni);
+
+                const vi = document.createElement('input');
+                vi.type = 'hidden';
+                vi.name = 'attr[' + idx + '][value]';
+                vi.value = f.value;
+                hiddenDiv.appendChild(vi);
             });
         }
 
-        renderTags();
-        updateValueSuggestions();
+        function addFilter() {
+            const name = nameSel.value.trim();
+            const value = valInp.value.trim();
+            if (!name || !value) return;
+
+            const dup = filters.some(function(f) {
+                return String(f.name).toLowerCase() === name.toLowerCase()
+                    && String(f.value).toLowerCase() === value.toLowerCase();
+            });
+            if (dup) return;
+
+            filters.push({ name: name, value: value });
+            renderChips();
+            valInp.value = '';
+            updateAddBtn();
+            valInp.focus();
+            hideDrop();
+        }
+
+        nameSel.addEventListener('change', function() {
+            valInp.value = '';
+            updateAddBtn();
+            openList();
+            valInp.focus();
+        });
+
+        valInp.addEventListener('input', function() {
+            updateAddBtn();
+            openList();
+        });
+
+        valInp.addEventListener('mousedown', function() {
+            if (!drop.classList.contains('stk-af-open')) {
+                openList();
+            }
+        });
+
+        valInp.addEventListener('focus', function() {
+            if (!drop.classList.contains('stk-af-open')) {
+                openList();
+            }
+        });
+
+        valInp.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (drop.classList.contains('stk-af-open')) moveCursor(1);
+                else openList();
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                moveCursor(-1);
+                return;
+            }
+            if (e.key === 'Escape') {
+                hideDrop();
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (drop.classList.contains('stk-af-open') && activeIdx >= 0) {
+                    const items = drop.querySelectorAll('li:not(.stk-af-none)');
+                    if (items[activeIdx]) {
+                        selectValue(items[activeIdx].textContent);
+                        return;
+                    }
+                }
+                addFilter();
+            }
+        });
+
+        addBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            addFilter();
+        });
+
+        document.addEventListener('mousedown', function(e) {
+            if (!drop.contains(e.target) && e.target !== valInp) {
+                hideDrop();
+            }
+        });
+
+        renderChips();
+        updateAddBtn();
     })();
 
     // Expand/collapse product groups

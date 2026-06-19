@@ -20,11 +20,16 @@ class CustomerInvoiceLineModel extends Model
         'discount_type',
         'discount_value',
         'discount_amount',
+        'tax_type',
+        'tax_value',
         'tax_rate',
         'tax_amount',
         'tax_code_id',
         'line_total',
-        'product_image_url'
+        'product_image_url',
+        'display_type',
+        'section_title',
+        'sort_order'
     ];
     protected $useTimestamps = true;
 

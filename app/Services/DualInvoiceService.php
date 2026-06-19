@@ -56,9 +56,10 @@ class DualInvoiceService
             }
             $calcTax = isset($header['tax_total']) ? (float)$header['tax_total'] : 0.0;
             $calcShipping = isset($header['shipping_cost']) ? (float)$header['shipping_cost'] : 0.0;
+            $calcDiscount = isset($header['discount_total']) ? (float)$header['discount_total'] : 0.0;
             $header['subtotal'] = $header['subtotal'] ?? $calcTotal;
             $header['tax_total'] = $header['tax_total'] ?? $calcTax;
-            $header['total_amount'] = $header['total_amount'] ?? round($calcTotal + $calcTax + $calcShipping, 2);
+            $header['total_amount'] = $header['total_amount'] ?? round($calcTotal - $calcDiscount + $calcTax + $calcShipping, 2);
         }
 
         // create header
@@ -138,7 +139,11 @@ class DualInvoiceService
             }
         } else {
             // copy lines from system invoice
-            $sysLines = $db->table('customer_invoice_lines')->where('invoice_id', $systemInvoiceId)->get()->getResultArray();
+            $sysLines = $db->table('customer_invoice_lines')
+                ->where('invoice_id', $systemInvoiceId)
+                ->orderBy('sort_order', 'ASC')
+                ->orderBy('id', 'ASC')
+                ->get()->getResultArray();
             foreach ($sysLines as $l) {
                 unset($l['id']);
                 $l['invoice_id'] = $id;
@@ -167,7 +172,11 @@ class DualInvoiceService
     protected function assembleInvoiceData($invoice)
     {
         $db = \Config\Database::connect();
-        $lines = $db->table('customer_invoice_lines')->where('invoice_id', $invoice['id'])->get()->getResultArray();
+        $lines = $db->table('customer_invoice_lines')
+            ->where('invoice_id', $invoice['id'])
+            ->orderBy('sort_order', 'ASC')
+            ->orderBy('id', 'ASC')
+            ->get()->getResultArray();
         return ['invoice' => $invoice, 'lines' => $lines];
     }
 

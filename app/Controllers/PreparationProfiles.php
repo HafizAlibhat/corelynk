@@ -312,6 +312,111 @@ class PreparationProfiles extends BaseController
             ->with('success', 'Preparation profile deleted successfully.');
     }
 
+    /**
+     * Copy a preparation profile (all materials + steps) to one or more other variants
+     * of the same product. Accepts JSON body: { "target_variant_ids": [2, 3, ...] }
+     */
+    public function copyToVariants($id)
+    {
+        $this->requireAuth();
+
+        $id = (int) $id;
+        $profile = $this->profileModel->find($id);
+        if (! $profile) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Preparation profile not found.']);
+            }
+            return redirect()->back()->with('error', 'Preparation profile not found.');
+        }
+
+        $productId = (int) $profile['product_id'];
+        $input = $this->request->getJSON(true) ?? [];
+        $targetVariantIds = array_filter(array_map('intval', (array) ($input['target_variant_ids'] ?? [])));
+
+        if (empty($targetVariantIds)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Please select at least one variant to copy to.']);
+        }
+
+        // Validate all target variants belong to this product
+        foreach ($targetVariantIds as $targetVid) {
+            $tv = $this->variantModel->find($targetVid);
+            if (! $tv || (int) ($tv['product_id'] ?? 0) !== $productId) {
+                return $this->response->setJSON(['success' => false, 'message' => 'One or more selected variants do not belong to this product.']);
+            }
+        }
+
+        $materials = $this->componentModel->getByProfile($id);
+        $steps = $this->stepModel->getByProfile($id);
+        $stepOptions = $this->optionModel->getByProfileGrouped($id);
+
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        $copied = 0;
+        $skipped = 0;
+        foreach ($targetVariantIds as $targetVid) {
+            $variantRecord = $this->variantModel->find($targetVid);
+            $variantName = trim((string) ($variantRecord['name'] ?? ('Variant #' . $targetVid)));
+            $productRecord = $this->productModel->find($productId);
+            $productName = trim((string) ($productRecord['name'] ?? ('Product #' . $productId)));
+
+            $newProfileId = $this->profileModel->createProfile([
+                'product_id' => $productId,
+                'variant_id' => $targetVid,
+                'name' => $productName . ' / ' . $variantName,
+                'description' => $profile['description'] ?? null,
+                'is_active' => 1,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            foreach ($materials as $material) {
+                $this->componentModel->addComponent([
+                    'profile_id' => $newProfileId,
+                    'product_id' => $material['product_id'],
+                    'variant_id' => $material['variant_id'] ?? null,
+                    'qty_per_unit' => $material['qty_per_unit'],
+                    'is_optional' => $material['is_optional'],
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+
+            foreach ($steps as $step) {
+                $newStepId = $this->stepModel->addStep([
+                    'profile_id' => $newProfileId,
+                    'step_order' => $step['step_order'],
+                    'name' => $step['name'],
+                    'description' => $step['description'] ?? null,
+                    'is_optional' => $step['is_optional'],
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+
+                $originalStepId = (int) $step['id'];
+                foreach (($stepOptions[$originalStepId] ?? []) as $option) {
+                    $this->optionModel->addOption([
+                        'step_id' => $newStepId,
+                        'execution_type' => $option['execution_type'],
+                        'vendor_id' => $option['vendor_id'] ?? null,
+                        'notes' => $option['notes'] ?? null,
+                        'is_default' => $option['is_default'],
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]);
+                }
+            }
+            $copied++;
+        }
+
+        $db->transComplete();
+
+        if (! $db->transStatus()) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Copy failed due to a database error. Please try again.']);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Profile successfully copied to ' . $copied . ' variant(s). You can edit each copy separately.',
+        ]);
+    }
+
     private function buildPayloadFromPost(?int $forcedProductId = null, ?int $forcedVariantId = null): array
     {
         $productId = $forcedProductId ?? (int) ($this->request->getPost('product_id') ?? 0);

@@ -103,6 +103,16 @@ class ProductModel extends Model
     }
 
     /**
+     * Normalize free text for loose matching across punctuation/spacing variants.
+     * Example: "Rosegold(PC)" and "Rosegold PC" both become "rosegoldpc".
+     */
+    private function normalizeLooseToken(string $value): string
+    {
+        $normalized = strtolower(trim($value));
+        return preg_replace('/[^a-z0-9]+/', '', $normalized) ?? '';
+    }
+
+    /**
      * Get products with filters and pagination
      * @param string|null $searchTerm Keyword search across product name, code, variant code, description, attributes
      * @param mixed $categoryFilter Category ID filter
@@ -110,6 +120,8 @@ class ProductModel extends Model
      * @param int $perPage Records per page for pagination
      * @param string|null $typeFilter Product type (storable, consumable, service)
      * @param array $attributeFilters Multiple attribute filters: [{name: 'Color', value: 'Blue'}]
+     * @param bool|string $hasAssets Filter by products with assets (1/true/yes = only with assets, 0/false/no = only without assets, empty = all)
+     * @param string $sortBy Sort preset: recent, oldest, most_sold, ready_stock, most_purchased, name_az
      */
     public function getProductsWithFilters(
         $searchTerm = null,
@@ -117,16 +129,79 @@ class ProductModel extends Model
         $statusFilter = null,
         $perPage = 20,
         $typeFilter = null,
-        $attributeFilters = []
+        $attributeFilters = [],
+        bool $hideServices = false,
+        array $allowedCategoryIds = [],
+        $hasAssets = null,
+        string $sortBy = 'recent'
     ): array
     {
+        $db = $this->db;
+
+        $soldUnitsSub = '0';
+        try {
+            if ($db->tableExists('sales_order_lines')) {
+                $solFields = $db->getFieldNames('sales_order_lines');
+                $solQty = in_array('quantity', $solFields ?? [], true) ? 'quantity' : (in_array('qty', $solFields ?? [], true) ? 'qty' : null);
+                if ($solQty !== null && in_array('product_id', $solFields ?? [], true)) {
+                    $statusJoin = '';
+                    $soldStatusFilter = '';
+                    if ($db->tableExists('sales_orders')) {
+                        $soFields = $db->getFieldNames('sales_orders');
+                        $solFk = in_array('sales_order_id', $solFields ?? [], true) ? 'sales_order_id' : (in_array('so_id', $solFields ?? [], true) ? 'so_id' : null);
+                        if ($solFk !== null && in_array('status', $soFields ?? [], true)) {
+                            $statusJoin = ' LEFT JOIN sales_orders so ON so.id = sol.' . $solFk . ' ';
+                            $soldStatusFilter = " AND LOWER(COALESCE(so.status, '')) NOT IN ('draft','cancelled','canceled','rejected')";
+                        }
+                    }
+                    $soldUnitsSub = "COALESCE((SELECT SUM(COALESCE(sol." . $solQty . ",0)) FROM sales_order_lines sol" . $statusJoin . "WHERE sol.product_id = products.id" . $soldStatusFilter . "), 0)";
+                }
+            }
+        } catch (\Throwable $e) {
+            $soldUnitsSub = '0';
+        }
+
+        $purchasedUnitsSub = '0';
+        try {
+            if ($db->tableExists('purchase_order_lines')) {
+                $polFields = $db->getFieldNames('purchase_order_lines');
+                $polQty = in_array('quantity', $polFields ?? [], true) ? 'quantity' : (in_array('qty', $polFields ?? [], true) ? 'qty' : null);
+                if ($polQty !== null && in_array('product_id', $polFields ?? [], true)) {
+                    $statusJoin = '';
+                    $purchaseStatusFilter = '';
+                    if ($db->tableExists('purchase_orders')) {
+                        $poFields = $db->getFieldNames('purchase_orders');
+                        $polFk = in_array('po_id', $polFields ?? [], true) ? 'po_id' : (in_array('purchase_order_id', $polFields ?? [], true) ? 'purchase_order_id' : null);
+                        if ($polFk !== null && in_array('status', $poFields ?? [], true)) {
+                            $statusJoin = ' LEFT JOIN purchase_orders po ON po.id = pol.' . $polFk . ' ';
+                            $purchaseStatusFilter = " AND LOWER(COALESCE(po.status, '')) NOT IN ('draft','cancelled','canceled','rejected')";
+                        }
+                    }
+                    $purchasedUnitsSub = "COALESCE((SELECT SUM(COALESCE(pol." . $polQty . ",0)) FROM purchase_order_lines pol" . $statusJoin . "WHERE pol.product_id = products.id" . $purchaseStatusFilter . "), 0)";
+                }
+            }
+        } catch (\Throwable $e) {
+            $purchasedUnitsSub = '0';
+        }
+
+        // Asset count subquery - counts product assets linked via asset groups
+        $assetCountSub = '0';
+        try {
+            if ($db->tableExists('product_asset_groups') && $db->tableExists('product_assets')) {
+                $assetCountSub = "COALESCE((SELECT COUNT(DISTINCT pa.id) FROM product_asset_groups pag LEFT JOIN product_assets pa ON pa.asset_group_id = pag.id WHERE pag.product_id = products.id), 0)";
+            }
+        } catch (\Throwable $e) {
+            $assetCountSub = '0';
+        }
+
         $builder = $this->select('products.*, product_categories.name as category_name,
                 COALESCE((SELECT SUM(sb.quantity) FROM stock_balances sb WHERE sb.product_id = products.id AND sb.variant_id IS NULL), 0) AS simple_stock,
                 COALESCE((SELECT SUM(vi.quantity - vi.reserved) FROM product_variants pv LEFT JOIN variant_inventory vi ON vi.variant_id = pv.id WHERE pv.product_id = products.id), 0) AS variant_stock,
-                (SELECT COUNT(*) FROM product_variants pv2 WHERE pv2.product_id = products.id) AS variant_count')
+                (SELECT COUNT(*) FROM product_variants pv2 WHERE pv2.product_id = products.id) AS variant_count,
+                ' . $soldUnitsSub . ' AS sold_units,
+                ' . $purchasedUnitsSub . ' AS purchased_units,
+                ' . $assetCountSub . ' AS asset_count')
                         ->join('product_categories', 'product_categories.id = products.category_id', 'left');
-
-        $db = $this->db;
 
         // Apply deep search filter (includes variant code/name/attributes)
         if (!empty($searchTerm)) {
@@ -167,6 +242,8 @@ class ProductModel extends Model
         // simultaneously satisfy every attribute filter (prevents cross-variant false positives).
         if (!empty($attributeFilters) && is_array($attributeFilters)) {
             $variantConditions = [];
+            $attrTextExpr = 'LOWER(pva.attributes)';
+            $attrTextNormalizedExpr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$attrTextExpr}, ' ', ''), '-', ''), '(', ''), ')', ''), '&', ''), '/', ''), '_', ''), '.', ''), '\"', '')";
             foreach ($attributeFilters as $filter) {
                 if (!is_array($filter)) continue;
                 $attrN = trim((string)($filter['name'] ?? ''));
@@ -174,9 +251,11 @@ class ProductModel extends Model
                 if (empty($attrN) || empty($attrV)) continue;
                 $nl = strtolower($db->escapeLikeString($attrN));
                 $vl = strtolower($db->escapeLikeString($attrV));
-                // Each attribute pair: name AND value must both appear in the same variant JSON
-                $variantConditions[] = "LOWER(pva.attributes) LIKE '%{$nl}%'";
-                $variantConditions[] = "LOWER(pva.attributes) LIKE '%{$vl}%'";
+                $nlNorm = $db->escapeLikeString($this->normalizeLooseToken($attrN));
+                $vlNorm = $db->escapeLikeString($this->normalizeLooseToken($attrV));
+                // Each attribute pair must match in one variant row.
+                // Use both raw and normalized matching so punctuation differences do not break filters.
+                $variantConditions[] = "(({$attrTextExpr} LIKE '%{$nl}%' ESCAPE '!' AND {$attrTextExpr} LIKE '%{$vl}%' ESCAPE '!') OR ({$attrTextNormalizedExpr} LIKE '%{$nlNorm}%' ESCAPE '!' AND {$attrTextNormalizedExpr} LIKE '%{$vlNorm}%' ESCAPE '!'))";
             }
             if (!empty($variantConditions)) {
                 $combined = implode(' AND ', $variantConditions);
@@ -184,8 +263,9 @@ class ProductModel extends Model
             }
         }
 
-        // Apply status filter
-        if (!empty($statusFilter)) {
+        // Apply status filter.
+        // Do not use empty() because '0' (inactive) is a valid filter value.
+        if ($statusFilter !== null && $statusFilter !== '') {
             $isActive = ($statusFilter === 'active' || $statusFilter === '1' || $statusFilter === 1);
             $builder->where('products.is_active', $isActive ? 1 : 0);
         } else {
@@ -195,7 +275,48 @@ class ProductModel extends Model
             }
         }
 
-        $builder->orderBy('products.name', 'ASC');
+        // Role-based data access: hide service products
+        if ($hideServices) {
+            $builder->where('products.detailed_type !=', 'service');
+        }
+
+        // Role-based data access: restrict to allowed categories
+        if (!empty($allowedCategoryIds)) {
+            $builder->whereIn('products.category_id', $allowedCategoryIds);
+        }
+
+        // Filter by assets - show only products that have assets uploaded
+        if (!empty($hasAssets) && ($hasAssets === '1' || $hasAssets === 1 || $hasAssets === true || $hasAssets === 'yes')) {
+            $builder->where("EXISTS (SELECT 1 FROM product_asset_groups pag LEFT JOIN product_assets pa ON pa.asset_group_id = pag.id WHERE pag.product_id = products.id AND pa.id IS NOT NULL)", null, false);
+        }
+
+        $sortBy = trim(strtolower($sortBy));
+        switch ($sortBy) {
+            case 'oldest':
+                $builder->orderBy('products.created_at', 'ASC')
+                    ->orderBy('products.id', 'ASC');
+                break;
+            case 'most_sold':
+                $builder->orderBy('sold_units', 'DESC', false)
+                    ->orderBy('products.created_at', 'DESC');
+                break;
+            case 'ready_stock':
+                $builder->orderBy('GREATEST(COALESCE(simple_stock,0), COALESCE(variant_stock,0))', 'DESC', false)
+                    ->orderBy('products.created_at', 'DESC');
+                break;
+            case 'most_purchased':
+                $builder->orderBy('purchased_units', 'DESC', false)
+                    ->orderBy('products.created_at', 'DESC');
+                break;
+            case 'name_az':
+                $builder->orderBy('products.name', 'ASC');
+                break;
+            case 'recent':
+            default:
+                $builder->orderBy('products.created_at', 'DESC')
+                    ->orderBy('products.id', 'DESC');
+                break;
+        }
 
         return $builder->paginate($perPage);
     }
@@ -291,6 +412,8 @@ class ProductModel extends Model
         }
 
         if (!empty($attributeFilters) && is_array($attributeFilters)) {
+            $attrTextExpr = 'LOWER(pv.attributes)';
+            $attrTextNormalizedExpr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$attrTextExpr}, ' ', ''), '-', ''), '(', ''), ')', ''), '&', ''), '/', ''), '_', ''), '.', ''), '\"', '')";
             foreach ($attributeFilters as $filter) {
                 if (!is_array($filter)) {
                     continue;
@@ -302,8 +425,9 @@ class ProductModel extends Model
                 }
                 $nl = strtolower($this->db->escapeLikeString($attrN));
                 $vl = strtolower($this->db->escapeLikeString($attrV));
-                $builder->where("LOWER(pv.attributes) LIKE '%{$nl}%' ESCAPE '!'", null, false)
-                        ->where("LOWER(pv.attributes) LIKE '%{$vl}%' ESCAPE '!'", null, false);
+                $nlNorm = $this->db->escapeLikeString($this->normalizeLooseToken($attrN));
+                $vlNorm = $this->db->escapeLikeString($this->normalizeLooseToken($attrV));
+                $builder->where("(({$attrTextExpr} LIKE '%{$nl}%' ESCAPE '!' AND {$attrTextExpr} LIKE '%{$vl}%' ESCAPE '!') OR ({$attrTextNormalizedExpr} LIKE '%{$nlNorm}%' ESCAPE '!' AND {$attrTextNormalizedExpr} LIKE '%{$vlNorm}%' ESCAPE '!'))", null, false);
             }
         }
 
@@ -355,6 +479,217 @@ class ProductModel extends Model
         }
 
         return $grouped;
+    }
+
+    /**
+     * When a search term specifically matches a variant art_number (but not the
+     * parent product's own code/name/sku), replace the parent template row in
+     * the listing with individual variant rows so the user sees the specific
+     * variant — not the generic template product.
+     *
+     * @param string $searchTerm  The raw search term from the request.
+     * @param array  $products    The paginated product rows from getProductsWithFilters().
+     * @return array              Possibly-modified product rows.
+     */
+    public function promoteVariantRowsIfVariantSearch(string $searchTerm, array $products): array
+    {
+        if ($searchTerm === '' || empty($products)) {
+            return $products;
+        }
+
+        $db = \Config\Database::connect();
+        if (!$db->tableExists('product_variants')) {
+            return $products;
+        }
+
+        $tokens = array_values(array_filter(
+            preg_split('/\s+/', trim($searchTerm)) ?: [],
+            static fn($v) => trim((string)$v) !== ''
+        ));
+        if (empty($tokens)) {
+            return $products;
+        }
+
+        // Collect template product IDs from the current result set.
+        $templateIds = [];
+        foreach ($products as $p) {
+            if (($p['product_type'] ?? '') === 'variable') {
+                $templateIds[] = (int)($p['id'] ?? 0);
+            }
+        }
+        if (empty($templateIds)) {
+            return $products;
+        }
+
+        // For each template product, check if ALL tokens match the parent product
+        // fields directly (code, sku, name, barcode). If they do, no promotion needed
+        // — keep it as the template row. If they do NOT match the parent directly
+        // but a variant art_number matches, promote the variant(s) instead.
+        $productIndexById = [];
+        foreach ($products as $i => $p) {
+            $productIndexById[(int)($p['id'] ?? 0)] = $i;
+        }
+
+        // Fetch matching variants for the template products.
+        try {
+            $variantCols = $db->getFieldNames('product_variants');
+        } catch (\Throwable $_) {
+            $variantCols = [];
+        }
+        $hasImage = in_array('image', $variantCols, true);
+
+        $selectCols = 'pv.id AS variant_id, pv.product_id, pv.art_number, pv.name AS variant_name';
+        if ($hasImage) {
+            $selectCols .= ', pv.image AS variant_image';
+        }
+        $selectCols .= ', pv.attributes';
+
+        $builder = $db->table('product_variants pv')
+            ->select($selectCols)
+            ->whereIn('pv.product_id', $templateIds);
+
+        // Match ALL tokens against variant art_number or variant name.
+        foreach ($tokens as $token) {
+            $like = $db->escapeLikeString(trim((string)$token));
+            $builder->where("(pv.art_number LIKE '%{$like}%' ESCAPE '!' OR pv.name LIKE '%{$like}%' ESCAPE '!')", null, false);
+        }
+
+        try {
+            $variantRows = $builder->orderBy('pv.art_number', 'ASC')->get()->getResultArray();
+        } catch (\Throwable $_) {
+            return $products;
+        }
+
+        if (empty($variantRows)) {
+            return $products;
+        }
+
+        // Group matching variant rows by parent product_id.
+        $variantsByParent = [];
+        foreach ($variantRows as $vr) {
+            $pid = (int)($vr['product_id'] ?? 0);
+            if ($pid > 0) {
+                $variantsByParent[$pid][] = $vr;
+            }
+        }
+
+        // Fetch stock per variant from stock_balances.
+        $allVariantIds = array_map(static fn($vr) => (int)($vr['variant_id'] ?? 0), $variantRows);
+        $allVariantIds = array_values(array_filter($allVariantIds));
+        $variantStockMap = [];
+        if (!empty($allVariantIds) && $db->tableExists('stock_balances')) {
+            try {
+                $stockRows = $db->table('stock_balances')
+                    ->select('variant_id, SUM(quantity) AS total_qty')
+                    ->whereIn('variant_id', $allVariantIds)
+                    ->groupBy('variant_id')
+                    ->get()->getResultArray();
+                foreach ($stockRows as $sr) {
+                    if (!empty($sr['variant_id'])) {
+                        $variantStockMap[(int)$sr['variant_id']] = (float)($sr['total_qty'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $_) {}
+        }
+        // Fallback to variant_inventory if stock_balances gave nothing.
+        if (empty($variantStockMap) && $db->tableExists('variant_inventory')) {
+            try {
+                $stockRows = $db->table('variant_inventory')
+                    ->select('variant_id, SUM(quantity) AS total_qty')
+                    ->whereIn('variant_id', $allVariantIds)
+                    ->groupBy('variant_id')
+                    ->get()->getResultArray();
+                foreach ($stockRows as $sr) {
+                    if (!empty($sr['variant_id'])) {
+                        $variantStockMap[(int)$sr['variant_id']] = (float)($sr['total_qty'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $_) {}
+        }
+
+        // Decide for each template product whether to promote it.
+        // Promotion happens when the parent product's own code/sku/name/barcode
+        // does NOT match the search tokens — meaning the result came purely via variant.
+        $result = [];
+        foreach ($products as $p) {
+            $pid = (int)($p['id'] ?? 0);
+            if (($p['product_type'] ?? '') !== 'variable' || !isset($variantsByParent[$pid])) {
+                // Not a template or no variants matched — keep as-is.
+                $result[] = $p;
+                continue;
+            }
+
+            // Check if parent product fields match ALL tokens directly.
+            // If not all tokens match parent fields, keep variant promotion active.
+            $parentMatchesDirectly = true;
+            $parentSearchHaystack = strtolower(
+                ($p['code'] ?? '') . ' ' . ($p['sku'] ?? '') . ' ' .
+                ($p['name'] ?? '') . ' ' . ($p['barcode'] ?? '')
+            );
+            foreach ($tokens as $token) {
+                if (stripos($parentSearchHaystack, strtolower(trim((string)$token))) === false) {
+                    $parentMatchesDirectly = false;
+                    break;
+                }
+            }
+
+            if ($parentMatchesDirectly) {
+                // Parent itself matches — keep the template row (user searched product name/code).
+                $result[] = $p;
+                continue;
+            }
+
+            // Parent only matched via variant — expand into individual variant rows.
+            foreach ($variantsByParent[$pid] as $vr) {
+                $vid = (int)($vr['variant_id'] ?? 0);
+                $variantCode = trim((string)($vr['art_number'] ?? ''));
+                $stockQty = $variantStockMap[$vid] ?? 0.0;
+
+                // Build an attributes summary string for the description cell.
+                $attrSummary = '';
+                if (!empty($vr['attributes'])) {
+                    $decoded = json_decode((string)$vr['attributes'], true);
+                    if (is_array($decoded)) {
+                        $pairs = [];
+                        $isList = !empty($decoded) && array_keys($decoded) === range(0, count($decoded) - 1);
+                        if ($isList) {
+                            foreach ($decoded as $item) {
+                                if (!is_array($item)) continue;
+                                $k = trim((string)($item['name'] ?? ($item['attribute'] ?? ($item['key'] ?? ''))));
+                                $v = trim((string)($item['value'] ?? ''));
+                                if ($k !== '' && $v !== '') $pairs[] = $k . ': ' . $v;
+                            }
+                        } else {
+                            foreach ($decoded as $k => $v) {
+                                $kk = trim((string)$k);
+                                $vv = is_scalar($v) ? trim((string)$v) : '';
+                                if ($kk !== '' && $vv !== '') $pairs[] = $kk . ': ' . $vv;
+                            }
+                        }
+                        $attrSummary = implode(' | ', $pairs);
+                    }
+                }
+
+                // Shape the variant row to look like a product row for the view.
+                $variantRow = $p; // inherit all parent fields (category, unit, status, dates, etc.)
+                $variantRow['code']          = $variantCode !== '' ? $variantCode : $p['code'];
+                $variantRow['product_type']  = ''; // Remove "Template" badge — this is a specific variant
+                $variantRow['simple_stock']  = $stockQty;
+                $variantRow['variant_stock'] = $stockQty;
+                $variantRow['variant_count'] = 0;
+                $variantRow['_is_variant_row'] = true;
+                $variantRow['_variant_id']     = $vid;
+                $variantRow['_variant_name']   = trim((string)($vr['variant_name'] ?? ''));
+                $variantRow['_variant_attrs_summary'] = $attrSummary;
+                // Use variant image if available
+                if ($hasImage && !empty($vr['variant_image'])) {
+                    $variantRow['images'] = json_encode(['../variants/' . ltrim($vr['variant_image'], '/')]);
+                }
+                $result[] = $variantRow;
+            }
+        }
+
+        return $result;
     }
 
     /**

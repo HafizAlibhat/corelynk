@@ -219,8 +219,8 @@ class DeliveryOrderService
      * - Create negative inventory_movements entries (qty_change = -qty_to_ship)
      * - Update stock_balances to reflect deduction
      *
-     * After all lines processed:
-     * - Set delivery_orders.status = 'confirmed'
+    * After all lines processed:
+    * - Set delivery_orders.status = 'shipped'
      * - Returns array with success status and message
      *
      * @param int $doId
@@ -239,7 +239,7 @@ class DeliveryOrderService
             return ['success' => false, 'message' => 'Delivery order not found'];
         }
 
-        if ($do['status'] === 'confirmed') {
+        if (in_array(($do['status'] ?? ''), ['confirmed', 'shipped', 'delivered'], true)) {
             return ['success' => false, 'message' => 'Delivery order already confirmed'];
         }
 
@@ -414,8 +414,8 @@ class DeliveryOrderService
                 }
             }
 
-            // 3. Update delivery order status to confirmed
-            $doModel->update($doId, ['status' => 'confirmed', 'updated_at' => date('Y-m-d H:i:s')]);
+            // 3. Mark delivery order as shipped after stock deduction
+            $doModel->update($doId, ['status' => 'shipped', 'updated_at' => date('Y-m-d H:i:s')]);
 
             // 4. Update sales order status to 'shipped'
             $soId = (int)($do['sales_order_id'] ?? 0);

@@ -6,7 +6,7 @@
  * @var array|null  $delivery_order
  */
 $do          = $delivery_order ?? [];
-$isConfirmed = in_array($do['status'] ?? '', ['confirmed', 'delivered'], true);
+$isConfirmed = in_array($do['status'] ?? '', ['confirmed', 'shipped', 'delivered'], true);
 ?>
 <style>
 .op-tl-wrap{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:8px;padding:1.5rem 1.25rem 1.25rem}

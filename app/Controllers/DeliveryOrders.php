@@ -116,12 +116,21 @@ class DeliveryOrders extends BaseController
         $doModel = new DeliveryOrderModel();
         $db = \Config\Database::connect();
 
-        // Get only confirmed/shipped delivery orders
+        // Get only in-transit/completed delivery orders
         $deliveryOrders = [];
         if ($db->tableExists('delivery_orders')) {
             $dos = $doModel->select('delivery_orders.*')
                 ->join('sales_orders', 'sales_orders.id = delivery_orders.sales_order_id', 'left')
-                ->whereIn('delivery_orders.status', ['confirmed', 'delivered'])
+                ->groupStart()
+                    ->whereIn('delivery_orders.status', ['shipped', 'delivered'])
+                    ->orGroupStart()
+                        ->where('delivery_orders.status', 'confirmed')
+                        ->groupStart()
+                            ->where('delivery_orders.shipped_at IS NOT NULL', null, false)
+                            ->orWhere("COALESCE(delivery_orders.tracking_number, '') !=", '')
+                        ->groupEnd()
+                    ->groupEnd()
+                ->groupEnd()
                 ->orderBy('delivery_orders.updated_at', 'DESC')
                 ->findAll(100);
 
@@ -179,7 +188,16 @@ class DeliveryOrders extends BaseController
         $deliveryOrders = [];
         if ($db->tableExists('delivery_orders')) {
             $dos = $doModel->select('delivery_orders.*')
-                ->where('delivery_orders.status', 'confirmed')
+                ->groupStart()
+                    ->where('delivery_orders.status', 'shipped')
+                    ->orGroupStart()
+                        ->where('delivery_orders.status', 'confirmed')
+                        ->groupStart()
+                            ->where('delivery_orders.shipped_at IS NOT NULL', null, false)
+                            ->orWhere("COALESCE(delivery_orders.tracking_number, '') !=", '')
+                        ->groupEnd()
+                    ->groupEnd()
+                ->groupEnd()
                 ->groupStart()
                     ->where('delivery_orders.delivery_status IS NULL', null, false)
                     ->orWhere('delivery_orders.delivery_status !=', 'delivered')
@@ -323,7 +341,7 @@ class DeliveryOrders extends BaseController
             // Prefer confirmed/delivered over draft
             $doObj = $db->table('delivery_orders')
                 ->where('sales_order_id', $soId)
-                ->orderBy("CASE status WHEN 'delivered' THEN 1 WHEN 'confirmed' THEN 2 WHEN 'draft' THEN 3 ELSE 4 END", '', false)
+                ->orderBy("CASE status WHEN 'delivered' THEN 1 WHEN 'shipped' THEN 2 WHEN 'confirmed' THEN 3 WHEN 'draft' THEN 4 ELSE 5 END", '', false)
                 ->get()->getRowArray();
         }
 
@@ -672,9 +690,15 @@ class DeliveryOrders extends BaseController
         }
 
         $status = $do['status'] ?? 'draft';
-        if (in_array($status, ['confirmed', 'delivered'], true) && !empty($do['updated_at'])) {
+        if (in_array($status, ['confirmed', 'shipped', 'delivered'], true) && !empty($do['updated_at'])) {
+            $statusLabel = 'Delivery Confirmed';
+            if ($status === 'shipped') {
+                $statusLabel = 'Shipped to Customer';
+            } elseif ($status === 'delivered') {
+                $statusLabel = 'Delivered to Customer';
+            }
             $timeline[] = [
-                'label' => $status === 'delivered' ? 'Delivered to Customer' : 'Delivery Confirmed',
+                'label' => $statusLabel,
                 'time' => $do['updated_at'],
                 'detail' => strtoupper($status),
             ];
@@ -864,18 +888,32 @@ class DeliveryOrders extends BaseController
     {
         $db = \Config\Database::connect();
 
-        // Generate PO number
+        // Generate PO number — must check BOTH purchase_orders AND purchase_rfqs
+        // to avoid collisions with RFQ-reserved numbers in the shared RI-PO- sequence.
         $prefix = 'RI-PO-';
         try {
-            $row = $db->table('purchase_orders')
+            $last = 0;
+            // Highest existing PO number
+            $poRow = $db->table('purchase_orders')
                 ->select('po_number')
                 ->like('po_number', $prefix, 'after')
-                ->orderBy('id', 'DESC')
+                ->orderBy('po_number', 'DESC')
                 ->limit(1)
                 ->get()->getRowArray();
-            $last = 0;
-            if ($row && preg_match('/RI-PO-(\d+)/', $row['po_number'], $m)) {
-                $last = (int)$m[1];
+            if ($poRow && preg_match('/RI-PO-(\d+)/', $poRow['po_number'], $m)) {
+                $last = max($last, (int)$m[1]);
+            }
+            // Also scan purchase_rfqs — RFQs share the same RI-PO- sequence
+            if ($db->tableExists('purchase_rfqs')) {
+                $rfqRow = $db->table('purchase_rfqs')
+                    ->select('rfq_number')
+                    ->like('rfq_number', $prefix, 'after')
+                    ->orderBy('rfq_number', 'DESC')
+                    ->limit(1)
+                    ->get()->getRowArray();
+                if ($rfqRow && preg_match('/RI-PO-(\d+)/', $rfqRow['rfq_number'], $m)) {
+                    $last = max($last, (int)$m[1]);
+                }
             }
             $poNumber = $prefix . str_pad((string)($last + 1), 4, '0', STR_PAD_LEFT);
         } catch (\Throwable $_) {
@@ -1054,10 +1092,20 @@ class DeliveryOrders extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Invalid tracking URL']);
         }
 
-        $doModel->update($doId, array_filter([
+        $updateData = array_filter([
             'tracking_number' => $tracking,
             'tracking_url'    => $trackingUrl,
-        ], fn($v) => $v !== null));
+        ], fn($v) => $v !== null);
+
+        // Promote to shipped once tracking exists on a confirmed delivery order.
+        if (($do['status'] ?? '') === 'confirmed' && $tracking !== null) {
+            $updateData['status'] = 'shipped';
+            if (empty($do['shipped_at'])) {
+                $updateData['shipped_at'] = date('Y-m-d H:i:s');
+            }
+        }
+
+        $doModel->update($doId, $updateData);
 
         return $this->response->setJSON(['success' => true, 'message' => 'Tracking saved']);
     }
@@ -1077,26 +1125,11 @@ class DeliveryOrders extends BaseController
         }
         $doId = (int)$do['id'];
 
-        if (!in_array($do['status'] ?? '', ['confirmed', 'delivered'], true)) {
+        if (!in_array($do['status'] ?? '', ['confirmed', 'shipped', 'delivered'], true)) {
             return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Cannot update status of a ' . ($do['status'] ?? 'unknown') . ' delivery order']);
         }
 
-        // Support both JSON payloads and multipart form-data safely.
-        $body = $this->request->getPost() ?: [];
-        $contentType = strtolower((string)$this->request->getHeaderLine('Content-Type'));
-        if (strpos($contentType, 'application/json') !== false) {
-            try {
-                $jsonBody = $this->request->getJSON(true);
-                if (is_array($jsonBody)) {
-                    $body = array_merge($body, $jsonBody);
-                }
-            } catch (\Throwable $e) {
-                return $this->response->setStatusCode(400)->setJSON([
-                    'success' => false,
-                    'message' => 'Invalid JSON payload',
-                ]);
-            }
-        }
+        $body   = $this->request->getJSON(true) ?: $this->request->getPost();
         $status = trim($body['delivery_status'] ?? '');
         $notes  = trim($body['delivery_notes'] ?? '');
 
@@ -1111,41 +1144,8 @@ class DeliveryOrders extends BaseController
             'delivery_confirmed_at' => date('Y-m-d H:i:s'),
         ];
 
-        // Handle delivered_at date (only for 'delivered' status)
+        // If delivered, also set the main status to 'delivered'
         if ($status === 'delivered') {
-            $deliveredAt = trim($body['delivered_at'] ?? '');
-            if ($deliveredAt !== '') {
-                // Validate date format YYYY-MM-DD and not in the future
-                $ts = strtotime($deliveredAt);
-                if ($ts === false || $ts > strtotime(date('Y-m-d') . ' 23:59:59')) {
-                    return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Invalid delivery date. Date cannot be in the future.']);
-                }
-                $updateData['delivered_at'] = date('Y-m-d', $ts);
-            } else {
-                // Default to today if not provided
-                $updateData['delivered_at'] = date('Y-m-d');
-            }
-
-            // Handle screenshot upload
-            $screenshotFile = $this->request->getFile('delivery_screenshot');
-            if ($screenshotFile && $screenshotFile->isValid() && !$screenshotFile->hasMoved()) {
-                $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-                if (!in_array($screenshotFile->getMimeType(), $allowedTypes)) {
-                    return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Screenshot must be an image file (JPG, PNG, GIF, WEBP)']);
-                }
-                if ($screenshotFile->getSize() > 5 * 1024 * 1024) {
-                    return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Screenshot file size must be under 5MB']);
-                }
-                $uploadDir = FCPATH . 'uploads/delivery-screenshots';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0755, true);
-                }
-                $newName = 'ds_' . $doId . '_' . time() . '.' . $screenshotFile->getClientExtension();
-                $screenshotFile->move($uploadDir, $newName);
-                $updateData['delivery_screenshot'] = 'uploads/delivery-screenshots/' . $newName;
-            }
-
-            // Set the main status to 'delivered'
             $updateData['status'] = 'delivered';
 
             // Update SO status to delivered
@@ -1546,7 +1546,259 @@ class DeliveryOrders extends BaseController
         } catch (\Throwable $e) {
             log_message('error', 'DeliveryOrders.createShippingPoManual: ' . $e->getMessage());
             return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+
         }
     }
+
+            public function printView($doId = null)
+            {
+                $db = \Config\Database::connect();
+                $doModel = new \App\Models\DeliveryOrderModel();
+                $do = $doModel->findByPublicIdOrId($doId);
+                if (!$do) {
+                    return redirect()->back()->with('error', 'Delivery order not found');
+                }
+                $doId = (int)$do['id'];
+
+                $customer = [];
+                try {
+                    $customer = $db->table('customers')->where('id', (int)($do['customer_id'] ?? 0))->get()->getRowArray() ?: [];
+                } catch (\Throwable $_) {}
+
+                $lineModel = new \App\Models\DeliveryOrderLineModel();
+                $lines = $lineModel->where('delivery_order_id', $doId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
+
+                try {
+                    $productIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                        return isset($line['product_id']) ? (int) $line['product_id'] : null;
+                    }, $lines))));
+                    $variantIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                        if (isset($line['product_variant_id']) && $line['product_variant_id']) {
+                            return (int) $line['product_variant_id'];
+                        }
+                        return null;
+                    }, $lines))));
+
+                    $prodMap = [];
+                    $variantMap = [];
+
+                    if (!empty($productIds)) {
+                        $productModel = new \App\Models\ProductModel();
+                        $products = $productModel->whereIn('id', $productIds)->findAll();
+                        foreach ($products as $product) {
+                            $prodMap[(int) $product['id']] = $product;
+                        }
+                    }
+
+                    if (!empty($variantIds) && $db->tableExists('product_variants')) {
+                        try {
+                            $variants = $db->table('product_variants')
+                                ->select('id, product_id, art_number, name, image')
+                                ->whereIn('id', $variantIds)
+                                ->get()
+                                ->getResultArray();
+                            foreach ($variants as $variant) {
+                                $variantMap[(int) $variant['id']] = $variant;
+                            }
+                        } catch (\Throwable $_) {}
+                    }
+
+                    foreach ($lines as &$line) {
+                        $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
+                        $variantId = isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : null;
+
+                        if ($productId && isset($prodMap[$productId])) {
+                            $product = $prodMap[$productId];
+                            $line['product_name'] = $product['name'] ?? null;
+                            $line['product_code'] = $product['code'] ?? ($product['sku'] ?? null);
+                            $line['product_unit'] = $product['unit'] ?? null;
+                            $line['product_image'] = $product['image'] ?? null;
+                            $line['product_images'] = $product['images'] ?? null;
+                        }
+
+                        if ($variantId && isset($variantMap[$variantId])) {
+                            $variant = $variantMap[$variantId];
+                            $line['variant_code'] = $variant['art_number'] ?? null;
+                            $line['variant_name'] = $variant['name'] ?? null;
+                            $line['variant_image'] = $variant['image'] ?? null;
+                        }
+                    }
+                    unset($line);
+                } catch (\Throwable $_) {}
+
+                $company = (new \App\Models\CompanySettingsModel())->orderBy('id', 'DESC')->first() ?: [];
+                $printLines = [];
+                foreach ($lines as $line) {
+                    if (isset($line['display_type']) && $line['display_type'] === 'section') {
+                        continue;
+                    }
+                    $qty = (float) ($line['quantity'] ?? ($line['qty'] ?? 0));
+                    $price = (float) ($line['unit_price'] ?? 0);
+                    $storedTotal = isset($line['line_total']) ? (float) $line['line_total'] : 0.0;
+                    $total = $storedTotal > 0 ? $storedTotal : ($qty * $price);
+                    $code = trim((string) ($line['variant_code'] ?? ($line['product_code'] ?? '')));
+                    $desc = trim((string) ($line['variant_name'] ?? ($line['product_name'] ?? ($line['description'] ?? ''))));
+                    $unit = trim((string) ($line['product_unit'] ?? ($line['unit'] ?? '')));
+
+                    $imgSrc = '';
+                    $imageCandidates = [];
+                    foreach ([
+                        $line['variant_image'] ?? '',
+                        $line['product_image'] ?? '',
+                    ] as $imgRaw) {
+                        $imgRaw = trim((string) $imgRaw);
+                        if ($imgRaw === '') {
+                            continue;
+                        }
+                        $norm = ltrim($imgRaw, '/\\');
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $norm);
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'variants' . DIRECTORY_SEPARATOR . basename($norm);
+                        $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+                    }
+                    if (empty($imageCandidates) && !empty($line['product_images'])) {
+                        $images = is_string($line['product_images']) ? json_decode($line['product_images'], true) : $line['product_images'];
+                        if (is_array($images) && !empty($images[0])) {
+                            $norm = ltrim((string) $images[0], '/\\');
+                            $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+                        }
+                    }
+                    foreach (array_unique($imageCandidates) as $abs) {
+                        if (!is_file($abs)) {
+                            continue;
+                        }
+                        $raw = @file_get_contents($abs);
+                        if ($raw === false) {
+                            continue;
+                        }
+                        $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+                        $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'][$ext] ?? 'image/jpeg';
+                        $imgSrc = 'data:' . $mime . ';base64,' . base64_encode($raw);
+                        break;
+                    }
+
+                    $printLines[] = compact('code', 'desc', 'imgSrc', 'qty', 'price', 'total', 'unit');
+                }
+
+                $currency = strtoupper(trim((string) ($do['currency'] ?? 'USD')));
+                $symbols = ['USD' => '$', 'EUR' => '€', 'GBP' => '£', 'PKR' => '₨', 'INR' => '₹'];
+                $sym = $symbols[$currency] ?? $currency;
+                $fmt = fn($value) => $sym . ' ' . number_format((float) $value, 2);
+
+                $subtotal = (float) ($do['subtotal'] ?? 0);
+                $total = (float) ($do['total'] ?? 0);
+                $doNumber = esc($do['do_number'] ?? ('DO-' . $doId));
+                $doDate = '';
+                $rawDate = trim((string) ($do['delivery_date'] ?? ($do['created_at'] ?? '')));
+                if ($rawDate && strpos($rawDate, '0000') === false) {
+                    $ts = strtotime($rawDate);
+                    if ($ts) {
+                        $doDate = date('d-m-Y', $ts);
+                    }
+                }
+                $customerName = esc($customer['name'] ?? 'Customer');
+                $companyName = esc($company['name'] ?? '');
+
+                ob_start();
+                ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <title>Delivery Order <?= $doNumber ?></title>
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0}
+          body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;background:#f8fafc;padding:24px}
+          .grn-doc{max-width:1100px;margin:0 auto}
+          .grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border-radius:.75rem .75rem 0 0;padding:1.6rem 2rem 1.4rem;color:#fff;position:relative;overflow:hidden}
+          .grn-hero::after{content:'DO';position:absolute;right:-1rem;top:50%;transform:translateY(-50%);font-size:7rem;font-weight:900;opacity:.04;pointer-events:none;user-select:none;line-height:1}
+          .grn-doc-type{display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:2rem;padding:.22rem .8rem;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:.55rem}
+          .grn-hero-num{font-size:1.85rem;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:.25rem}
+          .grn-hero-sub{font-size:.82rem;color:rgba(255,255,255,.72)}
+          .grn-hero-actions{position:absolute;top:1.05rem;right:1.1rem;display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;max-width:56%}
+          .grn-hero-btn{display:inline-flex;align-items:center;gap:.34rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.24);border-radius:.42rem;padding:.34rem .7rem;font-size:.75rem;font-weight:700;color:rgba(255,255,255,.88);text-decoration:none;transition:background .15s,border-color .15s;cursor:pointer}
+          .grn-hero-btn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.42);color:#fff}
+          .grn-facts{background:#fff;border:1px solid #dee2e6;border-top:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+          .grn-fact{padding:.75rem 1rem;border-right:1px solid #dee2e6}.grn-fact:last-child{border-right:none}
+          .grn-fact-lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700;margin-bottom:.18rem}
+          .grn-fact-val{font-size:.95rem;font-weight:700;color:#1e293b}
+          .grn-sec{background:#fff;border:1px solid #dee2e6;border-top:none}
+          .grn-sec-hd{padding:.7rem 1.3rem;border-bottom:1px solid #dee2e6;display:flex;align-items:center;gap:.55rem;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6c757d}
+          .grn-sec-badge{margin-left:auto;background:#e0e7ff;color:#3730a3;border-radius:2rem;padding:.08rem .5rem;font-size:.68rem;font-weight:700}
+          .grn-body{padding:0 1.1rem 1rem}.grn-tbl{width:100%;border-collapse:collapse}
+          .grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:2px solid #dbe5f0;padding:.72rem .65rem;text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+          .grn-tbl tbody td{padding:.75rem .65rem;border-bottom:1px solid #eef2f7;vertical-align:middle;font-size:.84rem}.grn-tbl .r{text-align:right}
+          .prod-code{display:inline-flex;align-items:center;padding:.15rem .45rem;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:.72rem;font-weight:700}
+          .prod-thumb{width:42px;height:42px;object-fit:contain;border:1px solid #dbe5f0;border-radius:.35rem;background:#fff}
+          .no-img{font-size:.68rem;color:#94a3b8;border:1px dashed #cbd5e1;padding:.18rem .35rem;border-radius:.25rem;display:inline-block}
+          .desc-main{font-weight:700;color:#1e293b;line-height:1.45}
+          .totals{padding:1rem 1.1rem 1.2rem;display:flex;justify-content:flex-end;background:#fff;border:1px solid #dee2e6;border-top:none;border-radius:0 0 .75rem .75rem}
+          .totals table{width:280px;border-collapse:collapse}.totals td{padding:.33rem .2rem}.totals .lbl{color:#64748b;text-align:right;padding-right:.8rem}.totals .val{text-align:right}.totals .grand td{font-size:1.08rem;font-weight:700;border-top:2px solid #1e293b;padding-top:.55rem;color:#111827}
+          @media print{*{color-adjust:exact!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm;background:#fff!important;color:#1e293b!important}.no-print,.grn-hero-actions{display:none!important}.grn-doc{max-width:1100px!important;margin:0 auto!important}.grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)!important;border-radius:.75rem!important;color:#fff!important;border:1px solid #0a0f1a!important;page-break-inside:avoid!important}.grn-hero-num,.grn-hero-sub,.grn-doc-type{color:#fff!important}.grn-doc-type{background:rgba(255,255,255,.12)!important;border:1px solid rgba(255,255,255,.18)!important;color:#93c5fd!important}.grn-facts{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important;page-break-inside:avoid!important}.grn-fact{border-right:1px solid #dee2e6!important;background:#fff!important}.grn-fact-lbl{color:#64748b!important}.grn-fact-val{color:#1e293b!important}.grn-sec{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important}.grn-sec-hd{background:#f8fafc!important;color:#6c757d!important;border-bottom:1px solid #dee2e6!important}.grn-sec-badge{background:#e0e7ff!important;color:#3730a3!important;border-radius:2rem!important}.grn-body{background:#fff!important}.grn-tbl{width:100%!important;border-collapse:collapse!important;page-break-inside:avoid!important}.grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)!important;border-bottom:2px solid #dbe5f0!important;color:#64748b!important;text-align:left!important}.grn-tbl tbody td{border-bottom:1px solid #eef2f7!important;color:#1e293b!important;background:#fff!important}.grn-tbl tbody tr{background:#fff!important;page-break-inside:avoid!important}.prod-code{background:#eff6ff!important;border:1px solid #bfdbfe!important;color:#1d4ed8!important;border-radius:999px!important}.prod-thumb{border:1px solid #dbe5f0!important;background:#fff!important}.no-img{color:#94a3b8!important;border:1px dashed #cbd5e1!important;background:#fff!important}.desc-main{color:#1e293b!important;font-weight:700!important}.totals{background:#fff!important;border:1px solid #dee2e6!important;border-radius:.75rem!important;display:flex!important;justify-content:flex-end!important;page-break-inside:avoid!important}.totals table{border-collapse:collapse!important;width:280px!important}.totals td{color:#1e293b!important}.totals .lbl{color:#64748b!important}.totals .grand td{color:#111827!important;border-top:2px solid #1e293b!important;font-weight:700!important}table,thead,tbody,tr,td,th{page-break-inside:avoid!important;break-inside:avoid!important}}
+          @media(max-width:768px){body{padding:12px}.grn-hero{padding:1rem 1rem .9rem}.grn-hero-num{font-size:1.3rem}.grn-hero-actions{position:static;max-width:100%;margin-top:.7rem;justify-content:flex-start}.grn-facts{grid-template-columns:1fr 1fr}.grn-fact{padding:.5rem .6rem}.grn-body{padding:0}.grn-tbl{display:block;overflow-x:auto}}
+        </style>
+        </head>
+        <body>
+        <div class="grn-doc">
+          <div class="grn-hero">
+            <div class="grn-doc-type">Delivery Order</div>
+            <div class="grn-hero-num"><?= $doNumber ?></div>
+            <div class="grn-hero-sub"><?= $companyName ?></div>
+            <div class="grn-hero-actions no-print">
+              <button type="button" class="grn-hero-btn" onclick="window.print()">Print</button>
+              <button type="button" class="grn-hero-btn" onclick="window.close()">Close</button>
+            </div>
+          </div>
+
+          <div class="grn-facts">
+            <div class="grn-fact"><div class="grn-fact-lbl">Customer</div><div class="grn-fact-val"><?= $customerName ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Delivery Date</div><div class="grn-fact-val"><?= esc($doDate ?: '-') ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Currency</div><div class="grn-fact-val"><?= esc($currency) ?></div></div>
+            <div class="grn-fact"><div class="grn-fact-lbl">Lines</div><div class="grn-fact-val"><?= number_format(count($printLines), 0) ?></div></div>
+          </div>
+
+          <div class="grn-sec">
+            <div class="grn-sec-hd">Delivery Lines<span class="grn-sec-badge"><?= number_format(count($printLines), 0) ?></span></div>
+            <div class="grn-body">
+              <table class="grn-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:13%">Code</th>
+                    <th style="width:8%">Image</th>
+                    <th>Description</th>
+                    <th style="width:8%">Unit</th>
+                    <th class="r" style="width:8%">Qty</th>
+                    <th class="r" style="width:12%">Unit Price</th>
+                    <th class="r" style="width:12%">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($printLines as $line): ?>
+                  <tr>
+                    <td><span class="prod-code"><?= esc($line['code'] !== '' ? $line['code'] : '-') ?></span></td>
+                    <td><?php if ($line['imgSrc']): ?><img class="prod-thumb" src="<?= $line['imgSrc'] ?>" alt=""><?php else: ?><span class="no-img">No Img</span><?php endif ?></td>
+                    <td><div class="desc-main"><?= esc($line['desc'] !== '' ? $line['desc'] : '-') ?></div></td>
+                    <td><?= esc($line['unit'] !== '' ? $line['unit'] : '-') ?></td>
+                    <td class="r"><?= number_format($line['qty'], 2) ?></td>
+                    <td class="r"><?= esc($fmt($line['price'])) ?></td>
+                    <td class="r"><?= esc($fmt($line['total'])) ?></td>
+                  </tr>
+                  <?php endforeach ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="totals">
+            <table>
+              <tr><td class="lbl">Subtotal</td><td class="val"><?= esc($fmt($subtotal > 0 ? $subtotal : $total)) ?></td></tr>
+              <tr class="grand"><td class="lbl">Total</td><td class="val"><?= esc($fmt($total)) ?></td></tr>
+            </table>
+          </div>
+        </div>
+        </body>
+        </html>
+                <?php
+                return $this->response->setBody(ob_get_clean())->setHeader('Content-Type', 'text/html; charset=utf-8');
+            }
 }
 

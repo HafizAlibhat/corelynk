@@ -26,6 +26,7 @@ Request for Quotation
   </div>
   <div class="card-body">
     <div id="rfqMessage"></div>
+    <div class="d-flex justify-content-end mb-2" data-doc-line-toolbar></div>
     <div id="rfqContainer">Loading RFQ...</div>
   </div>
 </div>
@@ -125,7 +126,8 @@ Request for Quotation
         }
       }
 
-      let html = `<div class="table-responsive"><table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;"><thead><tr style="white-space:nowrap;">
+      let html = `<div class="table-responsive" data-doc-lines-root><table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;" data-doc-line-type="purchase_rfq" data-doc-id="${id}"><thead><tr style="white-space:nowrap;">
+        <th style="width:4%" class="text-center">No.</th>
         <th style="width:8%">Code</th>
         <th style="width:5%">Image</th>
         <th style="width:28%">Product / Description</th>
@@ -136,7 +138,17 @@ Request for Quotation
       </tr></thead><tbody>`;
 
       let computedSubtotal = 0, computedTotalTax = 0, computedDiscount = 0, computedGrand = 0;
-      (lines || []).forEach(ln=>{
+      let lineNo = 0;
+      let activeSectionId = 0;
+      let activeSectionSubtotal = 0;
+      (lines || []).forEach((ln, idx)=>{
+        const isSection = String(ln.display_type || 'line').toLowerCase() === 'section';
+
+        if (isSection) {
+          return;
+        }
+
+        lineNo++;
         const qty = parseNumber(ln.qty);
         const unit_price = parseNumber(ln.unit_price);
         const discPct = parseNumber(ln.discount_percent);
@@ -152,15 +164,17 @@ Request for Quotation
         computedTotalTax += taxAmount;
         computedGrand += lineTotal;
 
+
         const img = ln.product_image_url || '<?= base_url('assets/images/no-image.png') ?>';
         const code = ln.product_code || ln.product_id || '';
         const lineName = ln.product_name || '';
         const lineDesc = ln.description || '';
         let lineText = lineName || lineDesc || (code ? code : '—');
 
-        html += `<tr>`;
-        html += `<td>${code}</td>`;
-        html += `<td><img src="${img}" alt="" style="width:46px;height:36px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'"></td>`;
+        html += `<tr data-line-id="${ln.id || ''}" data-display-type="line" data-line-updated-at="${ln.updated_at || ''}">`;
+        html += `<td class="text-center text-muted">${lineNo}</td>`;
+        html += `<td><span class="doc-drag-handle me-1" title="Drag line" style="cursor:grab;opacity:.65;"><i class="bi bi-grip-vertical"></i></span>${code}</td>`;
+        html += `<td><img src="${img}" alt="" class="js-product-hover-thumb" data-preview-src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>')"></td>`;
         html += `<td><div class="fw-semibold" style="line-height:1.2;">${lineText}</div>`;
         if (lineDesc && lineDesc !== lineText) {
           html += `<div class="text-muted" style="font-size:0.8rem; line-height:1.2;">${lineDesc}</div>`;
@@ -169,8 +183,9 @@ Request for Quotation
         html += `<td>${ln.unit || 'pcs'}</td>`;
         html += `<td class="text-end">${fmt(qty)}</td>`;
         html += `<td class="text-end">${fmt(unit_price)}</td>`;
-        html += `<td class="text-end">${fmt(lineTotal)}</td>`;
+        html += `<td class="text-end"><span>${fmt(lineTotal)}</span></td>`;
         html += `</tr>`;
+
       });
       html += `</tbody></table></div>`;
 
@@ -209,13 +224,16 @@ Request for Quotation
       html += `<div class="mt-4"><label class="form-label"><strong>Notes</strong></label><textarea class="form-control form-control-sm" rows="3" readonly>${(r.notes||'')}</textarea></div>`;
       container.innerHTML = html;
 
-      document.getElementById('printBtn').addEventListener('click', function(){ window.print(); });
+      document.getElementById('printBtn').addEventListener('click', function(){
+        window.open('<?= site_url('new-purchase-rfqs/') ?>' + id + '/print', '_blank');
+      });
     } catch (e) {
       showError(e.message||'Failed to load RFQ');
     }
   })();
 })();
 </script>
+<script src="<?= base_url('assets/js/document_line_tools.js') ?>"></script>
 
 <!-- ── Activity Log Panel ───────────────────────────────────────────── -->
 <div class="document-log-panel mt-5" id="documentActivityLog"

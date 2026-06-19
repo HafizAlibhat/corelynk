@@ -20,6 +20,8 @@ class RoleDataAccessModel extends Model
         'isolate_quotations',
         'isolate_sales_orders',
         'isolate_purchase_orders',
+        'product_hide_services',
+        'product_allowed_categories',
         'created_at',
         'updated_at',
     ];

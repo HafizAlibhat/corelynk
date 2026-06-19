@@ -31,19 +31,6 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
     background: #f1f5f9;
     border-radius: 8px;
 }
-
-.so-prep-wrap {
-    border-color: #dbeafe !important;
-}
-
-.so-prep-header {
-    background: #eff6ff;
-}
-
-.so-prep-item {
-    background: #f8fafc;
-    border-color: #e2e8f0 !important;
-}
 /* Hide discount and tax columns by default */
 .so-lines-table .col-disc,
 .so-lines-table .col-tax {
@@ -91,20 +78,6 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
 [data-bs-theme="dark"] .so-totals-box {
     background: #101827;
 }
-
-[data-bs-theme="dark"] .so-prep-wrap {
-    border-color: #334155 !important;
-}
-
-[data-bs-theme="dark"] .so-prep-header {
-    background: #162033;
-    border-bottom: 1px solid #334155;
-}
-
-[data-bs-theme="dark"] .so-prep-item {
-    background: #1f2937;
-    border-color: #334155 !important;
-}
 </style>
 <?php
     $customerLabel = $customer['name'] ?? $order['customer_name'] ?? $order['customer_code'] ?? ($order['customer_id'] ?? '');
@@ -125,13 +98,6 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
     $fmtMoney = function($val) use ($symbol) {
         return $symbol . number_format((float)$val, 2);
     };
-    $fmtShipmentWeight = static function($kg) {
-        $kg = max(0.0, (float)$kg);
-        if ($kg >= 1) {
-            return number_format($kg, 3) . ' kg';
-        }
-        return number_format($kg * 1000, 0) . ' g';
-    };
 
     // Build address/contact block
     $addrLines = [];
@@ -151,93 +117,22 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
     if (!is_array($missingVendorItems)) {
         $missingVendorItems = [];
     }
-
-    $soStatus = strtolower((string)($order['status'] ?? ''));
-    $doStatus = strtolower((string)($existingDo['status'] ?? ''));
-    $isFulfillmentClosed = in_array($soStatus, ['delivered', 'closed'], true) || $doStatus === 'delivered';
-    $isShipped = $soStatus === 'shipped' || $doStatus === 'shipped';
 ?>
 
-<style>
-.status-ribbon-wrapper {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    width: 110px;
-    height: 110px;
-    overflow: hidden;
-    z-index: 100;
-    pointer-events: none;
-    border-top-right-radius: var(--bs-card-border-radius);
-}
-.status-ribbon {
-    position: absolute;
-    top: 22px;
-    right: -25px;
-    font-weight: 700;
-    text-transform: uppercase;
-    text-align: center;
-    line-height: 25px;
-    width: 150px;
-    display: block;
-    transform: rotate(45deg);
-    color: white;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-    letter-spacing: 1px;
-    font-size: 0.75rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4);
-}
-.ribbon-delivered .status-ribbon {
-    background: linear-gradient(135deg, #22c55e 0%, #166534 100%);
-    border-top: 2px solid #4ade80;
-    border-bottom: 2px solid #064e3b;
-}
-.ribbon-shipped .status-ribbon {
-    background: linear-gradient(135deg, #f97316 0%, #9a3412 100%);
-    border-top: 2px solid #fb923c;
-    border-bottom: 2px solid #7c2d12;
-}
-
-/* Offset for the buttons to prevent ribbon overlap */
-@media (min-width: 768px) {
-    .ribbon-offset {
-        margin-right: 60px !important;
-    }
-}
-@media (max-width: 767px) {
-    .status-ribbon-wrapper {
-        border-top-right-radius: 0;
-    }
-    .ribbon-offset {
-        width: 100%;
-        justify-content: flex-start !important;
-        margin-top: 15px;
-    }
-}
-</style>
-
-<div class="card" style="position: relative; overflow: hidden;">
-    <?php if ($isFulfillmentClosed || $isShipped): ?>
-        <div class="status-ribbon-wrapper <?= $isFulfillmentClosed ? 'ribbon-delivered' : 'ribbon-shipped' ?>">
-            <div class="status-ribbon">
-                <?= $isFulfillmentClosed ? 'Delivered' : 'Shipped' ?>
-            </div>
-        </div>
-    <?php endif; ?>
+<div class="card">
     <div class="card-header section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h3 class="section-title mb-0">Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?></h3>
             <?php $fmtDate = !empty($order['order_date']) ? date('d-m-Y', strtotime($order['order_date'])) : ''; ?>
             <div class="section-sub">Date: <?= esc($fmtDate) ?></div>
         </div>
-        <div class="d-flex align-items-center flex-wrap gap-2 ms-auto <?= ($isFulfillmentClosed || $isShipped) ? 'ribbon-offset' : '' ?>">
-            <?php if ($isFulfillmentClosed): ?>
-                <span class="badge bg-secondary" style="text-transform:uppercase; min-width:120px; text-align:center;">Status: Closed</span>
-            <?php elseif (!empty($order['status'])): ?>
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            <?php if (!empty($order['status'])): ?>
                 <span class="badge bg-success" style="text-transform:uppercase; min-width:120px; text-align:center;">Status: <?= esc($order['status']) ?></span>
             <?php endif; ?>
 
             <!-- Order Progress button (always visible on confirmed orders) -->
+            <?php $soStatus = strtolower($order['status'] ?? ''); ?>
             <?php if (in_array($soStatus, ['confirmed','shipped','delivered','processing'], true)): ?>
                 <button type="button" class="btn btn-sm btn-outline-info" id="btnOrderProgress"
                     data-so-id="<?= (int)$order['id'] ?>"
@@ -248,7 +143,7 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
 
             <!-- DO button: smart — show View/Draft/Create based on existingDo -->
             <?php if (!empty($existingDo)): ?>
-                <?php if (in_array($existingDo['status'] ?? '', ['confirmed','delivered'], true)): ?>
+                <?php if (in_array($existingDo['status'] ?? '', ['confirmed','shipped','delivered'], true)): ?>
                     <a href="<?= site_url('delivery-orders/view/' . (int)$existingDo['id']) ?>" class="btn btn-sm btn-success">
                         <i class="bi bi-truck me-1"></i>View DO (<?= esc($existingDo['do_number'] ?? '') ?>)
                     </a>
@@ -325,9 +220,33 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                             </a>
                         </li>
                     <?php endif; ?>
+
+                    <li>
+                        <a class="dropdown-item" href="<?= site_url('sales-orders/pdf/' . (!empty($order['public_id']) ? $order['public_id'] : (int)$order['id'])) ?>" target="_blank">
+                            <i class="bi bi-file-pdf text-danger me-2"></i>Download Sales Order PDF
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="<?= site_url('sales-orders/print/' . (!empty($order['public_id']) ? $order['public_id'] : (int)$order['id'])) ?>" target="_blank" rel="noopener">
+                            <i class="bi bi-printer me-2"></i>Print Sales Order
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="<?= site_url('sales-orders/warehouse-document/' . (!empty($order['public_id']) ? $order['public_id'] : (int)$order['id'])) ?>" target="_blank">
+                            <i class="bi bi-box-seam text-warning me-2"></i>Download Warehouse PDF
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="<?= site_url('sales-orders/warehouse-print/' . (!empty($order['public_id']) ? $order['public_id'] : (int)$order['id'])) ?>" target="_blank" rel="noopener">
+                            <i class="bi bi-printer text-warning me-2"></i>Print Warehouse Pick List
+                        </a>
+                    </li>
                     
                     <!-- Auto-PO Creation (only if shortage exists) -->
-                    <?php if (!$isFulfillmentClosed && !empty($hasShortage) && $hasShortage === true): ?>
+                    <?php if (!empty($hasShortage) && $hasShortage === true): ?>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <h6 class="dropdown-header text-warning">
@@ -365,7 +284,7 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
         </div>
 
         <!-- Phase-1: Stock Readiness Alert -->
-        <?php if (!$isFulfillmentClosed && !empty($hasShortage) && $hasShortage === true): ?>
+        <?php if (!empty($hasShortage) && $hasShortage === true): ?>
         <div class="alert alert-info alert-dismissible fade show d-flex align-items-center gap-2 mb-3 py-2 px-3" style="border-left: 3px solid #0284c7; background: #e0f2fe; border: none;">
             <i class="bi bi-info-circle-fill" style="font-size:1rem; color:#0284c7; flex-shrink:0;"></i>
             <div style="flex:1; font-size:0.9rem; color:#075985;">
@@ -379,7 +298,7 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
         </div>
         <?php endif; ?>
 
-        <?php if (!$isFulfillmentClosed && !empty($missingVendorItems)): ?>
+        <?php if (!empty($missingVendorItems)): ?>
         <div class="alert alert-warning mb-3" style="border-left:3px solid #f59e0b;">
             <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Vendor assignment required before auto RFQ generation</div>
             <div class="small mb-2">Assign a vendor to each product below, then click Auto-Create RFQ Drafts again.</div>
@@ -396,242 +315,6 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                     </li>
                 <?php endforeach; ?>
             </ul>
-        </div>
-        <?php endif; ?>
-
-        <?php if (!$isFulfillmentClosed && !empty($hasPreparationPlans)): ?>
-        <div class="card mb-3 border so-prep-wrap">
-            <div class="card-header so-prep-header">
-                <h5 class="mb-0">Preparation Status</h5>
-            </div>
-            <div class="card-body">
-                <?php foreach (($lines ?? []) as $planLine): ?>
-                    <?php $plan = $planLine['preparation_plan'] ?? null; ?>
-                    <?php if (empty($plan) || empty($plan['show_panel'])) continue; ?>
-
-                    <div class="border rounded p-3 mb-3 so-prep-item">
-                        <?php $sendNotes = $vendorSendNotesByProduct[(int) ($plan['product_id'] ?? 0)] ?? []; ?>
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                            <div class="fw-semibold">
-                                <?= esc($plan['product_name'] ?? ($planLine['product_name'] ?? 'Product')) ?>
-                                <span class="text-muted">x <?= number_format((float) ($plan['requested_qty'] ?? 0), 2) ?></span>
-                            </div>
-                            <div class="small text-muted">Available: <?= number_format((float) ($plan['available_qty'] ?? 0), 2) ?></div>
-                        </div>
-
-                        <?php if (!empty($sendNotes)): ?>
-                            <div class="mb-3">
-                                <div class="fw-semibold mb-2">Vendor Receiving + QC</div>
-                                <div class="d-flex flex-wrap gap-2">
-                                    <?php foreach ($sendNotes as $note): ?>
-                                        <a href="<?= site_url('vendor-receive/' . (int) ($note['id'] ?? 0)) ?>" class="btn btn-sm btn-outline-secondary">
-                                            Receive <?= esc($note['reference_no'] ?? 'Send Note') ?>
-                                            (Remaining: <?= number_format((float) ($note['remaining_qty'] ?? 0), 4) ?>)
-                                        </a>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <div class="mb-3">
-                            <div class="fw-semibold mb-2">Materials Needed</div>
-                            <?php if (($plan['status'] ?? '') === 'no_profile'): ?>
-                                <div class="text-muted small">No preparation profile found for this product.</div>
-                            <?php elseif (empty($plan['materials'])): ?>
-                                <div class="text-muted small">No materials listed for this preparation profile.</div>
-                            <?php else: ?>
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-bordered mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Material</th>
-                                                <th class="text-end">Available / Required</th>
-                                                <th style="width:110px;">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach (($plan['materials'] ?? []) as $material): ?>
-                                                <?php $isMissing = (($material['status'] ?? '') === 'missing'); ?>
-                                                <tr>
-                                                    <td><?= esc($material['name'] ?? '-') ?></td>
-                                                    <td class="text-end">
-                                                        <?= number_format((float) ($material['available_qty'] ?? 0), 4) ?> /
-                                                        <?= number_format((float) ($material['required_qty'] ?? 0), 4) ?>
-                                                    </td>
-                                                    <td>
-                                                        <?php if ($isMissing): ?>
-                                                            <span class="text-danger">❌ Missing</span>
-                                                        <?php else: ?>
-                                                            <span class="text-success">✔ OK</span>
-                                                        <?php endif; ?>
-                                                    </td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="fw-semibold mb-2">Steps to Prepare</div>
-                            <?php if (($plan['status'] ?? '') === 'no_profile'): ?>
-                                <div class="text-muted small">Cannot show steps because no profile is available.</div>
-                            <?php elseif (empty($plan['steps'])): ?>
-                                <div class="text-muted small">No steps listed for this preparation profile.</div>
-                            <?php else: ?>
-                                <ul class="list-group">
-                                    <?php foreach (($plan['steps'] ?? []) as $step): ?>
-                                        <?php
-                                            $stepStatus = (string) ($step['status'] ?? 'blocked');
-                                            $icon = '❌';
-                                            $label = 'Blocked';
-                                            if ($stepStatus === 'ready') {
-                                                $icon = '✔';
-                                                $label = 'Ready';
-                                            } elseif ($stepStatus === 'waiting') {
-                                                $icon = '⏳';
-                                                $label = 'Waiting';
-                                            }
-                                        ?>
-                                        <li class="list-group-item d-flex justify-content-between align-items-start">
-                                            <div>
-                                                <div class="fw-semibold">
-                                                    <?= (int) ($step['step_order'] ?? 0) ?>. <?= esc($step['name'] ?? 'Step') ?>
-                                                </div>
-                                                <?php if (!empty($step['reason'])): ?>
-                                                    <div class="small text-muted"><?= esc($step['reason']) ?></div>
-                                                <?php endif; ?>
-                                            </div>
-                                            <div class="ms-2 <?= $stepStatus === 'blocked' ? 'text-danger' : ($stepStatus === 'waiting' ? 'text-warning' : 'text-success') ?>">
-                                                <?= esc($icon . ' ' . $label) ?>
-                                            </div>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            <?php endif; ?>
-                        </div>
-
-                        <?php if (($plan['status'] ?? '') !== 'no_profile' && !empty($plan['steps'])): ?>
-                            <div class="row g-3 mb-3">
-                                <div class="col-lg-6">
-                                    <div class="border rounded p-3 h-100 bg-white">
-                                        <div class="fw-semibold mb-2">Send to Vendor</div>
-                                        <form method="post" action="<?= site_url('sales-orders/preparation/send-to-vendor') ?>">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="sales_order_id" value="<?= (int) ($order['id'] ?? 0) ?>">
-                                            <input type="hidden" name="sales_order_line_id" value="<?= (int) ($planLine['id'] ?? 0) ?>">
-                                            <input type="hidden" name="product_id" value="<?= (int) ($plan['product_id'] ?? 0) ?>">
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Select Step</label>
-                                                <select class="form-select form-select-sm" name="step_id" required>
-                                                    <option value="">Select Step</option>
-                                                    <?php foreach (($plan['steps'] ?? []) as $stepOpt): ?>
-                                                        <option value="<?= (int) ($stepOpt['id'] ?? 0) ?>" <?= (($stepOpt['status'] ?? '') === 'blocked') ? 'disabled' : '' ?>>
-                                                            <?= (int) ($stepOpt['step_order'] ?? 0) ?>. <?= esc($stepOpt['name'] ?? 'Step') ?>
-                                                            <?php if (($stepOpt['status'] ?? '') === 'blocked'): ?> (Blocked)<?php endif; ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Select Vendor</label>
-                                                <select class="form-select form-select-sm" name="vendor_id" required>
-                                                    <option value="">Select Vendor</option>
-                                                    <?php foreach (($prepVendors ?? []) as $v): ?>
-                                                        <option value="<?= (int) ($v['id'] ?? 0) ?>"><?= esc($v['name'] ?? '-') ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-
-                                            <div class="row g-2 mb-2">
-                                                <div class="col-6">
-                                                    <label class="form-label mb-1">From Location</label>
-                                                    <select class="form-select form-select-sm" name="from_location_id" required>
-                                                        <option value="">Select</option>
-                                                        <?php foreach (($prepLocations ?? []) as $loc): ?>
-                                                            <option value="<?= (int) ($loc['id'] ?? 0) ?>"><?= esc(($loc['warehouse_name'] ?? '-') . ' - ' . ($loc['name'] ?? '-')) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </div>
-                                                <div class="col-6">
-                                                    <label class="form-label mb-1">To Location</label>
-                                                    <select class="form-select form-select-sm" name="to_location_id" required>
-                                                        <option value="">Select</option>
-                                                        <?php foreach (($prepLocations ?? []) as $loc): ?>
-                                                            <option value="<?= (int) ($loc['id'] ?? 0) ?>"><?= esc(($loc['warehouse_name'] ?? '-') . ' - ' . ($loc['name'] ?? '-')) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Enter Qty</label>
-                                                <input type="number" class="form-control form-control-sm" name="qty" min="0.0001" step="0.0001" value="<?= esc(number_format((float) ($plan['requested_qty'] ?? 0), 4, '.', '')) ?>" required>
-                                            </div>
-
-                                            <button type="submit" class="btn btn-sm btn-outline-primary">Send to Vendor</button>
-                                        </form>
-                                    </div>
-                                </div>
-
-                                <div class="col-lg-6">
-                                    <div class="border rounded p-3 h-100 bg-white">
-                                        <div class="fw-semibold mb-2">Start In-house Work</div>
-                                        <form method="post" action="<?= site_url('sales-orders/preparation/start-inhouse') ?>">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="sales_order_id" value="<?= (int) ($order['id'] ?? 0) ?>">
-                                            <input type="hidden" name="sales_order_line_id" value="<?= (int) ($planLine['id'] ?? 0) ?>">
-                                            <input type="hidden" name="product_id" value="<?= (int) ($plan['product_id'] ?? 0) ?>">
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Select Step</label>
-                                                <select class="form-select form-select-sm" name="step_id" required>
-                                                    <option value="">Select Step</option>
-                                                    <?php foreach (($plan['steps'] ?? []) as $stepOpt): ?>
-                                                        <option value="<?= (int) ($stepOpt['id'] ?? 0) ?>" <?= (($stepOpt['status'] ?? '') === 'blocked') ? 'disabled' : '' ?>>
-                                                            <?= (int) ($stepOpt['step_order'] ?? 0) ?>. <?= esc($stepOpt['name'] ?? 'Step') ?>
-                                                            <?php if (($stepOpt['status'] ?? '') === 'blocked'): ?> (Blocked)<?php endif; ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Location</label>
-                                                <select class="form-select form-select-sm" name="location_id" required>
-                                                    <option value="">Select Location</option>
-                                                    <?php foreach (($prepLocations ?? []) as $loc): ?>
-                                                        <option value="<?= (int) ($loc['id'] ?? 0) ?>"><?= esc(($loc['warehouse_name'] ?? '-') . ' - ' . ($loc['name'] ?? '-')) ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <label class="form-label mb-1">Enter Qty</label>
-                                                <input type="number" class="form-control form-control-sm" name="qty" min="0.0001" step="0.0001" value="<?= esc(number_format((float) ($plan['requested_qty'] ?? 0), 4, '.', '')) ?>" required>
-                                            </div>
-
-                                            <button type="submit" class="btn btn-sm btn-outline-success">Start In-house Work</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if (!empty($plan['has_missing_materials'])): ?>
-                            <div>
-                                <div class="fw-semibold mb-2">Suggested Actions</div>
-                                <a href="<?= site_url('newpurchaseui/rfqs') ?>" class="btn btn-sm btn-outline-primary">
-                                    Buy Materials
-                                </a>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
         </div>
         <?php endif; ?>
 
@@ -690,7 +373,7 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                                     <?= esc($code) ?>
                                 <?php endif; ?>
                             </td>
-                            <td><img src="<?= esc($img) ?>" alt="" style="width:46px;height:36px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'"></td>
+                            <td><img src="<?= esc($img) ?>" alt="" class="js-product-hover-thumb" data-preview-src="<?= esc($img) ?>" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>');"></td>
                             <td>
                                 <div class="fw-semibold" style="line-height:1.2;">
                                     <?php if ($productUrl): ?>
@@ -722,18 +405,14 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                                 $shippedQty = isset($l['shipped_qty']) ? (float)$l['shipped_qty'] : 0;
                             ?>
                             <td class="text-end">
-                                <?php if ($isFulfillmentClosed): ?>
-                                    <span class="text-muted">—</span>
-                                <?php elseif ($isStockable): ?>
+                                <?php if ($isStockable): ?>
                                     <?= number_format($available, 2) ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-end <?= ($shortage > 0) ? 'text-danger fw-semibold' : '' ?>" title="<?php if ($shortage > 0): ?>Remaining: <?= number_format($requiredQty, 2) ?>, Shipped: <?= number_format($shippedQty, 2) ?>, Available: <?= number_format($available, 2) ?>, Shortage: <?= number_format($shortage, 2) ?><?php endif; ?>">
-                                <?php if ($isFulfillmentClosed): ?>
-                                    <span class="text-muted">—</span>
-                                <?php elseif ($isStockable): ?>
+                                <?php if ($isStockable): ?>
                                     <?php if ($shortage > 0): ?>
                                         <span>−<?= number_format($shortage, 2) ?></span>
                                     <?php else: ?>
@@ -761,18 +440,18 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                                 }
                             ?>
                             <td class="text-end" title="<?= esc($poTooltip) ?>" style="<?= $hasPoDetails ? 'cursor:help;' : '' ?>">
-                                <?= $isFulfillmentClosed ? '—' : ($incomingQty > 0 ? number_format($incomingQty, 2) : '—') ?>
+                                <?= $incomingQty > 0 ? number_format($incomingQty, 2) : '—' ?>
                             </td>
                             <td class="text-end" style="<?= $receivedQty > 0 ? 'color:#28a745;font-weight:bold;' : '' ?>">
-                                <?= $isFulfillmentClosed ? '—' : ($receivedQty > 0 ? number_format($receivedQty, 2) : '—') ?>
+                                <?= $receivedQty > 0 ? number_format($receivedQty, 2) : '—' ?>
                             </td>
                             <td class="text-end" style="<?= $pendingQty > 0 ? 'color:#ffc107;font-weight:bold;' : '' ?>">
-                                <?= $isFulfillmentClosed ? '—' : ($pendingQty > 0 ? number_format($pendingQty, 2) : '—') ?>
+                                <?= $pendingQty > 0 ? number_format($pendingQty, 2) : '—' ?>
                             </td>
 
                             <?php $readyQty = isset($l['ready_qty']) ? (float)$l['ready_qty'] : 0; ?>
                             <td class="text-end" style="<?= $readyQty > 0 ? 'color:#16a34a;font-weight:bold;' : '' ?>">
-                                <?= $isFulfillmentClosed ? '—' : ($readyQty > 0 ? number_format($readyQty, 2) : '—') ?>
+                                <?= $readyQty > 0 ? number_format($readyQty, 2) : '—' ?>
                             </td>
                             
                             <td class="text-end fw-semibold"><?= esc($fmtMoney($l['line_total'] ?? 0)) ?></td>
@@ -808,13 +487,17 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                         <tr>
                             <td class="text-muted">Est. Shipment Weight</td>
                             <td class="text-end" title="Calculated from product unit weight x remaining quantity to ship">
-                                <?= esc($fmtShipmentWeight($estimatedShipmentWeightKg ?? 0)) ?>
+                                <?php if (isset($estimatedShipmentWeightKg) && (float)$estimatedShipmentWeightKg > 0): ?>
+                                    <?= number_format((float)$estimatedShipmentWeightKg, 2) ?> kg
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php if (!empty($orderedWeightKg) && (float)$orderedWeightKg > 0 && (float)$orderedWeightKg !== (float)($estimatedShipmentWeightKg ?? 0)): ?>
                         <tr>
                             <td class="text-muted">Ordered Weight</td>
-                            <td class="text-end text-muted"><?= esc($fmtShipmentWeight($orderedWeightKg)) ?></td>
+                            <td class="text-end text-muted"><?= number_format((float)$orderedWeightKg, 2) ?> kg</td>
                         </tr>
                         <?php endif; ?>
                         <tr>

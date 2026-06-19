@@ -71,6 +71,7 @@ abstract class BaseController extends Controller
 
         // E.g.: $this->session = service('session');
         $this->session = \Config\Services::session();
+        $this->applyConfiguredTimezone();
 
         // When auth is disabled, ensure session mimics a logged-in user
         if ($this->authDisabled) {
@@ -100,6 +101,88 @@ abstract class BaseController extends Controller
         
         // Set CSRF protection for all forms
         $this->setCsrfSettings();
+    }
+
+    /**
+     * Apply the configured application timezone to PHP and the active MySQL session.
+     */
+    protected function applyConfiguredTimezone(): void
+    {
+        $timezone = $this->resolveConfiguredTimezone();
+        if ($timezone === '') {
+            return;
+        }
+
+        try {
+            if (@date_default_timezone_set($timezone)) {
+                @ini_set('date.timezone', $timezone);
+                try {
+                    $appConfig = config('App');
+                    if (property_exists($appConfig, 'appTimezone')) {
+                        $appConfig->appTimezone = $timezone;
+                    }
+                } catch (\Throwable $_) {
+                    // best effort
+                }
+            }
+        } catch (\Throwable $_) {
+            // best effort
+        }
+
+        try {
+            $db = \Config\Database::connect();
+            $offset = (new \DateTimeImmutable('now', new \DateTimeZone($timezone)))->format('P');
+            $db->query('SET time_zone = ?', [$offset]);
+        } catch (\Throwable $_) {
+            // best effort
+        }
+    }
+
+    /**
+     * Resolve company timezone with safe fallbacks.
+     */
+    protected function resolveConfiguredTimezone(): string
+    {
+        static $resolved = null;
+        if (is_string($resolved) && $resolved !== '') {
+            return $resolved;
+        }
+
+        $fallback = 'Asia/Karachi';
+        try {
+            $appConfig = config('App');
+            $candidate = trim((string)($appConfig->appTimezone ?? ''));
+            if ($candidate !== '' && in_array($candidate, timezone_identifiers_list(), true)) {
+                $fallback = $candidate;
+            }
+        } catch (\Throwable $_) {
+            // keep fallback
+        }
+
+        try {
+            $db = \Config\Database::connect();
+            if ($db->tableExists('company_settings')) {
+                $cols = $db->getFieldNames('company_settings') ?: [];
+                if (in_array('timezone', $cols, true)) {
+                    $row = $db->table('company_settings')
+                        ->select('timezone')
+                        ->orderBy('id', 'DESC')
+                        ->limit(1)
+                        ->get()
+                        ->getRowArray();
+                    $candidate = trim((string)($row['timezone'] ?? ''));
+                    if ($candidate !== '' && in_array($candidate, timezone_identifiers_list(), true)) {
+                        $resolved = $candidate;
+                        return $resolved;
+                    }
+                }
+            }
+        } catch (\Throwable $_) {
+            // keep fallback
+        }
+
+        $resolved = $fallback;
+        return $resolved;
     }
 
     /**

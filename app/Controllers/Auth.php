@@ -492,9 +492,11 @@ class Auth extends BaseController
         }
 
         $roleModel = new \App\Models\RoleModel();
-        return view('auth/register', $this->setPageData([
+        return view('admin/user_form', $this->setPageData([
             'page_title' => 'Register User – CoreLynk',
-            'roles'      => $roleModel->findAll(),
+            'user'       => null,
+            'userRoles'  => [],
+            'allRoles'   => $roleModel->findAll(),
         ]));
     }
 
@@ -517,9 +519,11 @@ class Auth extends BaseController
 
         if (!$this->validate($rules)) {
             $roleModel = new \App\Models\RoleModel();
-            return view('auth/register', $this->setPageData([
+            return view('admin/user_form', $this->setPageData([
                 'page_title' => 'Register User – CoreLynk',
-                'roles'      => $roleModel->findAll(),
+                'user'       => null,
+                'userRoles'  => [],
+                'allRoles'   => $roleModel->findAll(),
                 'validation' => \Config\Services::validation(),
             ]));
         }

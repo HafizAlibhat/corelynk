@@ -308,6 +308,12 @@ class Admin extends BaseController
         ]);
 
         $permIds = array_map('intval', (array) ($this->request->getPost('permission_ids') ?: []));
+        if ($this->request->getPost('products_sensitive_overview')) {
+            $p = $permModel->where('module', 'products')->where('action', 'sensitive_overview')->first();
+            if (!empty($p['id'])) {
+                $permIds[] = (int)$p['id'];
+            }
+        }
         if ($newId && !empty($permIds)) {
             $roleModel->syncPermissions($newId, $permIds);
         }
@@ -354,6 +360,13 @@ class Admin extends BaseController
         ]);
 
         $permIds = array_map('intval', (array) ($this->request->getPost('permission_ids') ?: []));
+        if ($this->request->getPost('products_sensitive_overview')) {
+            $permModel = new PermissionModel();
+            $p = $permModel->where('module', 'products')->where('action', 'sensitive_overview')->first();
+            if (!empty($p['id'])) {
+                $permIds[] = (int)$p['id'];
+            }
+        }
         $roleModel->syncPermissions($id, $permIds);
 
         AuditLogModel::record('role_updated', (int) $this->session->get('user_id'), 'roles', $id, [
@@ -438,13 +451,27 @@ class Admin extends BaseController
             'isolate_quotations' => 0,
             'isolate_sales_orders' => 0,
             'isolate_purchase_orders' => 0,
+            'product_hide_services' => 0,
+            'product_allowed_categories' => '',
         ];
         $settings = array_merge($defaults, $existing ?: []);
+
+        // Product categories for the category-restriction picker
+        $categoryModel = new \App\Models\ProductCategoryModel();
+        $productCategories = $categoryModel->where('is_active', true)->orderBy('name')->findAll();
+
+        // Parse saved category IDs into an array for the view
+        $savedCategoryIds = array_filter(
+            array_map('intval', explode(',', (string) ($settings['product_allowed_categories'] ?? ''))),
+            fn($v) => $v > 0
+        );
 
         return view('admin/data_access', $this->setPageData([
             'page_title' => 'Data Access: ' . $role['name'] . ' - CoreLynk',
             'role' => $role,
             'settings' => $settings,
+            'productCategories' => $productCategories,
+            'savedCategoryIds' => array_values($savedCategoryIds),
         ]));
     }
 
@@ -471,6 +498,11 @@ class Admin extends BaseController
             'isolate_quotations' => $this->request->getPost('isolate_quotations') ? 1 : 0,
             'isolate_sales_orders' => $this->request->getPost('isolate_sales_orders') ? 1 : 0,
             'isolate_purchase_orders' => $this->request->getPost('isolate_purchase_orders') ? 1 : 0,
+            'product_hide_services' => $this->request->getPost('product_hide_services') ? 1 : 0,
+            'product_allowed_categories' => implode(',', array_filter(
+                array_map('intval', (array) ($this->request->getPost('product_allowed_categories') ?? [])),
+                fn($v) => $v > 0
+            )),
         ];
 
         $ok = $model->upsertForRole($roleId, $payload);

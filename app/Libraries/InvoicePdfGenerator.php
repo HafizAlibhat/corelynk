@@ -69,7 +69,7 @@ class InvoicePdfGenerator
             $data['customerAddress'] = $payload['customerAddress'];
         }
 
-        foreach (['document_title', 'document_number_label', 'document_date_label', 'document_prefix', 'party_label', 'hide_company_logo', 'hide_company_website', 'pdf_show_header_address', 'pdf_show_footer'] as $metaKey) {
+        foreach (['document_title', 'document_number_label', 'document_date_label', 'document_prefix', 'party_label', 'hide_company_logo', 'hide_company_website', 'pdf_show_header_address', 'pdf_show_footer', 'warehouse_customer_number'] as $metaKey) {
             if (array_key_exists($metaKey, $payload)) {
                 $data[$metaKey] = $payload[$metaKey];
             }
@@ -167,6 +167,8 @@ class InvoicePdfGenerator
             'professional_gray' => 'pdf/templates/professional_gray',
             'bold_red' => 'pdf/templates/bold_red',
             'elegant_purple' => 'pdf/templates/elegant_purple',
+            // Warehouse pick-list is always forced to its own template regardless of company settings
+            'warehouse_picklist' => 'pdf/invoice_warehouse_picklist',
         ];
         
         $templateView = $templateMap[$pdfTemplate] ?? $templateMap['default'];

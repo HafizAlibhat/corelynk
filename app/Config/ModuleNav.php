@@ -22,7 +22,6 @@ return [
         'icon' => 'bi-boxes',
         'submodules' => [
             ['label' => 'Products',       'icon' => 'bi-box-seam',        'route' => '/products',              'perm' => 'products.read'],
-            ['label' => 'Product Assets', 'icon' => 'bi-images',          'route' => '/product-assets',        'perm' => 'products.read'],
             ['label' => 'Stock',          'icon' => 'bi-boxes',           'route' => '/inventory/stock',        'perm' => 'inventory.read'],
             ['label' => 'Components',     'icon' => 'bi-tools',           'route' => '/components',             'perm' => 'inventory.read'],
             ['label' => 'Attributes',     'icon' => 'bi-list-ul',         'route' => '/product-attributes',     'perm' => 'products.read'],
@@ -38,7 +37,6 @@ return [
             ['label' => 'Goods Receipt Notes',  'icon' => 'bi-box-seam',          'route' => '/newpurchaseui/grn',                    'perm' => 'grn.read'],
             ['label' => 'GRN List',             'icon' => 'bi-journal-text',      'route' => '/new-purchase-grns/list',               'perm' => 'grn.read'],
             ['label' => 'Vendor Bills',          'icon' => 'bi-receipt',           'route' => '/vendor-bills',                         'perm' => 'vendors.read'],
-            ['label' => 'Vendor Receiving + QC', 'icon' => 'bi-clipboard-check',   'route' => '/vendor-receive',                       'perm' => 'grn.read'],
             ['label' => 'Subcontracting',        'icon' => 'bi-building-gear',     'route' => '/subcontract-orders',                   'perm' => 'purchase_orders.read'],
             ['label' => 'Gate Passes',           'icon' => 'bi-door-open',         'route' => '/gate_passes',                          'perm' => 'work_orders.read'],
         ],

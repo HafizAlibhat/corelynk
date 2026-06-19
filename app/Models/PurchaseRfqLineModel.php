@@ -14,6 +14,6 @@ class PurchaseRfqLineModel extends Model
     // Add per-line discount/tax fields and line_total
     protected $allowedFields = [
         'rfq_id','product_id','product_variant_id','description','qty','quantity','unit_price','unit_cost',
-        'discount','discount_percent','tax_percent','tax_amount','line_total','created_at'
+        'discount','discount_percent','tax_percent','tax_amount','line_total','created_at','display_type','section_title','sort_order','updated_at'
     ];
 }

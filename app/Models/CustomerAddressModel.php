@@ -10,7 +10,7 @@ class CustomerAddressModel extends Model
     protected $primaryKey = 'id';
     protected $returnType = 'array';
     protected $allowedFields = [
-        'customer_id', 'line1', 'line2', 'city_id', 'state_id', 'country_id', 'city_name', 'state_name', 'postal_code', 'is_billing', 'is_shipping'
+        'customer_id', 'line1', 'line2', 'city_id', 'state_id', 'country_id', 'city_name', 'state_name', 'postal_code', 'is_billing', 'is_shipping', 'is_default', 'label'
     ];
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';

@@ -32,6 +32,24 @@
               <div class="col-md-2">
                 <input type="text" name="currency_code" value="PKR" class="form-control form-control-sm" />
               </div>
+              <div class="col-md-2">
+                <input type="number" step="0.01" min="0" name="shipping_amount" value="0" class="form-control form-control-sm" placeholder="Shipping" />
+              </div>
+              <div class="col-md-2">
+                <select name="document_discount_type" class="form-select form-select-sm">
+                  <option value="fixed">Doc Fixed</option>
+                  <option value="percent">Doc %</option>
+                </select>
+              </div>
+              <div class="col-md-1">
+                <input type="number" step="0.01" min="0" name="document_discount_value" value="0" class="form-control form-control-sm" placeholder="Disc" />
+              </div>
+              <div class="col-md-12">
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="po_discount_exclude_shipping" name="discount_exclude_shipping" value="1" checked>
+                  <label class="form-check-label" for="po_discount_exclude_shipping">Exclude shipping from document discount</label>
+                </div>
+              </div>
               <div class="col-12">
                 <div class="border rounded p-2 bg-light">
                   <small class="text-muted">Lines (enter at least one):</small>
@@ -40,6 +58,13 @@
                       <div class="col-md-4"><input type="text" name="lines[0][description]" placeholder="Description" class="form-control form-control-sm" /></div>
                       <div class="col-md-2"><input type="number" step="0.001" min="0" name="lines[0][qty]" placeholder="Qty" class="form-control form-control-sm" /></div>
                       <div class="col-md-2"><input type="number" step="0.01" min="0" name="lines[0][unit_price]" placeholder="Unit Price" class="form-control form-control-sm" /></div>
+                      <div class="col-md-2 d-flex gap-1">
+                        <select name="lines[0][discount_type]" class="form-select form-select-sm">
+                          <option value="percent">%</option>
+                          <option value="fixed">Fix</option>
+                        </select>
+                        <input type="number" step="0.01" min="0" name="lines[0][discount_value]" placeholder="Disc" class="form-control form-control-sm" />
+                      </div>
                       <div class="col-md-2 pt-1"><button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="addLine()">+</button></div>
                     </div>
                   </div>
@@ -59,6 +84,13 @@
                   <div class="col-md-4"><input type="text" name="lines[${lineIndex}][description]" placeholder="Description" class="form-control form-control-sm" /></div>
                   <div class="col-md-2"><input type="number" step="0.001" min="0" name="lines[${lineIndex}][qty]" placeholder="Qty" class="form-control form-control-sm" /></div>
                   <div class="col-md-2"><input type="number" step="0.01" min="0" name="lines[${lineIndex}][unit_price]" placeholder="Unit Price" class="form-control form-control-sm" /></div>
+                  <div class="col-md-2 d-flex gap-1">
+                    <select name="lines[${lineIndex}][discount_type]" class="form-select form-select-sm">
+                      <option value="percent">%</option>
+                      <option value="fixed">Fix</option>
+                    </select>
+                    <input type="number" step="0.01" min="0" name="lines[${lineIndex}][discount_value]" placeholder="Disc" class="form-control form-control-sm" />
+                  </div>
                   <div class="col-md-2 pt-1"><button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="this.closest('.line').remove()">-</button></div>
                 `;
                 container.appendChild(div);

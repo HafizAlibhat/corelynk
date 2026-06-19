@@ -1,53 +1,62 @@
-#-------------------------
-# Operating Specific Junk Files
-#-------------------------
+# ==========================================================
 
-# OS X
+# Corelynk .gitignore
+
+# ==========================================================
+
+# -------------------------
+
+# OS Files
+
+# -------------------------
+
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# OS X Thumbnails
 ._*
 
-# Windows image file caches
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# Recycle Bin used on file shares
 $RECYCLE.BIN/
 
-# Windows Installer files
 *.cab
 *.msi
 *.msm
 *.msp
 
-# Windows shortcuts
 *.lnk
 
-# Linux
 *~
 
-# KDE directory preferences
 .directory
 
-# Linux trash folder which might appear on any partition or disk
 .Trash-*
 
-#-------------------------
+# -------------------------
+
 # Environment Files
-#-------------------------
-# These should never be under version control,
-# as it poses a security risk.
+
+# -------------------------
+
 .env
+.env.*
+
+!.env.example
+
 .vagrant
 Vagrantfile
 
-#-------------------------
-# Temporary Files
-#-------------------------
+env/
+production.env
+
+# -------------------------
+
+# Writable Directories
+
+# -------------------------
+
 writable/cache/*
 !writable/cache/index.html
 
@@ -63,64 +72,152 @@ writable/uploads/*
 writable/debugbar/*
 !writable/debugbar/index.html
 
+writable/backups/
+
+writable/sync-reports/
+
+writable/*.txt
+
+# -------------------------
+
+# Uploads
+
+# -------------------------
+
+public/uploads/
+
+# -------------------------
+
+# Temporary Files
+
+# -------------------------
+
 php_errors.log
 
-#-------------------------
-# User Guide Temp Files
-#-------------------------
+_tmp*
+
+tmp/
+
+cookiejar.txt
+
+# -------------------------
+
+# Backup Files
+
+# -------------------------
+
+backup/
+
+backups/
+
+# -------------------------
+
+# Database Dumps
+
+# -------------------------
+
+*.sql.gz
+
+# -------------------------
+
+# User Guide
+
+# -------------------------
+
 user_guide_src/build/*
+
 user_guide_src/cilexer/build/*
+
 user_guide_src/cilexer/dist/*
+
 user_guide_src/cilexer/pycilexer.egg-info/*
 
-#-------------------------
+# -------------------------
+
 # Test Files
-#-------------------------
+
+# -------------------------
+
 tests/coverage*
 
-# Don't save phpunit under version control.
 phpunit
 
-#-------------------------
+# -------------------------
+
 # Composer
-#-------------------------
+
+# -------------------------
+
 vendor/
 
-#-------------------------
-# IDE / Development Files
-#-------------------------
+# -------------------------
 
-# Modules Testing
+# IDE Files
+
+# -------------------------
+
 _modules/*
 
-# phpenv local config
 .php-version
 
-# Jetbrains editors (PHPStorm, etc)
 .idea/
+
 *.iml
 
-# NetBeans
 /nbproject/
+
 /build/
+
 /nbbuild/
+
 /dist/
+
 /nbdist/
+
 /nbactions.xml
+
 /nb-configuration.xml
+
 /.nb-gradle/
 
-# Sublime Text
 *.tmlanguage.cache
+
 *.tmPreferences.cache
+
 *.stTheme.cache
+
 *.sublime-workspace
+
 *.sublime-project
+
 .phpintel
+
 /api/
 
-# Visual Studio Code
 .vscode/
 
 /results/
+
 /phpunit*.xml
+
+# -------------------------
+
+# Docker Overrides
+
+# -------------------------
+
+docker-compose.override.yml
+
+# -------------------------
+
+# Never Commit Debug Files
+
+# -------------------------
+
+app/Config/Routes.php.corrupt_backup
+
+database/debug_queries.sql
+
+debug_*.php
+
+test.php

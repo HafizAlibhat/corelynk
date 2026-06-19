@@ -11,6 +11,8 @@
     $custNext = (int)($customer_counter ?? 1);
     $vendorPrefix = esc($vendor_code_prefix ?? ($company['vendor_code_prefix'] ?? 'VEN'));
     $vendorNext = (int)($vendor_counter ?? 1);
+    $companyTimezone = trim((string)($company['timezone'] ?? '')) ?: 'Asia/Karachi';
+    $timezoneOptions = is_array($timezone_options ?? null) ? $timezone_options : ['Asia/Karachi' => 'Asia/Karachi (UTC+05:00)'];
 ?>
 <style>
 /* ── Settings Page ── */
@@ -227,6 +229,8 @@
                 <div class="st-nav-divider"></div>
                 <div class="st-nav-group-label">System</div>
                 <a href="#" data-section="security"><i class="bi bi-shield-lock"></i>Security</a>
+                <a href="#" data-section="backups"><i class="bi bi-safe2"></i>Backups</a>
+                <a href="#" data-section="sync"><i class="bi bi-diagram-3"></i>Sync</a>
                 <a href="#" data-section="odoo"><i class="bi bi-box-seam"></i>Odoo</a>
                 <div class="st-nav-divider"></div>
                 <div class="st-nav-group-label">Mobile</div>
@@ -239,6 +243,31 @@
 
             <!-- ─── COMPANY ─── -->
             <div class="settings-section active" id="section-company">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-images"></i>Product Assets Upload Limits</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/saveProductAssetUploadSettings') ?>" class="row g-2 align-items-end">
+                            <?= csrf_field() ?>
+                            <div class="col-md-4">
+                                <label class="compact-label">Raw Images Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_raw_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_raw_max_mb ?? 1000) ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Final Files Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_final_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_final_max_mb ?? 500) ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Channel Request Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_channel_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_channel_max_mb ?? 2500) ?>" required>
+                            </div>
+                            <div class="col-12 d-flex justify-content-between align-items-center">
+                                <small class="text-muted">Global limits for Product Assets raw, final, and channel uploads.</small>
+                                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Upload Limits</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <div class="settings-card">
                     <div class="settings-card-header"><i class="bi bi-building"></i>Company Information</div>
                     <div class="settings-card-body">
@@ -268,6 +297,15 @@
                             <div class="col-md-3">
                                 <label class="compact-label">Website</label>
                                 <input type="text" class="form-control form-control-sm" name="website" value="<?= esc($company['website'] ?? '') ?>" placeholder="e.g. www.company.com">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Application Timezone</label>
+                                <select name="timezone" class="form-select form-select-sm">
+                                    <?php foreach ($timezoneOptions as $tzValue => $tzLabel): ?>
+                                        <option value="<?= esc($tzValue) ?>" <?= $companyTimezone === $tzValue ? 'selected' : '' ?>><?= esc($tzLabel) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Used for PHP dates, printed times, and MySQL session time.</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="compact-label">PDF Footer Text</label>
@@ -567,6 +605,7 @@
                     </form>
                     </div>
                 </div>
+
             </div>
 
             <!-- ─── NUMBERING ─── -->
@@ -1086,6 +1125,376 @@
                 </div>
             </div>
 
+            <!-- ─── BACKUPS ─── -->
+            <div class="settings-section" id="section-backups">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-safe2"></i>Backup Center</div>
+                    <div class="settings-card-body">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-lg-7">
+                                <form method="post" action="<?= site_url('settings/createBackup') ?>" class="row g-2 align-items-end" id="createBackupForm">
+                                    <?= csrf_field() ?>
+                                    <div class="col-md-4">
+                                        <label class="compact-label">Backup Type</label>
+                                        <select name="backup_type" class="form-select form-select-sm">
+                                            <option value="full">Full backup</option>
+                                            <option value="db_only">Database only</option>
+                                            <option value="code_only">Application only</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="p-2 rounded border bg-light small text-muted">
+                                            Full backups include the application snapshot, SQL dump, manifest, checksum, and zip integrity verification.
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <button class="btn btn-sm btn-primary" id="createBackupButton"><i class="bi bi-download me-1"></i>Create Backup</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-lg-5">
+                                <div class="p-3 rounded border h-100 small">
+                                    <div class="fw-semibold mb-2">Scheduler runner</div>
+                                    <div class="text-muted mb-2">Run due schedules with the CLI command below from Windows Task Scheduler.</div>
+                                    <div class="bg-dark text-light rounded p-2" style="font-family:monospace; font-size:.8rem;">php spark system:backup --run-schedules</div>
+                                    <div class="text-muted mt-2">Restore always creates a safety backup first. Full restore applies both database and application files from the selected archive.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-clock-history"></i>Backup Schedules</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/saveBackupSchedule') ?>" class="row g-2 align-items-end mb-3">
+                            <?= csrf_field() ?>
+                            <div class="col-md-3">
+                                <label class="compact-label">Name</label>
+                                <input type="text" name="name" class="form-control form-control-sm" placeholder="Nightly full backup" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Backup Type</label>
+                                <select name="backup_type" class="form-select form-select-sm">
+                                    <option value="full">Full</option>
+                                    <option value="db_only">DB only</option>
+                                    <option value="code_only">Code only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Frequency</label>
+                                <select name="frequency_type" class="form-select form-select-sm">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="interval">Interval</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Time</label>
+                                <input type="time" name="time_of_day" class="form-control form-control-sm" value="02:00">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Day</label>
+                                <select name="day_of_week" class="form-select form-select-sm">
+                                    <option value="0">Sun</option>
+                                    <option value="1" selected>Mon</option>
+                                    <option value="2">Tue</option>
+                                    <option value="3">Wed</option>
+                                    <option value="4">Thu</option>
+                                    <option value="5">Fri</option>
+                                    <option value="6">Sat</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Every</label>
+                                <input type="number" min="5" step="5" name="interval_minutes" class="form-control form-control-sm" value="60">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Keep</label>
+                                <input type="number" min="1" name="retention_count" class="form-control form-control-sm" value="5">
+                            </div>
+                            <div class="col-md-12 d-flex justify-content-between align-items-center">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="is_active" value="1" id="backupScheduleActive" checked>
+                                    <label class="form-check-label small" for="backupScheduleActive">Active schedule</label>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Schedule</button>
+                            </div>
+                        </form>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Frequency</th>
+                                        <th>Next Run</th>
+                                        <th>Retention</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($backup_schedules ?? []) as $schedule): ?>
+                                        <tr>
+                                            <td class="fw-semibold"><?= esc($schedule['name'] ?? '') ?></td>
+                                            <td><?= esc(strtoupper((string) ($schedule['backup_type'] ?? ''))) ?></td>
+                                            <td><?= esc(ucfirst((string) ($schedule['frequency_type'] ?? ''))) ?></td>
+                                            <td><?= esc($schedule['next_run_at'] ?? 'Pending') ?></td>
+                                            <td><?= (int) ($schedule['retention_count'] ?? 0) ?></td>
+                                            <td>
+                                                <span class="badge <?= !empty($schedule['is_active']) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' ?>">
+                                                    <?= !empty($schedule['is_active']) ? 'Active' : 'Paused' ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($backup_schedules)): ?>
+                                        <tr><td colspan="6" class="text-muted">No backup schedules defined yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-archive"></i>Recent Backups</div>
+                    <div class="settings-card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Health</th>
+                                        <th>Size</th>
+                                        <th>Archive</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($backup_jobs ?? []) as $job): ?>
+                                        <?php $health = strtolower((string) ($job['health_status'] ?? 'pending')); ?>
+                                        <tr>
+                                            <td><?= esc($job['created_at'] ?? '') ?></td>
+                                            <td><?= esc(strtoupper((string) ($job['backup_type'] ?? ''))) ?></td>
+                                            <td><?= esc(ucfirst((string) ($job['status'] ?? ''))) ?></td>
+                                            <td>
+                                                <span class="badge <?= $health === 'verified' ? 'bg-success-subtle text-success' : ($health === 'warning' ? 'bg-warning-subtle text-warning' : ($health === 'failed' ? 'bg-danger-subtle text-danger' : 'bg-secondary-subtle text-secondary')) ?>">
+                                                    <?= esc(ucfirst($health)) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <?php $size = (int) ($job['archive_size_bytes'] ?? 0); ?>
+                                                <?= $size > 0 ? number_format($size / 1048576, 2) . ' MB' : 'N/A' ?>
+                                            </td>
+                                            <td>
+                                                <div class="fw-semibold"><?= esc($job['archive_name'] ?? 'Pending') ?></div>
+                                                <?php if (!empty($job['archive_sha256'])): ?>
+                                                    <div class="text-muted" style="font-size:.72rem;"><?= esc(substr((string) $job['archive_sha256'], 0, 16)) ?>...</div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-1 flex-wrap align-items-start">
+                                                    <?php if (!empty($job['archive_path'])): ?>
+                                                        <a href="<?= site_url('settings/downloadBackup/' . $job['public_id']) ?>" class="btn btn-sm btn-outline-primary">Download</a>
+                                                        <form method="post" action="<?= site_url('settings/verifyBackup/' . $job['public_id']) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <button class="btn btn-sm btn-outline-secondary">Verify</button>
+                                                        </form>
+                                                        <?php if (($job['status'] ?? '') === 'completed'): ?>
+                                                            <form method="post" action="<?= site_url('settings/restoreBackup/' . $job['public_id']) ?>" class="d-flex gap-1 flex-wrap align-items-center restore-backup-form" data-backup-type="<?= esc((string) ($job['backup_type'] ?? '')) ?>">
+                                                                <?= csrf_field() ?>
+                                                                <select name="restore_mode" class="form-select form-select-sm" style="width:auto">
+                                                                    <option value="db_only">Restore DB</option>
+                                                                    <?php if (($job['backup_type'] ?? '') === 'full'): ?>
+                                                                        <option value="full">Restore Full</option>
+                                                                    <?php endif; ?>
+                                                                </select>
+                                                                <input type="hidden" name="restore_confirmation" value="">
+                                                                <button class="btn btn-sm btn-outline-danger">Restore</button>
+                                                            </form>
+                                                        <?php endif; ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">No file</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if (!empty($job['error_message'])): ?>
+                                                    <div class="text-danger mt-1" style="font-size:.72rem;"><?= esc($job['error_message']) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($backup_jobs)): ?>
+                                        <tr><td colspan="7" class="text-muted">No backups created yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── SYNC ─── -->
+            <div class="settings-section" id="section-sync">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-diagram-3"></i>Environment Profiles</div>
+                    <div class="settings-card-body">
+                        <div class="small text-muted mb-3">Define source and destination environments for read-only diff scans and controlled updates.</div>
+                        <?php foreach (($sync_environments ?? []) as $env): ?>
+                            <form method="post" action="<?= site_url('settings/saveSyncEnvironment') ?>" class="row g-2 align-items-end mb-3 p-2 border rounded">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="environment_id" value="<?= (int) ($env['id'] ?? 0) ?>">
+                                <div class="col-md-2">
+                                    <label class="compact-label">Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="<?= esc($env['name'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="compact-label">App Path</label>
+                                    <input type="text" class="form-control form-control-sm" name="app_path" value="<?= esc($env['app_path'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="compact-label">DB Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_name" value="<?= esc($env['db_name'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">Host</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_host" value="<?= esc($env['db_host'] ?? '127.0.0.1') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">Port</label>
+                                    <input type="number" class="form-control form-control-sm" name="db_port" value="<?= (int) ($env['db_port'] ?? 3306) ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">DB User</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_user" value="<?= esc($env['db_user'] ?? 'root') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">DB Password</label>
+                                    <input type="password" class="form-control form-control-sm" name="db_password" value="<?= esc($env['db_password'] ?? '') ?>">
+                                </div>
+                                <div class="col-md-1 d-flex align-items-center">
+                                    <div class="form-check mt-3">
+                                        <input class="form-check-input" type="checkbox" name="is_active" value="1" <?= !empty($env['is_active']) ? 'checked' : '' ?>>
+                                    </div>
+                                </div>
+                                <div class="col-md-12 d-flex justify-content-end">
+                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Profile</button>
+                                </div>
+                            </form>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-search"></i>Scan Differences</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/runSyncScan') ?>" class="row g-2 align-items-end" id="syncScanForm">
+                            <?= csrf_field() ?>
+                            <div class="col-md-4">
+                                <label class="compact-label">Source Environment</label>
+                                <select class="form-select form-select-sm" name="source_environment_id" required>
+                                    <option value="">Select source</option>
+                                    <?php foreach (($sync_environments ?? []) as $env): ?>
+                                        <?php if (!empty($env['is_active'])): ?>
+                                            <option value="<?= (int) ($env['id'] ?? 0) ?>"><?= esc(($env['name'] ?? '') . ' (' . ($env['db_name'] ?? '') . ')') ?></option>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Destination Environment</label>
+                                <select class="form-select form-select-sm" name="destination_environment_id" required>
+                                    <option value="">Select destination</option>
+                                    <?php foreach (($sync_environments ?? []) as $env): ?>
+                                        <?php if (!empty($env['is_active'])): ?>
+                                            <option value="<?= (int) ($env['id'] ?? 0) ?>"><?= esc(($env['name'] ?? '') . ' (' . ($env['db_name'] ?? '') . ')') ?></option>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-2 rounded border bg-light small text-muted">Scan is read-only and reports file and schema differences. No data rows are changed.</div>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-sm btn-primary" id="runSyncScanButton"><i class="bi bi-search me-1"></i>Run Scan</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-list-check"></i>Recent Sync Scans</div>
+                    <div class="settings-card-body">
+                        <div class="alert alert-warning py-2 small mb-3"><i class="bi bi-exclamation-triangle me-1"></i>Create and verify a backup before pressing Apply. Apply only copies changed system files and executes safe schema-only SQL (no row data copy).</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Flow</th>
+                                        <th>Summary</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($sync_scans ?? []) as $scan): ?>
+                                        <?php
+                                            $summary = json_decode((string) ($scan['summary_json'] ?? ''), true);
+                                            $sourceLabel = '';
+                                            $destinationLabel = '';
+                                            foreach (($sync_environments ?? []) as $envLabel) {
+                                                if ((int) ($envLabel['id'] ?? 0) === (int) ($scan['source_env_id'] ?? 0)) $sourceLabel = (string) ($envLabel['name'] ?? '');
+                                                if ((int) ($envLabel['id'] ?? 0) === (int) ($scan['destination_env_id'] ?? 0)) $destinationLabel = (string) ($envLabel['name'] ?? '');
+                                            }
+                                        ?>
+                                        <tr>
+                                            <td><?= esc($scan['created_at'] ?? '') ?></td>
+                                            <td><span class="fw-semibold"><?= esc($sourceLabel) ?></span> <i class="bi bi-arrow-right mx-1"></i> <span class="fw-semibold"><?= esc($destinationLabel) ?></span></td>
+                                            <td>
+                                                <?php if (is_array($summary)): ?>
+                                                    <div>Files: <?= (int) ($summary['file_copy_count'] ?? 0) ?></div>
+                                                    <div>SQL ops: <?= (int) (($summary['table_create_count'] ?? 0) + ($summary['column_add_count'] ?? 0) + ($summary['index_add_count'] ?? 0)) ?></div>
+                                                    <div class="text-muted">Manual review: <?= (int) ($summary['manual_review_count'] ?? 0) ?></div>
+                                                <?php else: ?>
+                                                    <span class="text-muted">No summary</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= ($scan['status'] ?? '') === 'applied' ? 'bg-success-subtle text-success' : 'bg-primary-subtle text-primary' ?>">
+                                                    <?= esc(ucfirst((string) ($scan['status'] ?? 'unknown'))) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-1 flex-wrap">
+                                                    <a href="<?= site_url('settings/downloadSyncReport/' . $scan['public_id']) ?>" class="btn btn-sm btn-outline-secondary">Report</a>
+                                                    <?php if (($scan['status'] ?? '') === 'scanned'): ?>
+                                                        <form method="post" action="<?= site_url('settings/applySyncScan/' . $scan['public_id']) ?>" class="sync-apply-form d-flex gap-1 align-items-center">
+                                                            <?= csrf_field() ?>
+                                                            <div class="form-check small mt-1">
+                                                                <input class="form-check-input" type="checkbox" name="backup_confirmed" value="1" required>
+                                                                <label class="form-check-label">Backup done</label>
+                                                            </div>
+                                                            <button class="btn btn-sm btn-outline-danger">Apply</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($sync_scans)): ?>
+                                        <tr><td colspan="5" class="text-muted">No sync scans yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
@@ -1171,19 +1580,31 @@
 (function(){
     var links = document.querySelectorAll('#settingsNav a[data-section]');
     var sections = document.querySelectorAll('.settings-section');
+    function activateSection(sectionName) {
+        links.forEach(function(l){ l.classList.remove('active'); });
+        sections.forEach(function(s){ s.classList.remove('active'); });
+        var activeLink = document.querySelector('#settingsNav a[data-section="' + sectionName + '"]');
+        var target = document.getElementById('section-' + sectionName);
+        if (activeLink) activeLink.classList.add('active');
+        if (target) target.classList.add('active');
+    }
     links.forEach(function(link){
         link.addEventListener('click', function(e){
             e.preventDefault();
-            links.forEach(function(l){ l.classList.remove('active'); });
-            sections.forEach(function(s){ s.classList.remove('active'); });
-            link.classList.add('active');
-            var target = document.getElementById('section-' + link.dataset.section);
-            if(target) target.classList.add('active');
+            activateSection(link.dataset.section);
+            if (history.replaceState) {
+                history.replaceState(null, '', '#'+link.dataset.section);
+            }
             // scroll content to top smoothly
             var right = document.querySelector('.col-lg-10');
             if(right) right.scrollIntoView({ behavior:'smooth', block:'nearest' });
         });
     });
+
+    var initial = (window.location.hash || '').replace('#', '');
+    if (initial && document.getElementById('section-' + initial)) {
+        activateSection(initial);
+    }
 })();
 
 // ─── Security Flag Toggles ───
@@ -1302,6 +1723,66 @@ document.getElementById('manualRefresh')?.addEventListener('click', function(e){
             if(d && d.ok) el.innerHTML = '<div class="text-success small">Done. Last run: '+(d.last_run||'')+'</div>';
             else el.innerHTML = '<div class="text-danger small">Reload failed</div>';
         }).catch(function(err){ btn.disabled=false; btn.innerHTML='<i class="bi bi-arrow-clockwise me-1"></i>Reload From Odoo'; document.getElementById('manualRefreshResult').innerHTML = '<div class="text-danger small">'+err.message+'</div>'; });
+});
+
+// ─── Backup Forms ───
+var createBackupForm = document.getElementById('createBackupForm');
+if (createBackupForm) {
+    createBackupForm.addEventListener('submit', function(e) {
+        var button = document.getElementById('createBackupButton');
+        if (button && button.disabled) {
+            e.preventDefault();
+            return;
+        }
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Creating...';
+        }
+    });
+}
+
+document.querySelectorAll('.restore-backup-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        var modeField = form.querySelector('select[name="restore_mode"]');
+        var confirmationField = form.querySelector('input[name="restore_confirmation"]');
+        var selectedMode = modeField ? modeField.value : 'db_only';
+        var typed = window.prompt('Type RESTORE to confirm ' + (selectedMode === 'full' ? 'full system restore' : 'database restore') + '. A safety backup will be created first.');
+        if (typed !== 'RESTORE') {
+            e.preventDefault();
+            return;
+        }
+        if (confirmationField) {
+            confirmationField.value = typed;
+        }
+    });
+});
+
+var syncScanForm = document.getElementById('syncScanForm');
+if (syncScanForm) {
+    syncScanForm.addEventListener('submit', function(e) {
+        var src = syncScanForm.querySelector('select[name="source_environment_id"]');
+        var dst = syncScanForm.querySelector('select[name="destination_environment_id"]');
+        if (src && dst && src.value !== '' && src.value === dst.value) {
+            e.preventDefault();
+            alert('Source and destination must be different.');
+            return;
+        }
+
+        var btn = document.getElementById('runSyncScanButton');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Scanning...';
+        }
+    });
+}
+
+document.querySelectorAll('.sync-apply-form').forEach(function(form){
+    form.addEventListener('submit', function(e){
+        var ok = confirm('Apply this scan now? This will copy changed system files and run safe schema SQL on destination.');
+        if (!ok) {
+            e.preventDefault();
+        }
+    });
 });
 
 // ─── Clean DB Select All ───

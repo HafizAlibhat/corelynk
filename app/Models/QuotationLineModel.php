@@ -8,7 +8,7 @@ class QuotationLineModel extends Model
     protected $table = 'quotation_lines';
     protected $primaryKey = 'id';
     protected $useTimestamps = false;
-    protected $allowedFields = ['quotation_id','product_id','product_variant_id','product_code','product_name','description','quantity','unit','unit_price','line_total','line_number','discount_type','discount_value','discount_amount','tax_rate','tax_amount','weight','unit_weight','weight_unit','vendor_id','cost_price','sale_price_currency','sort_order','base_amount','net_amount','product_image_url'];
+    protected $allowedFields = ['quotation_id','product_id','product_variant_id','product_code','product_name','description','quantity','unit','unit_price','line_total','line_number','discount_type','discount_value','discount_amount','tax_type','tax_value','tax_rate','tax_amount','weight','unit_weight','weight_unit','vendor_id','cost_price','sale_price_currency','sort_order','base_amount','net_amount','product_image_url','display_type','section_title','updated_at'];
 
     public function product()
     {
@@ -20,12 +20,16 @@ class QuotationLineModel extends Model
      */
     public function calculateLineTotal(array $line): array
     {
-        // Expected keys: quantity, unit_price, discount_type, discount_value, tax_rate
+        // Expected keys: quantity, unit_price, discount_type, discount_value, tax_type, tax_value
         $qty = (float)($line['quantity'] ?? 0);
         $price = (float)($line['unit_price'] ?? $line['price'] ?? 0);
         $discountType = $line['discount_type'] ?? 'percent';
         $discountValue = isset($line['discount_value']) ? (float)$line['discount_value'] : (isset($line['document_discount_value']) ? (float)$line['document_discount_value'] : 0.0);
-        $taxRate = isset($line['tax_rate']) ? (float)$line['tax_rate'] : (isset($line['tax']) ? (float)$line['tax'] : 0.0);
+        $taxType = strtolower((string)($line['tax_type'] ?? ($line['tax_mode'] ?? 'percent')));
+        if (!in_array($taxType, ['percent', 'fixed'], true)) {
+            $taxType = 'percent';
+        }
+        $taxValue = isset($line['tax_value']) ? (float)$line['tax_value'] : (isset($line['tax_rate']) ? (float)$line['tax_rate'] : (isset($line['tax']) ? (float)$line['tax'] : 0.0));
 
         // 1) Base amount
         $base = $qty * $price;
@@ -41,7 +45,7 @@ class QuotationLineModel extends Model
         $net = max(0, $base - $discountAmount);
 
         // 4) Tax on net amount
-        $taxAmount = $net * ($taxRate / 100.0);
+        $taxAmount = $taxType === 'fixed' ? $taxValue : ($net * ($taxValue / 100.0));
 
         // 5) Line total
         $lineTotal = $net + $taxAmount;
@@ -58,7 +62,9 @@ class QuotationLineModel extends Model
             'unit_price' => round($price, 2),
             'discount_value' => $discountValue,
             'discount_type' => $discountType,
-            'tax_rate' => $taxRate,
+            'tax_type' => $taxType,
+            'tax_value' => $taxValue,
+            'tax_rate' => $taxValue,
         ];
     }
 

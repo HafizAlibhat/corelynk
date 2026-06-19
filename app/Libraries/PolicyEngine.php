@@ -113,7 +113,22 @@ class PolicyEngine
     public function can(string $module, string $action = 'read'): bool
     {
         if ($this->isAdmin) return true;
-        return isset($this->permSlugs[$module . '.' . $action]);
+        if (isset($this->permSlugs[$module . '.' . $action])) {
+            return true;
+        }
+
+        // Backward-compatibility bridge:
+        // some legacy roles were granted products.* but not product_assets.*.
+        // Allow equivalent access for product asset routes without changing data.
+        if ($module === 'product_assets') {
+            $productAction = $action;
+            if ($action === 'view') {
+                $productAction = 'read';
+            }
+            return isset($this->permSlugs['products.' . $productAction]);
+        }
+
+        return false;
     }
 
     /**

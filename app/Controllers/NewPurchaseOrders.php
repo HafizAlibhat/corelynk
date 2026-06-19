@@ -14,6 +14,143 @@ use App\Libraries\InvoicePdfGenerator;
 
 class NewPurchaseOrders extends BaseController
 {
+    /**
+     * Validate that products with variants are not saved as template-only lines.
+     *
+     * @param array $lines
+     * @return array{missing: array<int,array<string,mixed>>, invalid: array<int,array<string,mixed>>}
+     */
+    private function validateVariantSelections(array $lines): array
+    {
+        $issues = ['missing' => [], 'invalid' => []];
+        if (empty($lines)) {
+            return $issues;
+        }
+
+        $productIds = [];
+        $variantIds = [];
+        foreach ($lines as $ln) {
+            if (!is_array($ln)) {
+                continue;
+            }
+            $pid = isset($ln['product_id']) ? (int)$ln['product_id'] : 0;
+            $vid = isset($ln['variant_id']) ? (int)$ln['variant_id'] : (isset($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : 0);
+            if ($pid > 0) {
+                $productIds[] = $pid;
+            }
+            if ($vid > 0) {
+                $variantIds[] = $vid;
+            }
+        }
+
+        $productIds = array_values(array_unique($productIds));
+        $variantIds = array_values(array_unique($variantIds));
+        if (empty($productIds)) {
+            return $issues;
+        }
+
+        $db = Database::connect();
+        $variantRequiredMap = [];
+        $variantOwners = [];
+        $productLabels = [];
+
+        try {
+            if ($db->tableExists('products')) {
+                $rows = $db->table('products')->select('id, name, code')->whereIn('id', $productIds)->get()->getResultArray();
+                foreach ($rows as $row) {
+                    $pid = (int)($row['id'] ?? 0);
+                    if ($pid <= 0) {
+                        continue;
+                    }
+                    $label = trim((string)($row['name'] ?? ''));
+                    if ($label === '') {
+                        $label = trim((string)($row['code'] ?? ''));
+                    }
+                    $productLabels[$pid] = $label !== '' ? $label : ('Product #' . $pid);
+                }
+            }
+
+            if ($db->tableExists('product_variants')) {
+                $rows = $db->table('product_variants')
+                    ->select('product_id, COUNT(*) AS cnt')
+                    ->whereIn('product_id', $productIds)
+                    ->groupBy('product_id')
+                    ->get()
+                    ->getResultArray();
+                foreach ($rows as $row) {
+                    $pid = (int)($row['product_id'] ?? 0);
+                    $cnt = (int)($row['cnt'] ?? 0);
+                    if ($pid > 0 && $cnt > 0) {
+                        $variantRequiredMap[$pid] = true;
+                    }
+                }
+
+                if (!empty($variantIds)) {
+                    $ownerRows = $db->table('product_variants')->select('id, product_id')->whereIn('id', $variantIds)->get()->getResultArray();
+                    foreach ($ownerRows as $row) {
+                        $vid = (int)($row['id'] ?? 0);
+                        if ($vid > 0) {
+                            $variantOwners[$vid] = (int)($row['product_id'] ?? 0);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $_) {
+            return $issues;
+        }
+
+        foreach ($lines as $idx => $ln) {
+            if (!is_array($ln)) {
+                continue;
+            }
+            $pid = isset($ln['product_id']) ? (int)$ln['product_id'] : 0;
+            $vid = isset($ln['variant_id']) ? (int)$ln['variant_id'] : (isset($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : 0);
+            if ($pid <= 0) {
+                continue;
+            }
+
+            $label = (string)($productLabels[$pid] ?? ('Product #' . $pid));
+            if (!empty($variantRequiredMap[$pid]) && $vid <= 0) {
+                $issues['missing'][] = [
+                    'line_no' => (int)$idx + 1,
+                    'label' => $label,
+                ];
+                continue;
+            }
+
+            if ($vid > 0) {
+                $ownerPid = isset($variantOwners[$vid]) ? (int)$variantOwners[$vid] : 0;
+                if ($ownerPid <= 0 || $ownerPid !== $pid) {
+                    $issues['invalid'][] = [
+                        'line_no' => (int)$idx + 1,
+                        'label' => $label,
+                    ];
+                }
+            }
+        }
+
+        return $issues;
+    }
+
+    private function buildVariantValidationMessage(array $issues): string
+    {
+        $parts = [];
+        if (!empty($issues['missing'])) {
+            $labels = array_values(array_unique(array_map(static fn($x) => (string)($x['label'] ?? ''), $issues['missing'])));
+            $parts[] = 'Variant selection is required for: ' . implode(', ', array_slice($labels, 0, 8)) . (count($labels) > 8 ? '...' : '');
+        }
+        if (!empty($issues['invalid'])) {
+            $labels = array_values(array_unique(array_map(static fn($x) => (string)($x['label'] ?? ''), $issues['invalid'])));
+            $parts[] = 'Some selected variants do not belong to their products: ' . implode(', ', array_slice($labels, 0, 8)) . (count($labels) > 8 ? '...' : '');
+        }
+
+        $base = 'Template product cannot be used when variants exist. Please select a specific variant (ART/code) for each variant-based product.';
+        if (!empty($parts)) {
+            $base .= ' ' . implode(' ', $parts);
+        }
+        return $base;
+    }
+
     private function calculateOrderedPoTotal(array $poLines): float
     {
         $total = 0.0;
@@ -301,6 +438,14 @@ class NewPurchaseOrders extends BaseController
         $rfqId = isset($data['rfq_id']) ? (int)$data['rfq_id'] : null;
         $vendorId = isset($data['vendor_id']) ? (int)$data['vendor_id'] : null;
         $lines = $data['lines'] ?? [];
+
+        $variantIssues = $this->validateVariantSelections($lines);
+        if (!empty($variantIssues['missing']) || !empty($variantIssues['invalid'])) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'error' => $this->buildVariantValidationMessage($variantIssues),
+            ]);
+        }
 
     $currency = isset($data['currency']) && $data['currency'] !== '' ? strtoupper(trim((string)$data['currency'])) : $this->getDefaultPurchaseCurrency();
 
@@ -728,7 +873,15 @@ class NewPurchaseOrders extends BaseController
 
         // Fetch lines
         $lineModel = new PurchaseOrderLineModel();
-        $lines = $lineModel->where('po_id', $poId)->orderBy('id','ASC')->findAll();
+        $lineOrderField = 'id';
+        try {
+            if ($db->fieldExists('sort_order', 'purchase_order_lines')) {
+                $lineOrderField = 'sort_order';
+            }
+        } catch (\Throwable $_) {
+            $lineOrderField = 'id';
+        }
+        $lines = $lineModel->where('po_id', $poId)->orderBy($lineOrderField, 'ASC')->orderBy('id','ASC')->findAll();
 
         // Enrich lines with product info (name/code/sku) and VARIANT info (image/code/name) when possible
         try {
@@ -1121,6 +1274,381 @@ class NewPurchaseOrders extends BaseController
         return $this->response->setJSON(['success' => true, 'data' => ['po' => $po, 'lines' => $lines]]);
     }
 
+    public function printView($id = null)
+    {
+        $poModel = new PurchaseOrderModel();
+        $po = $poModel->findByPublicIdOrId($id);
+        if (!$po) {
+            return redirect()->back()->with('error', 'Purchase order not found');
+        }
+        $poId = (int)$po['id'];
+
+        $db = Database::connect();
+        $vendor = [];
+        try {
+            $vendor = $db->table('vendors')->where('id', (int)($po['vendor_id'] ?? 0))->get()->getRowArray() ?: [];
+        } catch (\Throwable $_) {}
+
+        $lineModel = new PurchaseOrderLineModel();
+        $lineOrderField = 'id';
+        try {
+            if ($db->fieldExists('sort_order', 'purchase_order_lines')) {
+                $lineOrderField = 'sort_order';
+            }
+        } catch (\Throwable $_) {
+            $lineOrderField = 'id';
+        }
+        $rawLines = $lineModel->where('po_id', $poId)->orderBy($lineOrderField, 'ASC')->orderBy('id', 'ASC')->findAll();
+
+        // Reuse the same enrichment approach as the working PO screen.
+        try {
+            $productIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                return isset($line['product_id']) ? (int) $line['product_id'] : null;
+            }, $rawLines))));
+            $variantIds = array_values(array_filter(array_unique(array_map(function ($line) {
+                if (isset($line['variant_id']) && $line['variant_id']) {
+                    return (int) $line['variant_id'];
+                }
+                if (isset($line['product_variant_id']) && $line['product_variant_id']) {
+                    return (int) $line['product_variant_id'];
+                }
+                return null;
+            }, $rawLines))));
+
+            $prodMap = [];
+            $variantMap = [];
+            $variantsByProduct = [];
+
+            if (!empty($productIds)) {
+                $productModel = new \App\Models\ProductModel();
+                $products = $productModel->whereIn('id', $productIds)->findAll();
+                foreach ($products as $product) {
+                    $prodMap[(int) $product['id']] = $product;
+                }
+            }
+
+            if (!empty($variantIds) && $db->tableExists('product_variants')) {
+                try {
+                    $variants = $db->table('product_variants')
+                        ->select('id, product_id, art_number, name, image, attributes')
+                        ->whereIn('id', $variantIds)
+                        ->get()
+                        ->getResultArray();
+                    foreach ($variants as $variant) {
+                        $variantMap[(int) $variant['id']] = $variant;
+                    }
+                } catch (\Throwable $_) {
+                }
+            }
+
+            if (!empty($variantMap)) {
+                $missingProductIds = [];
+                foreach ($variantMap as $variant) {
+                    $variantProductId = isset($variant['product_id']) ? (int) $variant['product_id'] : 0;
+                    if ($variantProductId > 0 && !isset($prodMap[$variantProductId])) {
+                        $missingProductIds[] = $variantProductId;
+                    }
+                }
+                $missingProductIds = array_values(array_unique($missingProductIds));
+                if (!empty($missingProductIds)) {
+                    try {
+                        $extraProducts = $productModel->whereIn('id', $missingProductIds)->findAll();
+                        foreach ($extraProducts as $product) {
+                            $prodMap[(int) $product['id']] = $product;
+                        }
+                    } catch (\Throwable $_) {
+                    }
+                }
+            }
+
+            if (!empty($productIds) && $db->tableExists('product_variants')) {
+                try {
+                    $allVariants = $db->table('product_variants')
+                        ->select('id, product_id, art_number, name, image, attributes')
+                        ->whereIn('product_id', $productIds)
+                        ->get()
+                        ->getResultArray();
+                    foreach ($allVariants as $variant) {
+                        $productId = (int) ($variant['product_id'] ?? 0);
+                        if ($productId <= 0) {
+                            continue;
+                        }
+                        if (!isset($variantsByProduct[$productId])) {
+                            $variantsByProduct[$productId] = [];
+                        }
+                        $variantsByProduct[$productId][] = $variant;
+                    }
+                } catch (\Throwable $_) {
+                }
+            }
+
+            foreach ($rawLines as &$line) {
+                $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
+                $variantId = isset($line['variant_id']) ? (int) $line['variant_id'] : (isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : null);
+
+                if ((!$productId || $productId <= 0) && $variantId && isset($variantMap[$variantId])) {
+                    $productId = isset($variantMap[$variantId]['product_id']) ? (int) $variantMap[$variantId]['product_id'] : null;
+                    if ($productId) {
+                        $line['product_id'] = $productId;
+                    }
+                }
+
+                if ($productId && isset($prodMap[$productId])) {
+                    $product = $prodMap[$productId];
+                    $line['product_name'] = $product['name'] ?? null;
+                    $line['product_code'] = $product['code'] ?? ($product['sku'] ?? null);
+                    $line['product_unit'] = $product['unit'] ?? null;
+                    $line['product_image'] = $product['image'] ?? null;
+                    $line['product_images'] = $product['images'] ?? null;
+                }
+
+                if ($variantId && isset($variantMap[$variantId])) {
+                    $variant = $variantMap[$variantId];
+                    $line['variant_code'] = $variant['art_number'] ?? null;
+                    $line['variant_name'] = $variant['name'] ?? null;
+                    $line['variant_image'] = $variant['image'] ?? null;
+                }
+
+                if (!$variantId && $productId && !empty($line['description']) && !empty($variantsByProduct[$productId])) {
+                    $description = (string) $line['description'];
+                    foreach ($variantsByProduct[$productId] as $variant) {
+                        $attrs = $variant['attributes'] ?? null;
+                        if (empty($attrs)) {
+                            continue;
+                        }
+                        $attrsArr = is_string($attrs) ? json_decode($attrs, true) : $attrs;
+                        if (!is_array($attrsArr)) {
+                            continue;
+                        }
+                        $match = true;
+                        foreach ($attrsArr as $value) {
+                            if ($value === null || $value === '') {
+                                continue;
+                            }
+                            if (stripos($description, (string) $value) === false) {
+                                $match = false;
+                                break;
+                            }
+                        }
+                        if ($match) {
+                            $line['variant_id'] = (int) ($variant['id'] ?? 0);
+                            $line['variant_code'] = $variant['art_number'] ?? null;
+                            $line['variant_name'] = $variant['name'] ?? null;
+                            $line['variant_image'] = $variant['image'] ?? null;
+                            break;
+                        }
+                    }
+                }
+            }
+            unset($line);
+        } catch (\Throwable $_) {
+            // Keep basic line rows if enrichment fails.
+        }
+
+        $company = (new CompanySettingsModel())->orderBy('id', 'DESC')->first() ?: [];
+
+        $lines = [];
+        foreach ($rawLines as $ln) {
+            $qty = (float) ($ln['qty'] ?? ($ln['quantity'] ?? 0));
+            $price = (float) ($ln['unit_price'] ?? ($ln['unit_cost'] ?? 0));
+            $storedTotal = isset($ln['line_total']) ? (float) $ln['line_total'] : 0.0;
+            $total = $storedTotal > 0 ? $storedTotal : ($qty * $price);
+            $code = trim((string) ($ln['variant_code'] ?? ($ln['product_code'] ?? ($ln['code'] ?? ''))));
+            $desc = trim((string) ($ln['variant_name'] ?? ($ln['product_name'] ?? ($ln['description'] ?? ''))));
+            if ($code === '') {
+                $code = trim((string) ($ln['product_code'] ?? ''));
+            }
+            if ($desc === '' && !empty($ln['description'])) {
+                $desc = trim((string) $ln['description']);
+            }
+            $unit = trim((string) ($ln['product_unit'] ?? ($ln['unit'] ?? '')));
+
+            $imgSrc = '';
+            $imageCandidates = [];
+            foreach ([
+                $ln['variant_image'] ?? '',
+                $ln['product_image'] ?? '',
+            ] as $imgRaw) {
+                $imgRaw = trim((string) $imgRaw);
+                if ($imgRaw === '') {
+                    continue;
+                }
+                $norm = ltrim($imgRaw, '/\\');
+                $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $norm);
+                $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'variants' . DIRECTORY_SEPARATOR . basename($norm);
+                $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+            }
+            if (empty($imageCandidates) && !empty($ln['product_images'])) {
+                $images = is_string($ln['product_images']) ? json_decode($ln['product_images'], true) : $ln['product_images'];
+                if (is_array($images) && !empty($images[0])) {
+                    $norm = ltrim((string) $images[0], '/\\');
+                    $imageCandidates[] = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . basename($norm);
+                }
+            }
+            foreach (array_unique($imageCandidates) as $abs) {
+                if (!is_file($abs)) {
+                    continue;
+                }
+                $raw = @file_get_contents($abs);
+                if ($raw === false) {
+                    continue;
+                }
+                $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+                $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'][$ext] ?? 'image/jpeg';
+                $imgSrc = 'data:' . $mime . ';base64,' . base64_encode($raw);
+                break;
+            }
+
+            $lines[] = compact('code', 'desc', 'imgSrc', 'qty', 'price', 'total', 'unit');
+        }
+
+        $currency = strtoupper(trim((string)(
+            $po['currency_code'] ?? ($po['currency'] ?? ($company['base_currency'] ?? 'PKR'))
+        )));
+        $symbols  = ['USD'=>'$','EUR'=>'€','GBP'=>'£','PKR'=>'₨','INR'=>'₹'];
+        $sym      = $symbols[$currency] ?? $currency;
+        $fmt      = fn($v) => $sym . ' ' . number_format((float)$v, 2);
+
+        $subtotal   = (float)($po['subtotal'] ?? 0);
+        $total      = (float)($po['total'] ?? 0);
+        $poNumber   = esc($po['po_number'] ?? ('PO-' . $poId));
+        $poDate     = '';
+        $raw = trim((string)($po['order_date'] ?? ($po['created_at'] ?? '')));
+        if ($raw && strpos($raw, '0000') === false) {
+            $ts = strtotime($raw);
+            if ($ts) $poDate = date('d-m-Y', $ts);
+        }
+        $vendorName = esc($vendor['name'] ?? 'Vendor');
+        $companyName = esc($company['name'] ?? '');
+
+        ob_start();
+        ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PO <?= $poNumber ?></title>
+<style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;background:#f8fafc;padding:24px}
+    .grn-doc{max-width:1100px;margin:0 auto}
+    .grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border-radius:.75rem .75rem 0 0;padding:1.6rem 2rem 1.4rem;color:#fff;position:relative;overflow:hidden}
+    .grn-hero::after{content:'PO';position:absolute;right:-1rem;top:50%;transform:translateY(-50%);font-size:7rem;font-weight:900;opacity:.04;pointer-events:none;user-select:none;line-height:1}
+    .grn-doc-type{display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:2rem;padding:.22rem .8rem;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:.55rem}
+    .grn-hero-num{font-size:1.85rem;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:.25rem}
+    .grn-hero-sub{font-size:.82rem;color:rgba(255,255,255,.72)}
+    .grn-hero-actions{position:absolute;top:1.05rem;right:1.1rem;display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;max-width:56%}
+    .grn-hero-btn{display:inline-flex;align-items:center;gap:.34rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.24);border-radius:.42rem;padding:.34rem .7rem;font-size:.75rem;font-weight:700;color:rgba(255,255,255,.88);text-decoration:none;transition:background .15s,border-color .15s;cursor:pointer}
+    .grn-hero-btn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.42);color:#fff}
+    .grn-facts{background:#fff;border:1px solid #dee2e6;border-top:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+    .grn-fact{padding:.75rem 1rem;border-right:1px solid #dee2e6}
+    .grn-fact:last-child{border-right:none}
+    .grn-fact-lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700;margin-bottom:.18rem}
+    .grn-fact-val{font-size:.95rem;font-weight:700;color:#1e293b}
+    .grn-sec{background:#fff;border:1px solid #dee2e6;border-top:none}
+    .grn-sec-hd{padding:.7rem 1.3rem;border-bottom:1px solid #dee2e6;display:flex;align-items:center;gap:.55rem;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6c757d}
+    .grn-sec-badge{margin-left:auto;background:#e0e7ff;color:#3730a3;border-radius:2rem;padding:.08rem .5rem;font-size:.68rem;font-weight:700}
+    .grn-body{padding:0 1.1rem 1rem}
+    .grn-tbl{width:100%;border-collapse:collapse}
+    .grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:2px solid #dbe5f0;padding:.72rem .65rem;text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+    .grn-tbl tbody td{padding:.75rem .65rem;border-bottom:1px solid #eef2f7;vertical-align:middle;font-size:.84rem}
+    .grn-tbl .r{text-align:right}
+    .prod-code{display:inline-flex;align-items:center;padding:.15rem .45rem;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:.72rem;font-weight:700}
+    .prod-thumb{width:42px;height:42px;object-fit:contain;border:1px solid #dbe5f0;border-radius:.35rem;background:#fff}
+    .no-img{font-size:.68rem;color:#94a3b8;border:1px dashed #cbd5e1;padding:.18rem .35rem;border-radius:.25rem;display:inline-block}
+    .desc-main{font-weight:700;color:#1e293b;line-height:1.45}
+    .totals{padding:1rem 1.1rem 1.2rem;display:flex;justify-content:flex-end;background:#fff;border:1px solid #dee2e6;border-top:none;border-radius:0 0 .75rem .75rem}
+    .totals table{width:280px;border-collapse:collapse}
+    .totals td{padding:.33rem .2rem}
+    .totals .lbl{color:#64748b;text-align:right;padding-right:.8rem}
+    .totals .val{text-align:right}
+    .totals .grand td{font-size:1.08rem;font-weight:700;border-top:2px solid #1e293b;padding-top:.55rem;color:#111827}
+    @media print{*{color-adjust:exact!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm;background:#fff!important;color:#1e293b!important}.no-print,.grn-hero-actions{display:none!important}.grn-doc{max-width:1100px!important;margin:0 auto!important}.grn-hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)!important;border-radius:.75rem!important;color:#fff!important;border:1px solid #0a0f1a!important;page-break-inside:avoid!important}.grn-hero-num,.grn-hero-sub,.grn-doc-type{color:#fff!important}.grn-doc-type{background:rgba(255,255,255,.12)!important;border:1px solid rgba(255,255,255,.18)!important;color:#93c5fd!important}.grn-facts{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important;page-break-inside:avoid!important}.grn-fact{border-right:1px solid #dee2e6!important;background:#fff!important}.grn-fact-lbl{color:#64748b!important}.grn-fact-val{color:#1e293b!important}.grn-sec{background:#fff!important;border:1px solid #dee2e6!important;border-radius:0!important}.grn-sec-hd{background:#f8fafc!important;color:#6c757d!important;border-bottom:1px solid #dee2e6!important}.grn-sec-badge{background:#e0e7ff!important;color:#3730a3!important;border-radius:2rem!important}.grn-body{background:#fff!important}.grn-tbl{width:100%!important;border-collapse:collapse!important;page-break-inside:avoid!important}.grn-tbl thead th{background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)!important;border-bottom:2px solid #dbe5f0!important;color:#64748b!important;text-align:left!important}.grn-tbl tbody td{border-bottom:1px solid #eef2f7!important;color:#1e293b!important;background:#fff!important}.grn-tbl tbody tr{background:#fff!important;page-break-inside:avoid!important}.prod-code{background:#eff6ff!important;border:1px solid #bfdbfe!important;color:#1d4ed8!important;border-radius:999px!important}.prod-thumb{border:1px solid #dbe5f0!important;background:#fff!important}.no-img{color:#94a3b8!important;border:1px dashed #cbd5e1!important;background:#fff!important}.desc-main{color:#1e293b!important;font-weight:700!important}.totals{background:#fff!important;border:1px solid #dee2e6!important;border-radius:.75rem!important;display:flex!important;justify-content:flex-end!important;page-break-inside:avoid!important}.totals table{border-collapse:collapse!important;width:280px!important}.totals td{color:#1e293b!important}.totals .lbl{color:#64748b!important}.totals .grand td{color:#111827!important;border-top:2px solid #1e293b!important;font-weight:700!important}table,thead,tbody,tr,td,th{page-break-inside:avoid!important;break-inside:avoid!important}}
+    @media(max-width:768px){body{padding:12px}.grn-hero{padding:1rem 1rem .9rem}.grn-hero-num{font-size:1.3rem}.grn-hero-actions{position:static;max-width:100%;margin-top:.7rem;justify-content:flex-start}.grn-facts{grid-template-columns:1fr 1fr}.grn-fact{padding:.5rem .6rem}.grn-body{padding:0}.grn-tbl{display:block;overflow-x:auto}}
+</style>
+</head>
+<body>
+<div class="grn-doc">
+    <div class="grn-hero">
+        <div class="grn-doc-type">Purchase Order</div>
+        <div class="grn-hero-num"><?= $poNumber ?></div>
+        <div class="grn-hero-sub"><?= $companyName ?></div>
+        <div class="grn-hero-actions no-print">
+            <button type="button" class="grn-hero-btn" onclick="window.print()">Print</button>
+            <button type="button" class="grn-hero-btn" onclick="window.close()">Close</button>
+        </div>
+    </div>
+
+    <div class="grn-facts">
+        <div class="grn-fact">
+            <div class="grn-fact-lbl">Vendor</div>
+            <div class="grn-fact-val"><?= $vendorName ?></div>
+        </div>
+        <div class="grn-fact">
+            <div class="grn-fact-lbl">PO Date</div>
+            <div class="grn-fact-val"><?= esc($poDate ?: '-') ?></div>
+        </div>
+        <div class="grn-fact">
+            <div class="grn-fact-lbl">Currency</div>
+            <div class="grn-fact-val"><?= esc($currency) ?></div>
+        </div>
+        <div class="grn-fact">
+            <div class="grn-fact-lbl">Lines</div>
+            <div class="grn-fact-val"><?= number_format(count($lines), 0) ?></div>
+        </div>
+    </div>
+
+    <div class="grn-sec">
+        <div class="grn-sec-hd">Order Lines<span class="grn-sec-badge"><?= number_format(count($lines), 0) ?></span></div>
+        <div class="grn-body">
+            <table class="grn-tbl">
+                <thead>
+                    <tr>
+                        <th style="width:13%">Code</th>
+                        <th style="width:8%">Image</th>
+                        <th>Description</th>
+                        <th style="width:8%">Unit</th>
+                        <th class="r" style="width:8%">Qty</th>
+                        <th class="r" style="width:12%">Unit Price</th>
+                        <th class="r" style="width:12%">Line Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($lines as $ln): ?>
+                    <tr>
+                        <td><span class="prod-code"><?= esc($ln['code'] !== '' ? $ln['code'] : '-') ?></span></td>
+                        <td>
+                            <?php if ($ln['imgSrc']): ?>
+                                <img class="prod-thumb" src="<?= $ln['imgSrc'] ?>" alt="">
+                            <?php else: ?>
+                                <span class="no-img">No Img</span>
+                            <?php endif ?>
+                        </td>
+                        <td><div class="desc-main"><?= esc($ln['desc'] !== '' ? $ln['desc'] : '-') ?></div></td>
+                        <td><?= esc($ln['unit'] !== '' ? $ln['unit'] : '-') ?></td>
+                        <td class="r"><?= number_format($ln['qty'], 2) ?></td>
+                        <td class="r"><?= esc($fmt($ln['price'])) ?></td>
+                        <td class="r"><?= esc($fmt($ln['total'])) ?></td>
+                    </tr>
+                    <?php endforeach ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="totals">
+        <table>
+            <tr><td class="lbl">Subtotal</td><td class="val"><?= esc($fmt($subtotal > 0 ? $subtotal : $total)) ?></td></tr>
+            <tr class="grand"><td class="lbl">Total</td><td class="val"><?= esc($fmt($total)) ?></td></tr>
+        </table>
+    </div>
+</div>
+</body>
+</html>
+        <?php
+        return $this->response->setBody(ob_get_clean())->setHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+
     public function pdf($id = null)
     {
         $poModel = new PurchaseOrderModel();
@@ -1130,91 +1658,109 @@ class NewPurchaseOrders extends BaseController
         }
         $poId = (int)$po['id'];
 
-        $lines = (new PurchaseOrderLineModel())->where('po_id', $poId)->orderBy('id', 'ASC')->findAll();
         $vendor = [];
+        $db = Database::connect();
         try {
-            $vendor = Database::connect()->table('vendors')->where('id', (int)($po['vendor_id'] ?? 0))->get()->getRowArray() ?: [];
+            $vendor = $db->table('vendors')->where('id', (int)($po['vendor_id'] ?? 0))->get()->getRowArray() ?: [];
         } catch (\Throwable $_) {
             $vendor = [];
         }
 
+        // Single JOIN query: fetch lines enriched with product name, variant art_number, and images.
+        // This mirrors the same enrichment the PO view UI performs, avoiding silent lookup failures.
+        $rawLines = [];
+        try {
+            $hasVariantCol = $db->fieldExists('variant_id', 'purchase_order_lines');
+            $hasPvTable    = $db->tableExists('product_variants');
+            if ($hasVariantCol && $hasPvTable) {
+                $rawLines = $db->query(
+                    'SELECT pol.*,
+                            COALESCE(pv.art_number, p.code, \'\') AS _resolved_code,
+                            COALESCE(pv.name, p.name, pol.description, \'\') AS _resolved_desc,
+                            COALESCE(pv.image, \'\') AS _variant_image,
+                            COALESCE(p.image, \'\') AS _product_image,
+                            COALESCE(p.images, \'\') AS _product_images
+                     FROM purchase_order_lines pol
+                     LEFT JOIN products p ON p.id = pol.product_id
+                     LEFT JOIN product_variants pv ON pv.id = pol.variant_id
+                     WHERE pol.po_id = ?
+                     ORDER BY pol.id ASC',
+                    [$poId]
+                )->getResultArray();
+            } else {
+                $rawLines = $db->query(
+                    'SELECT pol.*,
+                            COALESCE(p.code, \'\') AS _resolved_code,
+                            COALESCE(p.name, pol.description, \'\') AS _resolved_desc,
+                            COALESCE(p.image, \'\') AS _product_image,
+                            COALESCE(p.images, \'\') AS _product_images
+                     FROM purchase_order_lines pol
+                     LEFT JOIN products p ON p.id = pol.product_id
+                     WHERE pol.po_id = ?
+                     ORDER BY pol.id ASC',
+                    [$poId]
+                )->getResultArray();
+            }
+        } catch (\Throwable $_) {
+            // Fallback: plain model read if JOIN fails (e.g. missing columns)
+            $rawLines = (new PurchaseOrderLineModel())->where('po_id', $poId)->orderBy('id', 'ASC')->findAll();
+        }
+
         $pdfLines = [];
-        $db = Database::connect();
-
-        // Collect variant and product IDs for enrichment
-        $variantIds = array_values(array_filter(array_unique(array_map(
-            fn($l) => !empty($l['variant_id']) ? (int)$l['variant_id'] : (!empty($l['product_variant_id']) ? (int)$l['product_variant_id'] : null), $lines
-        ))));
-        $productIds = array_values(array_filter(array_unique(array_map(
-            fn($l) => !empty($l['product_id']) ? (int)$l['product_id'] : null, $lines
-        ))));
-
-        // Build variant map (art_number → code, image → image path)
-        $variantMeta = [];
-        if (!empty($variantIds) && $db->tableExists('product_variants')) {
-            try {
-                $rows = $db->table('product_variants')
-                    ->select('id, art_number, image')
-                    ->whereIn('id', $variantIds)
-                    ->get()->getResultArray();
-                foreach ($rows as $r) {
-                    $imgPath = '';
-                    if (!empty($r['image'])) {
-                        $abs = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'variants' . DIRECTORY_SEPARATOR . ltrim($r['image'], '/\\');
-                        if (is_file($abs)) {
-                            $imgPath = 'file://' . str_replace('\\', '/', $abs);
-                        }
-                    }
-                    $variantMeta[(int)$r['id']] = ['code' => $r['art_number'] ?? '', 'image_path' => $imgPath];
-                }
-            } catch (\Throwable $_) {}
-        }
-
-        // Build product map (code + images)
-        $productMeta = [];
-        if (!empty($productIds)) {
-            try {
-                $rows = $db->table('products')->select('id, code, image, images')->whereIn('id', $productIds)->get()->getResultArray();
-                foreach ($rows as $r) {
-                    $imgPath = '';
-                    $img = $r['image'] ?? '';
-                    if (empty($img) && !empty($r['images'])) {
-                        $arr = is_string($r['images']) ? json_decode($r['images'], true) : $r['images'];
-                        if (is_array($arr) && !empty($arr[0])) $img = $arr[0];
-                    }
-                    if (!empty($img)) {
-                        $abs = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . ltrim($img, '/\\');
-                        if (is_file($abs)) {
-                            $imgPath = 'file://' . str_replace('\\', '/', $abs);
-                        }
-                    }
-                    $productMeta[(int)$r['id']] = ['code' => $r['code'] ?? '', 'image_path' => $imgPath];
-                }
-            } catch (\Throwable $_) {}
-        }
-
-        foreach ($lines as $line) {
-            $qty = (float)($line['qty'] ?? ($line['quantity'] ?? 0));
+        foreach ($rawLines as $line) {
+            $qty       = (float)($line['qty'] ?? ($line['quantity'] ?? 0));
             $unitPrice = (float)($line['unit_price'] ?? 0);
             $lineTotal = isset($line['line_total']) ? (float)$line['line_total'] : ($qty * $unitPrice);
-            $vid = !empty($line['variant_id']) ? (int)$line['variant_id'] : (!empty($line['product_variant_id']) ? (int)$line['product_variant_id'] : null);
-            $pid = !empty($line['product_id']) ? (int)$line['product_id'] : null;
 
-            // Resolve code: prefer variant art_number, fall back to product code
-            $resolvedCode = ($vid && isset($variantMeta[$vid])) ? ($variantMeta[$vid]['code'] ?? '') : (($pid && isset($productMeta[$pid])) ? ($productMeta[$pid]['code'] ?? '') : '');
-            // Resolve image: prefer variant image, fall back to product image
-            $resolvedImg = ($vid && !empty($variantMeta[$vid]['image_path'])) ? $variantMeta[$vid]['image_path'] : (($pid && !empty($productMeta[$pid]['image_path'])) ? $productMeta[$pid]['image_path'] : '');
+            $resolvedCode = trim((string)($line['_resolved_code'] ?? ($line['product_code'] ?? '')));
+            $resolvedDesc = trim((string)($line['_resolved_desc'] ?? ($line['description'] ?? '')));
+
+            // Resolve image: variant image first, then product image, then product images JSON
+            $resolvedImg = '';
+            $varImgRaw  = trim((string)($line['_variant_image'] ?? ''));
+            $prodImgRaw = trim((string)($line['_product_image'] ?? ''));
+            $prodImgsRaw = trim((string)($line['_product_images'] ?? ''));
+            $imgRaw = '';
+            if ($varImgRaw !== '') {
+                $imgRaw = $varImgRaw;
+                $imgDir = 'variants';
+            } elseif ($prodImgRaw !== '') {
+                $imgRaw = $prodImgRaw;
+                $imgDir = 'products';
+            } elseif ($prodImgsRaw !== '') {
+                $arr = json_decode($prodImgsRaw, true);
+                if (is_array($arr) && !empty($arr[0])) {
+                    $imgRaw = (string)$arr[0];
+                    $imgDir = 'products';
+                }
+            }
+            if ($imgRaw !== '') {
+                $imgNorm = ltrim((string)$imgRaw, '/\\');
+                $candidates = [
+                    rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $imgNorm),
+                    rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . ($imgDir ?? 'products') . DIRECTORY_SEPARATOR . basename($imgNorm),
+                ];
+                foreach ($candidates as $abs) {
+                    if (is_file($abs)) {
+                        $resolvedImg = 'file://' . str_replace('\\', '/', $abs);
+                        break;
+                    }
+                }
+            }
+
+            $vid = isset($line['variant_id']) && (int)$line['variant_id'] > 0 ? (int)$line['variant_id'] : null;
+            $pid = isset($line['product_id']) && (int)$line['product_id'] > 0 ? (int)$line['product_id'] : null;
 
             $pdfLines[] = [
-                'id' => $line['id'] ?? null,
-                'product_id' => $pid,
+                'id'                 => $line['id'] ?? null,
+                'product_id'         => $pid,
                 'product_variant_id' => $vid,
-                'product_code' => $resolvedCode,
+                'product_code'       => $resolvedCode,
                 'product_image_path' => $resolvedImg,
-                'description' => $line['description'] ?? '',
-                'quantity' => $qty,
-                'unit_price' => $unitPrice,
-                'line_total' => $lineTotal,
+                'description'        => $resolvedDesc,
+                'quantity'           => $qty,
+                'unit_price'         => $unitPrice,
+                'line_total'         => $lineTotal,
             ];
         }
 
@@ -1332,6 +1878,16 @@ class NewPurchaseOrders extends BaseController
         if (!$po) return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'PO not found']);
         $poId = (int)$po['id'];
 
+        if (!empty($payload['lines']) && is_array($payload['lines'])) {
+            $variantIssues = $this->validateVariantSelections($payload['lines']);
+            if (!empty($variantIssues['missing']) || !empty($variantIssues['invalid'])) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => $this->buildVariantValidationMessage($variantIssues),
+                ]);
+            }
+        }
+
         $db = Database::connect();
         $db->transBegin();
         try {
@@ -1363,6 +1919,7 @@ class NewPurchaseOrders extends BaseController
                     $lineModel->insert([
                         'po_id' => $poId,
                         'product_id' => isset($ln['product_id']) ? (int)$ln['product_id'] : null,
+                        'variant_id' => isset($ln['variant_id']) ? (int)$ln['variant_id'] : (isset($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : null),
                         'description' => $ln['description'] ?? null,
                         'qty' => $qty,
                         'unit_price' => isset($ln['unit_price']) ? (float)$ln['unit_price'] : (isset($ln['unit_cost']) ? (float)$ln['unit_cost'] : null),

@@ -69,17 +69,25 @@
                         <tr>
                             <td class="fw-semibold text-capitalize"><?= str_replace('_', ' ', $module) ?></td>
                             <?php
-                                $actionOrder = ['read', 'write', 'edit', 'delete'];
+                                $actionOrder = ['read', 'write', 'edit', 'delete', 'sensitive_overview'];
                                 $permByAction = [];
                                 foreach ($perms as $p) { $permByAction[$p['action']] = $p; }
                             ?>
                             <?php foreach ($actionOrder as $act): ?>
                             <td class="text-center">
                                 <?php if (isset($permByAction[$act])): ?>
+                                <?php if ($act === 'sensitive_overview'): ?>
+                                <input type="checkbox" class="form-check-input"
+                                       name="products_sensitive_overview"
+                                       value="1"
+                                       <?= in_array($permByAction[$act]['id'], $rolePermIds ?? []) ? 'checked' : '' ?>
+                                       title="Allow viewing sensitive product overview metrics">
+                                <?php else: ?>
                                 <input type="checkbox" class="form-check-input perm-cb"
                                        name="permission_ids[]"
                                        value="<?= $permByAction[$act]['id'] ?>"
                                        <?= in_array($permByAction[$act]['id'], $rolePermIds ?? []) ? 'checked' : '' ?>>
+                                <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">–</span>
                                 <?php endif; ?>

@@ -10,5 +10,5 @@ class PurchaseOrderLineModel extends Model
     protected $primaryKey = 'id';
     protected $returnType = 'array';
     protected $useTimestamps = false;
-    protected $allowedFields = ['po_id','product_id','variant_id','description','qty','unit_price','qty_received','created_at'];
+    protected $allowedFields = ['po_id','product_id','variant_id','description','qty','unit_price','discount_type','discount_value','discount_amount','qty_received','created_at','display_type','section_title','sort_order','updated_at'];
 }

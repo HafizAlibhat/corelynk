@@ -14,6 +14,8 @@ class RoleDataAccess
         'isolate_quotations' => false,
         'isolate_sales_orders' => false,
         'isolate_purchase_orders' => false,
+        'product_hide_services' => false,
+        'product_allowed_categories' => null, // null = all categories allowed
     ];
 
     public function resolveForUser(?int $userId): array
@@ -50,9 +52,50 @@ class RoleDataAccess
             $merged['isolate_quotations'] = $merged['isolate_quotations'] || ((int) ($row['isolate_quotations'] ?? 0) === 1);
             $merged['isolate_sales_orders'] = $merged['isolate_sales_orders'] || ((int) ($row['isolate_sales_orders'] ?? 0) === 1);
             $merged['isolate_purchase_orders'] = $merged['isolate_purchase_orders'] || ((int) ($row['isolate_purchase_orders'] ?? 0) === 1);
+
+            // Product filtering: hide_services is OR (any role restricts → restrict)
+            if ((int) ($row['product_hide_services'] ?? 0) === 1) {
+                $merged['product_hide_services'] = true;
+            }
+
+            // Allowed categories: intersection (most restrictive wins).
+            // If a row has a non-empty restriction, intersect with current allowed set.
+            $rowCats = $this->parseCategoryIds((string) ($row['product_allowed_categories'] ?? ''));
+            if (!empty($rowCats)) {
+                if ($merged['product_allowed_categories'] === null) {
+                    $merged['product_allowed_categories'] = $rowCats;
+                } else {
+                    // Keep only categories allowed by BOTH roles
+                    $merged['product_allowed_categories'] = array_values(
+                        array_intersect($merged['product_allowed_categories'], $rowCats)
+                    );
+                }
+            }
         }
 
         return $merged;
+    }
+
+    /**
+     * Returns product visibility constraints for the given user.
+     * ['hide_services' => bool, 'allowed_category_ids' => int[]|null]
+     * allowed_category_ids = null means no restriction (all categories).
+     */
+    public function getProductFilters(?int $userId): array
+    {
+        $cfg = $this->resolveForUser($userId);
+        return [
+            'hide_services'        => (bool) ($cfg['product_hide_services'] ?? false),
+            'allowed_category_ids' => $cfg['product_allowed_categories'] ?? null,
+        ];
+    }
+
+    private function parseCategoryIds(string $value): array
+    {
+        if (trim($value) === '') {
+            return [];
+        }
+        return array_values(array_filter(array_map('intval', explode(',', $value)), fn($v) => $v > 0));
     }
 
     public function shouldIsolate(string $module, ?int $userId): bool

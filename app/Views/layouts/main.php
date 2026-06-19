@@ -28,6 +28,7 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <!-- CoreLynk Professional Theme (loads LAST to override all legacy styles) -->
     <link rel="stylesheet" href="<?= base_url('assets/css/corelynk-theme.css') ?>?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/css/product-image-hover-preview.css') ?>?v=1">
     <!-- Speed: avoid blocking on third-party CDNs. Chart.js is now loaded lazily only on pages that need it. -->
     <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -928,6 +929,7 @@
     <!-- jQuery and Select2 for searchable dropdowns -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="<?= base_url('assets/js/product-image-hover-preview.js') ?>?v=1"></script>
 
     <script>
         // Initialize Select2 on elements with .searchable once DOM is ready

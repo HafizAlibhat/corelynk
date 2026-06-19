@@ -256,8 +256,8 @@ Goods Receipt Notes
   }
 
   .line-thumb {
-    width: 52px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     object-fit: cover;
     border-radius: .45rem;
     border: 1px solid rgba(148, 163, 184, .3);
@@ -368,7 +368,7 @@ Goods Receipt Notes
 
   @media (max-width: 1100px) {
     #grnLinesTable { min-width: 980px; }
-    .line-thumb { width: 46px; height: 38px; }
+    .line-thumb { width: 40px; height: 40px; }
   }
 
   @media (max-width: 768px) {
@@ -844,8 +844,8 @@ Goods Receipt Notes
           <span class="line-code">${code || '—'}</span>
         </td>
         <td>
-          <img src="${img}" alt="" class="line-thumb"
-               onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>'">
+          <img src="${img}" alt="" class="line-thumb js-product-hover-thumb" data-preview-src="${img}"
+            onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.setAttribute('data-preview-src','<?= base_url('assets/images/no-image.png') ?>')">
         </td>
         <td>
           <div class="line-product-name">${prodName}</div>

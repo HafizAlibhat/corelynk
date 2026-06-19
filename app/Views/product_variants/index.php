@@ -385,6 +385,7 @@
                     <th class="text-end">Reserved</th>
                     <th class="text-end">Available</th>
                     <th class="text-end">Sold</th>
+                    <th class="text-end">Purchased</th>
                     <th class="text-end" style="width:80px">Actions</th>
                 </tr>
             </thead>
@@ -451,6 +452,7 @@
                         <td class="text-end qty-cell"><?= number_format($reserved, 2) ?></td>
                         <td class="text-end qty-cell <?= $available < 0 ? 'text-danger' : '' ?>"><?= number_format($available, 2) ?></td>
                         <td class="text-end qty-cell"><?= number_format((float)($v['sold'] ?? 0), 2) ?></td>
+                        <td class="text-end qty-cell"><?= number_format((float)($v['purchased'] ?? 0), 2) ?></td>
                         <td class="actions-col">
                             <a href="<?= base_url('product-variants/' . $v['id'] . '/edit') ?>" class="var-act-btn" title="View / Edit">
                                 <i class="bi bi-eye"></i>
