@@ -83,6 +83,11 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
 .do-inline-btn{font-size:.72rem;color:#818cf8;cursor:pointer;background:none;border:none;padding:0;text-decoration:none}
 .do-inline-btn:hover{color:#a5b4fc;text-decoration:underline}
 
+/* Tracking copy button */
+.do-copy-track-btn{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;padding:2px 7px;border-radius:5px;border:1px solid var(--cl-border,#334155);background:var(--cl-surface-alt,#162033);color:var(--cl-text-secondary,#cbd5e1);margin-left:6px;line-height:1.2}
+.do-copy-track-btn:hover{background:#1f2a3a;color:#e2e8f0;border-color:#475569}
+.do-copy-track-btn.copied{border-color:#10b981;background:rgba(16,185,129,.12);color:#34d399}
+
 /* Tracking inline form */
 .do-tracking-form{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:8px;padding:.85rem 1rem;margin-top:.75rem;display:none}
 .do-tracking-form.open{display:block}
@@ -203,6 +208,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                     <dl class="do-detail"><dt>Tracking #</dt><dd>
                     <?php if (!empty($do['tracking_url'])): ?><a href="<?= esc($do['tracking_url']) ?>" target="_blank" rel="noopener" class="fw-semibold"><?= esc($do['tracking_number']) ?> <i class="bi bi-box-arrow-up-right" style="font-size:.65rem"></i></a>
                     <?php else: ?><span class="fw-semibold"><?= esc($do['tracking_number']) ?></span><?php endif; ?>
+                    <button type="button" class="do-copy-track-btn js-copy-track" data-track="<?= esc((string)$do['tracking_number']) ?>" title="Copy tracking number"><i class="bi bi-clipboard"></i><span>Copy</span></button>
                     </dd></dl>
                 <?php else: ?>
                     <div style="font-size:.8rem;color:var(--cl-text-muted,#64748b)"><i class="bi bi-hourglass-split me-1"></i>Tracking not yet added</div>
@@ -1250,6 +1256,27 @@ document.querySelectorAll('.trk-doc-del').forEach(btn=>{
                 if(grid&&!grid.querySelector('.trk-doc-wrap'))grid.innerHTML='<span style="font-size:.78rem;color:var(--cl-text-muted,#64748b)"><i class="bi bi-file-earmark me-1"></i>No tracking documents uploaded yet</span>';
             }else alert(d.message||'Delete failed');
         }catch(e){alert('Connection error');}
+    });
+});
+
+/* ── Copy tracking number ── */
+document.querySelectorAll('.js-copy-track').forEach(btn=>{
+    btn.addEventListener('click', async function(){
+        const tracking=(this.dataset.track||'').trim();
+        if(!tracking) return;
+        const original=this.innerHTML;
+        try{
+            await navigator.clipboard.writeText(tracking);
+            this.classList.add('copied');
+            this.innerHTML='<i class="bi bi-check2"></i><span>Copied</span>';
+            setTimeout(()=>{this.classList.remove('copied');this.innerHTML=original;},1300);
+        }catch(_){
+            const ta=document.createElement('textarea');
+            ta.value=tracking;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);
+            ta.focus();ta.select();
+            try{document.execCommand('copy');this.classList.add('copied');this.innerHTML='<i class="bi bi-check2"></i><span>Copied</span>';setTimeout(()=>{this.classList.remove('copied');this.innerHTML=original;},1300);}catch(__){}
+            document.body.removeChild(ta);
+        }
     });
 });
 

@@ -66,13 +66,15 @@ class AccountingPurchaseOrders extends BaseController
 
           // Handle scrap: if scrapQty > 0 and processRunId provided, record scrap linked to process_run
           if($scrapQty > 0){
+            $unitCost = (float)($line['unit_price'] ?? 0);
+            $costTotal = round($unitCost * $scrapQty, 2);
             if($processRunId>0){
               $db->table('scrap_records')->insert([
                 'process_run_id' => $processRunId,
                 'quantity_scrapped' => (int)$scrapQty,
                 'reason' => 'Rejection at receive for PO line '.$lid,
-                'estimated_cost' => 0,
-                'actual_cost' => 0,
+                'estimated_cost' => $costTotal,
+                'actual_cost' => $costTotal,
                 'recorded_by' => session()->get('user_id')?:null,
                 'recorded_at' => date('Y-m-d H:i:s')
               ]);

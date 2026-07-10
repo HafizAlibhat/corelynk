@@ -1149,6 +1149,7 @@ class ProductAssets extends BaseController
 
         $channelId = (int) ($this->request->getPost('channel_id') ?? 0);
         $listingUrl = trim((string) ($this->request->getPost('listing_url') ?? ''));
+        $listingId = (int) ($this->request->getPost('listing_id') ?? 0);
         $notes = trim((string) ($this->request->getPost('notes') ?? '')) ?: null;
 
         if ($channelId <= 0 || $listingUrl === '') {
@@ -1159,37 +1160,60 @@ class ProductAssets extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Invalid listing URL']);
         }
 
-        $existing = $this->listingModel
-            ->where('product_id', $productId)
-            ->where('channel_id', $channelId)
-            ->first();
-
         $payload = [
             'product_id' => $productId,
             'channel_id' => $channelId,
             'listing_url' => $listingUrl,
             'notes' => $notes,
-            'created_by' => (int) ($this->session->get('user_id') ?? 0) ?: null,
-            'created_at' => date('Y-m-d H:i:s'),
         ];
 
-        if ($existing) {
-            $this->listingModel->update((int) $existing['id'], [
-                'listing_url' => $listingUrl,
-                'notes' => $notes,
-            ]);
-            $listingId = (int) $existing['id'];
-            $action = 'product_asset_listing_updated';
-        } else {
-            if (! $this->listingModel->insert($payload)) {
+        if ($listingId > 0) {
+            $existing = $this->listingModel->find($listingId);
+            if (! $existing || (int) ($existing['product_id'] ?? 0) !== $productId) {
+                return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Listing not found']);
+            }
+
+            if (! $this->listingModel->update($listingId, $payload)) {
                 return $this->response->setStatusCode(422)->setJSON([
                     'success' => false,
-                    'message' => 'Failed to save listing',
+                    'message' => 'Failed to update listing',
                     'errors' => $this->listingModel->errors(),
                 ]);
             }
-            $listingId = (int) $this->listingModel->getInsertID();
-            $action = 'product_asset_listing_created';
+
+            $action = 'product_asset_listing_updated';
+        } else {
+            $existing = $this->listingModel
+                ->where('product_id', $productId)
+                ->where('channel_id', $channelId)
+                ->first();
+
+            if ($existing) {
+                if (! $this->listingModel->update((int) $existing['id'], [
+                    'listing_url' => $listingUrl,
+                    'notes' => $notes,
+                ])) {
+                    return $this->response->setStatusCode(422)->setJSON([
+                        'success' => false,
+                        'message' => 'Failed to update listing',
+                        'errors' => $this->listingModel->errors(),
+                    ]);
+                }
+                $listingId = (int) $existing['id'];
+                $action = 'product_asset_listing_updated';
+            } else {
+                $payload['created_by'] = (int) ($this->session->get('user_id') ?? 0) ?: null;
+                $payload['created_at'] = date('Y-m-d H:i:s');
+                if (! $this->listingModel->insert($payload)) {
+                    return $this->response->setStatusCode(422)->setJSON([
+                        'success' => false,
+                        'message' => 'Failed to save listing',
+                        'errors' => $this->listingModel->errors(),
+                    ]);
+                }
+                $listingId = (int) $this->listingModel->getInsertID();
+                $action = 'product_asset_listing_created';
+            }
         }
 
         AuditLogModel::record($action, (int) ($this->session->get('user_id') ?? 0), 'products', $productId, [
@@ -1199,6 +1223,42 @@ class ProductAssets extends BaseController
         ]);
 
         return $this->response->setJSON(['success' => true, 'listing_id' => $listingId]);
+    }
+
+    public function deleteListing($productIdentifier = null, $listingId = null)
+    {
+        $this->requireAuth();
+        $this->ensureCsrf();
+        $this->ensureCanManageAssets();
+
+        if (! $this->ensureModuleTablesReady()) {
+            return;
+        }
+
+        $product = $this->resolveProductOrFail($productIdentifier);
+        $productId = (int) $product['id'];
+        $listingId = (int) $listingId;
+
+        if ($listingId <= 0) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Invalid listing']);
+        }
+
+        $listing = $this->listingModel->find($listingId);
+        if (! $listing || (int) ($listing['product_id'] ?? 0) !== $productId) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Listing not found']);
+        }
+
+        if (! $this->listingModel->delete($listingId)) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Failed to delete listing']);
+        }
+
+        AuditLogModel::record('product_asset_listing_deleted', (int) ($this->session->get('user_id') ?? 0), 'products', $productId, [
+            'listing_id' => $listingId,
+            'channel_id' => (int) ($listing['channel_id'] ?? 0),
+            'listing_url' => $listing['listing_url'] ?? null,
+        ]);
+
+        return $this->response->setJSON(['success' => true]);
     }
 
     private function resolveProductOrFail($identifier): array

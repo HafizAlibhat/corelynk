@@ -232,8 +232,13 @@ class SalesOrders extends BaseController
             $variantIds = array_values(array_unique(array_filter(array_map('intval', array_map(function ($ln) {
                 return $ln['product_variant_id'] ?? ($ln['variant_id'] ?? 0);
             }, $lines)))));
+            $lineCodes = array_values(array_unique(array_filter(array_map(static function ($ln) {
+                $code = trim((string)($ln['product_code'] ?? ''));
+                return $code !== '' ? $code : null;
+            }, $lines))));
             $productMap = [];
             $variantMap = [];
+            $variantMapByArt = [];
 
             $resolveWeight = static function (...$candidates): float {
                 foreach ($candidates as $candidate) {
@@ -268,9 +273,17 @@ class SalesOrders extends BaseController
                 return 'kg';
             };
 
-            if (!empty($variantIds)) {
+            if (!empty($variantIds) || !empty($lineCodes)) {
                 $pvm = new ProductVariantModel();
-                $variants = $pvm->whereIn('id', $variantIds)->findAll();
+                $variantBuilder = $pvm->builder()->select('id, product_id, art_number, name, image, weight');
+                if (!empty($variantIds) && !empty($lineCodes)) {
+                    $variantBuilder->groupStart()->whereIn('id', $variantIds)->orWhereIn('art_number', $lineCodes)->groupEnd();
+                } elseif (!empty($variantIds)) {
+                    $variantBuilder->whereIn('id', $variantIds);
+                } else {
+                    $variantBuilder->whereIn('art_number', $lineCodes);
+                }
+                $variants = $variantBuilder->get()->getResultArray();
                 foreach ($variants as $v) {
                     $variantImage = trim((string)($v['image'] ?? ''));
                     $variantImageUrl = '';
@@ -280,10 +293,16 @@ class SalesOrders extends BaseController
                             : base_url('/uploads/variants/' . ltrim($variantImage, '/'));
                     }
                     $variantMap[(int)$v['id']] = [
+                        'product_id' => $v['product_id'] ?? null,
+                        'name' => $v['name'] ?? '',
                         'weight' => $v['weight'] ?? 0,
                         'art_number' => $v['art_number'] ?? '',
                         'image_url' => $variantImageUrl,
                     ];
+                    $art = strtoupper(trim((string)($v['art_number'] ?? '')));
+                    if ($art !== '') {
+                        $variantMapByArt[$art] = $variantMap[(int)$v['id']];
+                    }
                 }
             }
 
@@ -318,12 +337,70 @@ class SalesOrders extends BaseController
                 }
             }
 
+            if (!empty($variantMap)) {
+                $pm = isset($pm) ? $pm : new ProductModel();
+                $missingProductIds = [];
+                foreach ($variantMap as $variantRow) {
+                    $variantProductId = isset($variantRow['product_id']) ? (int)$variantRow['product_id'] : 0;
+                    if ($variantProductId > 0 && !isset($productMap[$variantProductId])) {
+                        $missingProductIds[] = $variantProductId;
+                    }
+                }
+                $missingProductIds = array_values(array_unique($missingProductIds));
+                if (!empty($missingProductIds)) {
+                    $extraProducts = $pm->whereIn('id', $missingProductIds)->findAll();
+                    foreach ($extraProducts as $p) {
+                        $img = base_url('assets/images/no-image.png');
+                        if (!empty($p['image'])) {
+                            $img = base_url('/uploads/products/' . ltrim($p['image'], '/'));
+                        } elseif (!empty($p['images'])) {
+                            $imgs = is_string($p['images']) ? json_decode($p['images'], true) : $p['images'];
+                            if (is_array($imgs) && !empty($imgs[0])) {
+                                $img = base_url('/uploads/products/' . ltrim($imgs[0], '/'));
+                            }
+                        }
+                        $productMap[(int)$p['id']] = [
+                            'code' => $p['code'] ?? ($p['sku'] ?? ''),
+                            'sku' => $p['sku'] ?? null,
+                            'public_id' => $p['public_id'] ?? null,
+                            'name' => $p['name'] ?? null,
+                            'unit' => $p['unit'] ?? null,
+                            'image_url' => $img,
+                            'weight_unit' => $resolveWeightUnit($p['weight_unit'] ?? null, 'kg'),
+                            'unit_weight' => $resolveWeight(
+                                $p['unit_weight'] ?? null,
+                                $p['weight'] ?? null,
+                                $p['weight_net'] ?? null,
+                                $p['weight_gross'] ?? null
+                            ),
+                        ];
+                    }
+                }
+            }
+
             foreach ($lines as &$ln) {
+                $originalMissingRefs = ((int)($ln['product_id'] ?? 0) <= 0 && (int)($ln['product_variant_id'] ?? 0) <= 0);
                 $prod = null;
+                $variantId = (int)($ln['product_variant_id'] ?? ($ln['variant_id'] ?? 0));
+                $lineCode = strtoupper(trim((string)($ln['product_code'] ?? '')));
+                if ($variantId <= 0 && $lineCode !== '' && isset($variantMapByArt[$lineCode])) {
+                    foreach ($variantMap as $candidateVariantId => $candidateVariant) {
+                        if (strtoupper(trim((string)($candidateVariant['art_number'] ?? ''))) === $lineCode) {
+                            $variantId = (int)$candidateVariantId;
+                            $ln['product_variant_id'] = $variantId;
+                            break;
+                        }
+                    }
+                }
+                if (empty($ln['product_id']) && $variantId > 0 && isset($variantMap[$variantId])) {
+                    $variantProductId = (int)($variantMap[$variantId]['product_id'] ?? 0);
+                    if ($variantProductId > 0) {
+                        $ln['product_id'] = $variantProductId;
+                    }
+                }
                 if (!empty($ln['product_id'])) {
                     $prod = $productMap[(int)$ln['product_id']] ?? null;
                 }
-                $variantId = (int)($ln['product_variant_id'] ?? ($ln['variant_id'] ?? 0));
                 $variant = $variantId > 0 ? ($variantMap[$variantId] ?? null) : null;
                 $variantCode = trim((string)($variant['art_number'] ?? ''));
                 $currentCode = trim((string)($ln['product_code'] ?? ''));
@@ -333,6 +410,9 @@ class SalesOrders extends BaseController
                     $ln['product_code'] = $ln['product_code'] ?? ($prod['code'] ?? ($ln['product_id'] ?? ''));
                 }
                 $ln['product_name'] = $ln['product_name'] ?? ($prod['name'] ?? '');
+                if (!empty($variant['name'])) {
+                    $ln['variant_name'] = $variant['name'];
+                }
                 $lineImageUrl = trim((string)($ln['product_image_url'] ?? ''));
                 $lineIsDefault = ($lineImageUrl !== '' && stripos($lineImageUrl, 'assets/images/no-image.png') !== false);
                 $variantImageUrl = trim((string)($variant['image_url'] ?? ''));
@@ -357,6 +437,23 @@ class SalesOrders extends BaseController
                 $ln['weight_unit'] = $lineProvidedWeight > 0
                     ? $resolveWeightUnit($ln['weight_unit'] ?? null, $prod['weight_unit'] ?? null, 'kg')
                     : $resolveWeightUnit($prod['weight_unit'] ?? null, $ln['weight_unit'] ?? null, 'kg');
+
+                $lineDesc = trim((string)($ln['description'] ?? ''));
+                $lineProductName = trim((string)($ln['product_name'] ?? ''));
+                $lineVariantName = trim((string)($ln['variant_name'] ?? ''));
+                $looksGenericDesc = ($lineDesc !== '' && strpos($lineDesc, '/') === false && $lineVariantName !== '' && strcasecmp($lineDesc, $lineVariantName) !== 0);
+                if ($lineVariantName !== '' && ($lineDesc === '' || strcasecmp($lineDesc, $lineProductName) === 0 || $looksGenericDesc)) {
+                    $ln['description'] = $lineVariantName;
+                }
+
+                if ($originalMissingRefs) {
+                    $lineId = (int)($ln['id'] ?? 0);
+                    if (!empty($ln['product_code']) || !empty($ln['variant_name']) || !empty($ln['product_image_url'])) {
+                        log_message('warning', 'SalesOrders::view recovered missing product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' using variant/code fallback');
+                    } else {
+                        log_message('warning', 'SalesOrders::view unresolved product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' (missing product_id/product_variant_id)');
+                    }
+                }
 
                 $qty = isset($ln['quantity']) ? (float)$ln['quantity'] : 0.0;
                 $unit = isset($ln['unit_price']) ? (float)$ln['unit_price'] : 0.0;
@@ -767,6 +864,71 @@ class SalesOrders extends BaseController
         try {
             $orderId = (int)$order['id'];
             $lines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('id', 'ASC')->findAll();
+            $quoteLines = [];
+            if (!empty($order['quotation_id'])) {
+                try {
+                    $quoteWithLines = $this->quotationModel->getWithLines((int)$order['quotation_id']);
+                    if (!empty($quoteWithLines['lines']) && is_array($quoteWithLines['lines'])) {
+                        $quoteLines = $quoteWithLines['lines'];
+                    }
+                } catch (\Throwable $_) {
+                    $quoteLines = [];
+                }
+            }
+
+            if (!empty($quoteLines)) {
+                $quoteBuckets = [];
+                foreach ($quoteLines as $quoteLine) {
+                    if (isset($quoteLine['display_type']) && $quoteLine['display_type'] === 'section') {
+                        continue;
+                    }
+                    $qDesc = strtolower(trim((string)($quoteLine['description'] ?? '')));
+                    $qQty = (float)($quoteLine['quantity'] ?? 0);
+                    $qPrice = (float)($quoteLine['unit_price'] ?? 0);
+                    $qTotal = isset($quoteLine['line_total']) ? (float)$quoteLine['line_total'] : ($qQty * $qPrice);
+                    $qKey = $qDesc . '|' . number_format($qQty, 2, '.', '') . '|' . number_format($qPrice, 2, '.', '') . '|' . number_format($qTotal, 2, '.', '');
+                    if (!isset($quoteBuckets[$qKey])) {
+                        $quoteBuckets[$qKey] = [];
+                    }
+                    $quoteBuckets[$qKey][] = $quoteLine;
+                }
+
+                foreach ($lines as &$line) {
+                    if ((int)($line['product_id'] ?? 0) > 0 || (int)($line['product_variant_id'] ?? 0) > 0) {
+                        continue;
+                    }
+
+                    $lDesc = strtolower(trim((string)($line['description'] ?? '')));
+                    $lQty = (float)($line['quantity'] ?? 0);
+                    $lPrice = (float)($line['unit_price'] ?? 0);
+                    $lTotal = isset($line['line_total']) ? (float)$line['line_total'] : ($lQty * $lPrice);
+                    $lKey = $lDesc . '|' . number_format($lQty, 2, '.', '') . '|' . number_format($lPrice, 2, '.', '') . '|' . number_format($lTotal, 2, '.', '');
+
+                    if (empty($quoteBuckets[$lKey])) {
+                        continue;
+                    }
+
+                    $src = array_shift($quoteBuckets[$lKey]);
+                    $srcProductId = isset($src['product_id']) ? (int)$src['product_id'] : 0;
+                    $srcVariantId = isset($src['product_variant_id']) ? (int)$src['product_variant_id'] : 0;
+                    if ($srcProductId > 0) {
+                        $line['product_id'] = $srcProductId;
+                    }
+                    if ($srcVariantId > 0) {
+                        $line['product_variant_id'] = $srcVariantId;
+                    }
+                    $srcCode = trim((string)($src['product_code'] ?? ''));
+                    $srcName = trim((string)($src['product_name'] ?? ''));
+                    if ($srcCode !== '') {
+                        $line['product_code'] = $srcCode;
+                    }
+                    if ($srcName !== '') {
+                        $line['product_name'] = $srcName;
+                    }
+                }
+                unset($line);
+            }
+
             $company = (new CompanySettingsModel())->first() ?: [];
 
             $pdfLines = [];
@@ -779,9 +941,14 @@ class SalesOrders extends BaseController
             $variantIds = array_values(array_filter(array_unique(array_map(static function ($line) {
                 return isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
             }, $lines))));
+            $lineCodes = array_values(array_filter(array_unique(array_map(static function ($line) {
+                $code = trim((string)($line['product_code'] ?? ''));
+                return $code !== '' ? $code : null;
+            }, $lines))));
 
             $productMap = [];
             $variantMap = [];
+            $variantMapByArt = [];
 
             if (!empty($productIds)) {
                 try {
@@ -791,10 +958,22 @@ class SalesOrders extends BaseController
                 } catch (\Throwable $_) {}
             }
 
-            if (!empty($variantIds)) {
+            if (!empty($variantIds) || !empty($lineCodes)) {
                 try {
-                    foreach ($variantModel->whereIn('id', $variantIds)->findAll() as $variantRow) {
+                    $vb = $variantModel->builder()->select('id, product_id, art_number, name, image');
+                    if (!empty($variantIds) && !empty($lineCodes)) {
+                        $vb->groupStart()->whereIn('id', $variantIds)->orWhereIn('art_number', $lineCodes)->groupEnd();
+                    } elseif (!empty($variantIds)) {
+                        $vb->whereIn('id', $variantIds);
+                    } else {
+                        $vb->whereIn('art_number', $lineCodes);
+                    }
+                    foreach ($vb->get()->getResultArray() as $variantRow) {
                         $variantMap[(int)$variantRow['id']] = $variantRow;
+                        $art = strtoupper(trim((string)($variantRow['art_number'] ?? '')));
+                        if ($art !== '') {
+                            $variantMapByArt[$art] = $variantRow;
+                        }
                     }
                 } catch (\Throwable $_) {}
             }
@@ -824,9 +1003,18 @@ class SalesOrders extends BaseController
                 $productImages = $line['product_images'] ?? null;
                 $variantImage = trim((string)($line['variant_image'] ?? ''));
                 $variantCode = trim((string)($line['variant_code'] ?? ''));
+                $productType = null;
+                $detailedType = null;
 
                 $productId = isset($line['product_id']) ? (int)$line['product_id'] : 0;
                 $variantId = isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
+
+                if ($variantId <= 0) {
+                    $lineCodeKey = strtoupper(trim((string)($productCode ?? '')));
+                    if ($lineCodeKey !== '' && isset($variantMapByArt[$lineCodeKey])) {
+                        $variantId = (int)($variantMapByArt[$lineCodeKey]['id'] ?? 0);
+                    }
+                }
 
                 if ($productId <= 0 && $variantId > 0 && isset($variantMap[$variantId])) {
                     $productId = isset($variantMap[$variantId]['product_id']) ? (int)$variantMap[$variantId]['product_id'] : 0;
@@ -838,6 +1026,8 @@ class SalesOrders extends BaseController
                     $productName = $productName ?: ($productRow['name'] ?? '');
                     $productImage = $productImage !== '' ? $productImage : trim((string)($productRow['image'] ?? ''));
                     $productImages = $productImages ?? ($productRow['images'] ?? null);
+                    $productType = $productRow['product_type'] ?? null;
+                    $detailedType = $productRow['detailed_type'] ?? null;
                 }
 
                 if ($variantId > 0 && isset($variantMap[$variantId])) {
@@ -853,15 +1043,20 @@ class SalesOrders extends BaseController
                     if (empty($productName)) {
                         $productName = trim((string)($variantRow['name'] ?? ''));
                     }
+                    if (trim((string)($line['description'] ?? '')) === '' || strcasecmp(trim((string)($line['description'] ?? '')), trim((string)($productName ?? ''))) === 0) {
+                        $line['description'] = trim((string)($variantRow['name'] ?? ($line['description'] ?? '')));
+                    }
                 }
 
                 $pdfLines[] = [
                     'id' => $line['id'] ?? null,
-                    'product_id' => $line['product_id'] ?? null,
-                    'product_variant_id' => $line['product_variant_id'] ?? null,
+                    'product_id' => $productId > 0 ? $productId : null,
+                    'product_variant_id' => $variantId > 0 ? $variantId : null,
                     'product_code' => $productCode ?? '',
                     'variant_code' => $variantCode,
                     'product_name' => $productName ?? '',
+                    'product_type' => $productType,
+                    'detailed_type' => $detailedType,
                     'description' => $line['description'] ?? '',
                     'product_image' => $productImage,
                     'variant_image' => $variantImage,
@@ -878,6 +1073,8 @@ class SalesOrders extends BaseController
                     'tax_amount' => (float)($line['tax_amount'] ?? 0),
                 ];
             }
+
+            $pdfLines = $this->enrichWarehouseStockSnapshot($pdfLines);
 
             $warehouseCustomerNumber = '';
             try {
@@ -921,6 +1118,71 @@ class SalesOrders extends BaseController
             // Generate warehouse PDF from SO lines directly
             try {
                 $lines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('id', 'ASC')->findAll();
+                $quoteLines = [];
+                if (!empty($order['quotation_id'])) {
+                    try {
+                        $quoteWithLines = $this->quotationModel->getWithLines((int)$order['quotation_id']);
+                        if (!empty($quoteWithLines['lines']) && is_array($quoteWithLines['lines'])) {
+                            $quoteLines = $quoteWithLines['lines'];
+                        }
+                    } catch (\Throwable $_) {
+                        $quoteLines = [];
+                    }
+                }
+
+                if (!empty($quoteLines)) {
+                    $quoteBuckets = [];
+                    foreach ($quoteLines as $quoteLine) {
+                        if (isset($quoteLine['display_type']) && $quoteLine['display_type'] === 'section') {
+                            continue;
+                        }
+                        $qDesc = strtolower(trim((string)($quoteLine['description'] ?? '')));
+                        $qQty = (float)($quoteLine['quantity'] ?? 0);
+                        $qPrice = (float)($quoteLine['unit_price'] ?? 0);
+                        $qTotal = isset($quoteLine['line_total']) ? (float)$quoteLine['line_total'] : ($qQty * $qPrice);
+                        $qKey = $qDesc . '|' . number_format($qQty, 2, '.', '') . '|' . number_format($qPrice, 2, '.', '') . '|' . number_format($qTotal, 2, '.', '');
+                        if (!isset($quoteBuckets[$qKey])) {
+                            $quoteBuckets[$qKey] = [];
+                        }
+                        $quoteBuckets[$qKey][] = $quoteLine;
+                    }
+
+                    foreach ($lines as &$line) {
+                        if ((int)($line['product_id'] ?? 0) > 0 || (int)($line['product_variant_id'] ?? 0) > 0) {
+                            continue;
+                        }
+
+                        $lDesc = strtolower(trim((string)($line['description'] ?? '')));
+                        $lQty = (float)($line['quantity'] ?? 0);
+                        $lPrice = (float)($line['unit_price'] ?? 0);
+                        $lTotal = isset($line['line_total']) ? (float)$line['line_total'] : ($lQty * $lPrice);
+                        $lKey = $lDesc . '|' . number_format($lQty, 2, '.', '') . '|' . number_format($lPrice, 2, '.', '') . '|' . number_format($lTotal, 2, '.', '');
+
+                        if (empty($quoteBuckets[$lKey])) {
+                            continue;
+                        }
+
+                        $src = array_shift($quoteBuckets[$lKey]);
+                        $srcProductId = isset($src['product_id']) ? (int)$src['product_id'] : 0;
+                        $srcVariantId = isset($src['product_variant_id']) ? (int)$src['product_variant_id'] : 0;
+                        if ($srcProductId > 0) {
+                            $line['product_id'] = $srcProductId;
+                        }
+                        if ($srcVariantId > 0) {
+                            $line['product_variant_id'] = $srcVariantId;
+                        }
+                        $srcCode = trim((string)($src['product_code'] ?? ''));
+                        $srcName = trim((string)($src['product_name'] ?? ''));
+                        if ($srcCode !== '') {
+                            $line['product_code'] = $srcCode;
+                        }
+                        if ($srcName !== '') {
+                            $line['product_name'] = $srcName;
+                        }
+                    }
+                    unset($line);
+                }
+
                 $company = (new CompanySettingsModel())->first() ?: [];
 
                 $pdfLines = [];
@@ -933,9 +1195,14 @@ class SalesOrders extends BaseController
                 $variantIds = array_values(array_filter(array_unique(array_map(static function ($line) {
                     return isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
                 }, $lines))));
+                $lineCodes = array_values(array_filter(array_unique(array_map(static function ($line) {
+                    $code = trim((string)($line['product_code'] ?? ''));
+                    return $code !== '' ? $code : null;
+                }, $lines))));
 
                 $productMap = [];
                 $variantMap = [];
+                $variantMapByArt = [];
 
                 if (!empty($productIds)) {
                     try {
@@ -945,10 +1212,22 @@ class SalesOrders extends BaseController
                     } catch (\Throwable $_) {}
                 }
 
-                if (!empty($variantIds)) {
+                if (!empty($variantIds) || !empty($lineCodes)) {
                     try {
-                        foreach ($variantModel->whereIn('id', $variantIds)->findAll() as $variantRow) {
+                        $vb = $variantModel->builder()->select('id, product_id, art_number, name, image');
+                        if (!empty($variantIds) && !empty($lineCodes)) {
+                            $vb->groupStart()->whereIn('id', $variantIds)->orWhereIn('art_number', $lineCodes)->groupEnd();
+                        } elseif (!empty($variantIds)) {
+                            $vb->whereIn('id', $variantIds);
+                        } else {
+                            $vb->whereIn('art_number', $lineCodes);
+                        }
+                        foreach ($vb->get()->getResultArray() as $variantRow) {
                             $variantMap[(int)$variantRow['id']] = $variantRow;
+                            $art = strtoupper(trim((string)($variantRow['art_number'] ?? '')));
+                            if ($art !== '') {
+                                $variantMapByArt[$art] = $variantRow;
+                            }
                         }
                     } catch (\Throwable $_) {}
                 }
@@ -978,9 +1257,18 @@ class SalesOrders extends BaseController
                     $productImages = $line['product_images'] ?? null;
                     $variantImage = trim((string)($line['variant_image'] ?? ''));
                     $variantCode = trim((string)($line['variant_code'] ?? ''));
+                    $productType = null;
+                    $detailedType = null;
 
                     $productId = isset($line['product_id']) ? (int)$line['product_id'] : 0;
                     $variantId = isset($line['product_variant_id']) ? (int)$line['product_variant_id'] : 0;
+
+                    if ($variantId <= 0) {
+                        $lineCodeKey = strtoupper(trim((string)($productCode ?? '')));
+                        if ($lineCodeKey !== '' && isset($variantMapByArt[$lineCodeKey])) {
+                            $variantId = (int)($variantMapByArt[$lineCodeKey]['id'] ?? 0);
+                        }
+                    }
 
                     if ($productId <= 0 && $variantId > 0 && isset($variantMap[$variantId])) {
                         $productId = isset($variantMap[$variantId]['product_id']) ? (int)$variantMap[$variantId]['product_id'] : 0;
@@ -992,6 +1280,8 @@ class SalesOrders extends BaseController
                         $productName = $productName ?: ($productRow['name'] ?? '');
                         $productImage = $productImage !== '' ? $productImage : trim((string)($productRow['image'] ?? ''));
                         $productImages = $productImages ?? ($productRow['images'] ?? null);
+                        $productType = $productRow['product_type'] ?? null;
+                        $detailedType = $productRow['detailed_type'] ?? null;
                     }
 
                     if ($variantId > 0 && isset($variantMap[$variantId])) {
@@ -1006,15 +1296,20 @@ class SalesOrders extends BaseController
                         if (empty($productName)) {
                             $productName = trim((string)($variantRow['name'] ?? ''));
                         }
+                        if (trim((string)($line['description'] ?? '')) === '' || strcasecmp(trim((string)($line['description'] ?? '')), trim((string)($productName ?? ''))) === 0) {
+                            $line['description'] = trim((string)($variantRow['name'] ?? ($line['description'] ?? '')));
+                        }
                     }
 
                     $pdfLines[] = [
                         'id' => $line['id'] ?? null,
-                        'product_id' => $line['product_id'] ?? null,
-                        'product_variant_id' => $line['product_variant_id'] ?? null,
+                        'product_id' => $productId > 0 ? $productId : null,
+                        'product_variant_id' => $variantId > 0 ? $variantId : null,
                         'product_code' => $productCode ?? '',
                         'variant_code' => $variantCode,
                         'product_name' => $productName ?? '',
+                        'product_type' => $productType,
+                        'detailed_type' => $detailedType,
                         'description' => $line['description'] ?? '',
                         'product_image' => $productImage,
                         'variant_image' => $variantImage,
@@ -1031,6 +1326,8 @@ class SalesOrders extends BaseController
                         'tax_amount' => (float)($line['tax_amount'] ?? 0),
                     ];
                 }
+
+                $pdfLines = $this->enrichWarehouseStockSnapshot($pdfLines);
 
                 $warehouseCustomerNumber = '';
                 try {
@@ -1077,7 +1374,162 @@ class SalesOrders extends BaseController
             }
         }
 
-        public function createFromQuotation($quotationId)
+    private function enrichWarehouseStockSnapshot(array $lines): array
+    {
+        if (empty($lines)) {
+            return $lines;
+        }
+
+        $keys = [];
+        foreach ($lines as $line) {
+            $productId = (int)($line['product_id'] ?? 0);
+            if ($productId <= 0) {
+                continue;
+            }
+            $variantId = (int)($line['product_variant_id'] ?? 0);
+            $keys[$productId . '|' . $variantId] = true;
+            $keys[$productId . '|0'] = true;
+        }
+
+        if (empty($keys)) {
+            foreach ($lines as &$line) {
+                $isService = strtolower(trim((string)($line['detailed_type'] ?? ''))) === 'service'
+                    || strtolower(trim((string)($line['product_type'] ?? ''))) === 'service';
+                if ($isService) {
+                    $line['warehouse_required_qty'] = 0.0;
+                    $line['warehouse_available_qty'] = 0.0;
+                    $line['warehouse_locations'] = ['Service item'];
+                    $line['warehouse_locations_text'] = 'Service item';
+                    $line['warehouse_status'] = 'In Stock';
+                } else {
+                    $line['warehouse_required_qty'] = (float)($line['quantity'] ?? 0);
+                    $line['warehouse_available_qty'] = 0.0;
+                    $line['warehouse_locations'] = [];
+                    $line['warehouse_locations_text'] = 'Not in stock';
+                    $line['warehouse_status'] = 'Not in Stock';
+                }
+            }
+            unset($line);
+            return $lines;
+        }
+
+        $productIds = [];
+        foreach (array_keys($keys) as $key) {
+            [$productId] = array_map('intval', explode('|', $key, 2));
+            if ($productId > 0) {
+                $productIds[$productId] = true;
+            }
+        }
+
+        $totalsByKey = [];
+        $locationsByKey = [];
+        if (!empty($productIds)) {
+            try {
+                $db = \Config\Database::connect();
+                $rows = $db->table('stock_balances sb')
+                    ->select('sb.product_id, COALESCE(sb.variant_id, 0) AS variant_id, sb.warehouse_id, sb.location_id, SUM(sb.quantity) AS qty, wl.name AS location_name, w.name AS warehouse_name, w.code AS warehouse_code')
+                    ->join('warehouse_locations wl', 'wl.id = sb.location_id', 'left')
+                    ->join('warehouses w', 'w.id = sb.warehouse_id', 'left')
+                    ->whereIn('sb.product_id', array_values(array_map('intval', array_keys($productIds))))
+                    ->where('sb.quantity >', 0)
+                    ->groupBy('sb.product_id, sb.variant_id, sb.warehouse_id, sb.location_id, wl.name, w.name, w.code')
+                    ->orderBy('w.name', 'ASC')
+                    ->orderBy('wl.name', 'ASC')
+                    ->get()
+                    ->getResultArray();
+
+                foreach ($rows as $row) {
+                    $productId = (int)($row['product_id'] ?? 0);
+                    $variantId = (int)($row['variant_id'] ?? 0);
+                    $qty = (float)($row['qty'] ?? 0);
+                    if ($productId <= 0 || $qty <= 0) {
+                        continue;
+                    }
+
+                    $candidateKey = $productId . '|' . $variantId;
+                    if (!isset($keys[$candidateKey])) {
+                        $candidateKey = $productId . '|0';
+                        if (!isset($keys[$candidateKey])) {
+                            continue;
+                        }
+                    }
+
+                    $totalsByKey[$candidateKey] = ($totalsByKey[$candidateKey] ?? 0.0) + $qty;
+
+                    $warehouseName = trim((string)($row['warehouse_name'] ?? ''));
+                    $warehouseCode = trim((string)($row['warehouse_code'] ?? ''));
+                    $locationName = trim((string)($row['location_name'] ?? ''));
+                    $parts = [];
+                    if ($warehouseName !== '') {
+                        $parts[] = $warehouseName;
+                    } elseif ($warehouseCode !== '') {
+                        $parts[] = $warehouseCode;
+                    }
+                    if ($locationName !== '') {
+                        $parts[] = $locationName;
+                    }
+                    $label = !empty($parts)
+                        ? implode(' / ', $parts)
+                        : ('Warehouse #' . (int)($row['warehouse_id'] ?? 0));
+                    $locationsByKey[$candidateKey][] = $label . ' (' . rtrim(rtrim(number_format($qty, 2), '0'), '.') . ')';
+                }
+            } catch (\Throwable $_) {
+                // best effort: fallback values below
+            }
+        }
+
+        foreach ($lines as &$line) {
+            $productId = (int)($line['product_id'] ?? 0);
+            $variantId = (int)($line['product_variant_id'] ?? 0);
+            $isService = strtolower(trim((string)($line['detailed_type'] ?? ''))) === 'service'
+                || strtolower(trim((string)($line['product_type'] ?? ''))) === 'service';
+
+            if ($isService) {
+                $line['warehouse_required_qty'] = 0.0;
+                $line['warehouse_available_qty'] = 0.0;
+                $line['warehouse_locations'] = ['Service item'];
+                $line['warehouse_locations_text'] = 'Service item';
+                $line['warehouse_status'] = 'In Stock';
+                continue;
+            }
+
+            if ($productId <= 0) {
+                $line['warehouse_required_qty'] = (float)($line['quantity'] ?? 0);
+                $line['warehouse_available_qty'] = 0.0;
+                $line['warehouse_locations'] = [];
+                $line['warehouse_locations_text'] = 'Not in stock';
+                $line['warehouse_status'] = 'Not in Stock';
+                continue;
+            }
+
+            $key = $productId . '|' . $variantId;
+            if (!isset($totalsByKey[$key])) {
+                $fallbackKey = $productId . '|0';
+                if (isset($totalsByKey[$fallbackKey])) {
+                    $key = $fallbackKey;
+                }
+            }
+
+            $availableQty = (float)($totalsByKey[$key] ?? 0.0);
+            $locations = $locationsByKey[$key] ?? [];
+            if (!empty($locations)) {
+                $locations = array_values(array_unique($locations));
+            }
+
+            $line['warehouse_required_qty'] = (float)($line['quantity'] ?? 0);
+            $line['warehouse_available_qty'] = $availableQty;
+            $line['warehouse_locations'] = $locations;
+            $line['warehouse_locations_text'] = !empty($locations)
+                ? implode(', ', $locations)
+                : 'Not in stock';
+            $line['warehouse_status'] = $availableQty > 0 ? 'In Stock' : 'Not in Stock';
+        }
+        unset($line);
+
+        return $lines;
+    }
+
+    public function createFromQuotation($quotationId)
     {
         $quote = $this->quotationModel->find($quotationId);
         if (!$quote) return redirect()->back()->with('error','Quotation not found');
@@ -1699,7 +2151,84 @@ class SalesOrders extends BaseController
 
                 $lines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
 
+                $quoteLines = [];
+                if (!empty($order['quotation_id'])) {
+                    try {
+                        $quoteWithLines = $this->quotationModel->getWithLines((int) $order['quotation_id']);
+                        if (!empty($quoteWithLines['lines']) && is_array($quoteWithLines['lines'])) {
+                            $quoteLines = $quoteWithLines['lines'];
+                        }
+                    } catch (\Throwable $_) {
+                        $quoteLines = [];
+                    }
+                }
+
                 try {
+                    // Recover missing product/variant references from the linked quotation when SO lines are legacy/minimal.
+                    if (!empty($quoteLines)) {
+                        $quoteBuckets = [];
+                        foreach ($quoteLines as $quoteLine) {
+                            if (isset($quoteLine['display_type']) && $quoteLine['display_type'] === 'section') {
+                                continue;
+                            }
+                            $qDesc = strtolower(trim((string) ($quoteLine['description'] ?? '')));
+                            $qQty = (float) ($quoteLine['quantity'] ?? 0);
+                            $qPrice = (float) ($quoteLine['unit_price'] ?? 0);
+                            $qTotal = isset($quoteLine['line_total']) ? (float) $quoteLine['line_total'] : ($qQty * $qPrice);
+                            $qKey = $qDesc . '|' . number_format($qQty, 2, '.', '') . '|' . number_format($qPrice, 2, '.', '') . '|' . number_format($qTotal, 2, '.', '');
+                            if (!isset($quoteBuckets[$qKey])) {
+                                $quoteBuckets[$qKey] = [];
+                            }
+                            $quoteBuckets[$qKey][] = $quoteLine;
+                        }
+
+                        foreach ($lines as &$line) {
+                            $lineProductId = isset($line['product_id']) ? (int) $line['product_id'] : 0;
+                            $lineVariantId = isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : 0;
+                            if ($lineProductId > 0 || $lineVariantId > 0) {
+                                continue;
+                            }
+
+                            $lDesc = strtolower(trim((string) ($line['description'] ?? '')));
+                            $lQty = (float) ($line['quantity'] ?? 0);
+                            $lPrice = (float) ($line['unit_price'] ?? 0);
+                            $lTotal = isset($line['line_total']) ? (float) $line['line_total'] : ($lQty * $lPrice);
+                            $lKey = $lDesc . '|' . number_format($lQty, 2, '.', '') . '|' . number_format($lPrice, 2, '.', '') . '|' . number_format($lTotal, 2, '.', '');
+
+                            if (empty($quoteBuckets[$lKey])) {
+                                continue;
+                            }
+
+                            $src = array_shift($quoteBuckets[$lKey]);
+                            $srcProductId = isset($src['product_id']) ? (int) $src['product_id'] : 0;
+                            $srcVariantId = isset($src['product_variant_id']) ? (int) $src['product_variant_id'] : 0;
+                            if ($srcProductId > 0) {
+                                $line['product_id'] = $srcProductId;
+                            }
+                            if ($srcVariantId > 0) {
+                                $line['product_variant_id'] = $srcVariantId;
+                            }
+
+                            $srcCode = trim((string) ($src['product_code'] ?? ''));
+                            $srcName = trim((string) ($src['product_name'] ?? ''));
+                            $srcVariantName = trim((string) ($src['variant_name'] ?? ''));
+                            $srcImageUrl = trim((string) ($src['product_image_url'] ?? ''));
+                            if ($srcCode !== '') {
+                                $line['product_code'] = $srcCode;
+                            }
+                            if ($srcName !== '') {
+                                $line['product_name'] = $srcName;
+                            }
+                            if ($srcVariantName !== '' && empty($line['variant_name'])) {
+                                $line['variant_name'] = $srcVariantName;
+                            }
+                            if ($srcImageUrl !== '' && empty($line['product_image'])) {
+                                $line['product_image'] = $srcImageUrl;
+                            }
+                        }
+                        unset($line);
+                    }
+
                     $productIds = array_values(array_filter(array_unique(array_map(function ($line) {
                         return isset($line['product_id']) ? (int) $line['product_id'] : null;
                     }, $lines))));
@@ -1709,9 +2238,14 @@ class SalesOrders extends BaseController
                         }
                         return null;
                     }, $lines))));
+                    $lineCodes = array_values(array_filter(array_unique(array_map(static function ($line) {
+                        $code = trim((string) ($line['product_code'] ?? ''));
+                        return $code !== '' ? $code : null;
+                    }, $lines))));
 
                     $prodMap = [];
                     $variantMap = [];
+                    $variantMapByArt = [];
 
                     if (!empty($productIds)) {
                         $productModel = new \App\Models\ProductModel();
@@ -1721,15 +2255,24 @@ class SalesOrders extends BaseController
                         }
                     }
 
-                    if (!empty($variantIds) && $db->tableExists('product_variants')) {
+                    if (($db->tableExists('product_variants')) && (!empty($variantIds) || !empty($lineCodes))) {
                         try {
-                            $variants = $db->table('product_variants')
-                                ->select('id, product_id, art_number, name, image')
-                                ->whereIn('id', $variantIds)
-                                ->get()
-                                ->getResultArray();
+                            $variantBuilder = $db->table('product_variants')
+                                ->select('id, product_id, art_number, name, image');
+                            if (!empty($variantIds) && !empty($lineCodes)) {
+                                $variantBuilder->groupStart()->whereIn('id', $variantIds)->orWhereIn('art_number', $lineCodes)->groupEnd();
+                            } elseif (!empty($variantIds)) {
+                                $variantBuilder->whereIn('id', $variantIds);
+                            } else {
+                                $variantBuilder->whereIn('art_number', $lineCodes);
+                            }
+                            $variants = $variantBuilder->get()->getResultArray();
                             foreach ($variants as $variant) {
                                 $variantMap[(int) $variant['id']] = $variant;
+                                $art = strtoupper(trim((string) ($variant['art_number'] ?? '')));
+                                if ($art !== '') {
+                                    $variantMapByArt[$art] = $variant;
+                                }
                             }
 
                             // Some lines only keep variant_id; backfill missing product rows via variant->product_id.
@@ -1751,8 +2294,17 @@ class SalesOrders extends BaseController
                     }
 
                     foreach ($lines as &$line) {
+                        $originalMissingRefs = ((int) ($line['product_id'] ?? 0) <= 0 && (int) ($line['product_variant_id'] ?? 0) <= 0);
                         $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
                         $variantId = isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : null;
+                        $lineCode = strtoupper(trim((string) ($line['product_code'] ?? '')));
+
+                        if ((!$variantId || $variantId <= 0) && $lineCode !== '' && isset($variantMapByArt[$lineCode])) {
+                            $variantId = (int) ($variantMapByArt[$lineCode]['id'] ?? 0);
+                            if ($variantId > 0) {
+                                $line['product_variant_id'] = $variantId;
+                            }
+                        }
 
                         if ((!$productId || $productId <= 0) && $variantId && isset($variantMap[$variantId])) {
                             $productId = isset($variantMap[$variantId]['product_id']) ? (int) $variantMap[$variantId]['product_id'] : null;
@@ -1775,6 +2327,26 @@ class SalesOrders extends BaseController
                             $line['variant_code'] = $variant['art_number'] ?? null;
                             $line['variant_name'] = $variant['name'] ?? null;
                             $line['variant_image'] = $variant['image'] ?? null;
+                            if (empty($line['product_code']) && !empty($line['variant_code'])) {
+                                $line['product_code'] = $line['variant_code'];
+                            }
+                        }
+
+                        $lineDesc = trim((string)($line['description'] ?? ''));
+                        $lineProductName = trim((string)($line['product_name'] ?? ''));
+                        $lineVariantName = trim((string)($line['variant_name'] ?? ''));
+                        $looksGenericDesc = ($lineDesc !== '' && strpos($lineDesc, '/') === false && $lineVariantName !== '' && strcasecmp($lineDesc, $lineVariantName) !== 0);
+                        if ($lineVariantName !== '' && ($lineDesc === '' || strcasecmp($lineDesc, $lineProductName) === 0 || $looksGenericDesc)) {
+                            $line['description'] = $lineVariantName;
+                        }
+
+                        if ($originalMissingRefs) {
+                            $lineId = (int) ($line['id'] ?? 0);
+                            if (!empty($line['product_code']) || !empty($line['variant_code'])) {
+                                log_message('warning', 'SalesOrders::printView recovered missing product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' using quotation/code fallback');
+                            } else {
+                                log_message('warning', 'SalesOrders::printView unresolved product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' (missing product_id/product_variant_id)');
+                            }
                         }
                     }
                     unset($line);

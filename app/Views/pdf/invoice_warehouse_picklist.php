@@ -489,13 +489,13 @@ if (!empty($lines) && is_array($lines)) {
             .shell { box-shadow: none; border-color: #d7dce5; border-radius: 12px !important; }
             .topbar { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%) !important; color: #fff !important; page-break-inside: avoid !important; }
             .kpi-grid,
-            .stock-note,
-            .pick-table,
-            .pick-table thead,
-            .pick-table tbody,
-            .pick-table tr,
+            .stock-note { page-break-inside: avoid !important; break-inside: avoid !important; }
+            .pick-table { page-break-inside: auto !important; break-inside: auto !important; }
+            .pick-table thead { display: table-header-group !important; }
+            .pick-table tbody { display: table-row-group !important; }
+            .pick-table tr { page-break-inside: avoid !important; break-inside: avoid !important; }
             .pick-table td,
-            .pick-table th { page-break-inside: avoid !important; break-inside: avoid !important; }
+            .pick-table th { page-break-inside: auto !important; break-inside: auto !important; }
             .meta-actions { display: none !important; }
             .content { padding-top: 0; }
             .topbar {

@@ -101,6 +101,24 @@ class PreparationExecution extends BaseController
         $referenceSuffix = strtoupper(substr(dechex(mt_rand(0, 65535)), 0, 4));
         $referenceNo = 'VSN-' . date('YmdHis') . '-' . str_pad($referenceSuffix, 4, '0', STR_PAD_LEFT);
 
+        // Pre-check source location stock for this product to provide early warning
+        try {
+            $balCols = array_flip($db->getFieldNames('stock_balances'));
+            $q = $db->table('stock_balances')->select('SUM(quantity) as qty')->where('location_id', $fromLocationId);
+            if (isset($balCols['item_key'])) {
+                $q->where('item_key', 'p' . $productId);
+            } else {
+                $q->where('product_id', $productId);
+            }
+            $row = $q->get()->getRowArray();
+            $available = (float)($row['qty'] ?? 0);
+            if ($available + 0.00001 < $qty) {
+                return $this->redirectBackToOrder($salesOrderId, 'Insufficient stock at source location. Available: ' . number_format($available, 4), 'error');
+            }
+        } catch (\Throwable $_) {
+            // If pre-check fails, fall back to the internalTransfer validation which will prevent negative transfer
+        }
+
         try {
             $db->transStart();
 
@@ -116,11 +134,16 @@ class PreparationExecution extends BaseController
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
 
-            $this->sendNoteItemModel->addItem([
+            $unitPrice = (float) ($this->request->getPost('unit_price') ?? 0);
+            $itemData = [
                 'send_note_id' => $sendNoteId,
                 'product_id' => $productId,
                 'qty' => number_format($qty, 4, '.', ''),
-            ]);
+            ];
+            if ($unitPrice > 0) {
+                $itemData['unit_price'] = number_format($unitPrice, 4, '.', '');
+            }
+            $this->sendNoteItemModel->addItem($itemData);
 
             $inventoryService = new InventoryService();
             $inventoryService->internalTransfer(
