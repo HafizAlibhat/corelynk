@@ -466,7 +466,18 @@ class ProductVariants extends BaseController
         }
 
         $offset = ($page - 1) * $perPage;
-        $builder->groupBy('pv.id')->orderBy('pv.art_number', 'ASC')->limit($perPage, $offset);
+        $groupByFields = array_unique(array_merge(
+            array_map(static fn($field) => 'pv.' . $field, $variantFields ?? []),
+            ['p.name', 'p.code']
+        ));
+        if ($soldSub) {
+            $groupByFields[] = 'sol.sold';
+        }
+        if ($purchasedSub) {
+            $groupByFields[] = 'polx.purchased';
+        }
+
+        $builder->groupBy(implode(', ', $groupByFields))->orderBy('pv.art_number', 'ASC')->limit($perPage, $offset);
 
         $list = $builder->get()->getResultArray();
 

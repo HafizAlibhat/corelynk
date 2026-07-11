@@ -351,7 +351,7 @@ class ProcessModel extends Model
                     ->join('vendors', 'vendors.id = processes.vendor_id', 'left')
                     ->join('work_order_process_runs', 'work_order_process_runs.process_id = processes.id AND work_order_process_runs.status IN ("pending", "in_progress")', 'inner')
                     ->where('processes.is_active', true)
-                    ->groupBy('processes.id')
+                    ->groupBy('processes.id, products.name, products.code, vendors.name')
                     ->having('pending_runs >', 0)
                     ->orderBy('total_pending_qty', 'DESC')
                     ->findAll();

@@ -952,7 +952,7 @@ class ProductModel extends Model
                     ->join('product_categories', 'product_categories.id = products.category_id', 'left')
                     ->join('work_orders', 'work_orders.product_id = products.id', 'left')
                     ->where('products.is_active', true)
-                    ->groupBy('products.id')
+                    ->groupBy('products.id, product_categories.name')
                     ->orderBy('products.name', 'ASC')
                     ->findAll();
     }

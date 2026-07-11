@@ -1040,8 +1040,18 @@ class Products extends BaseController
                 ->select($select)
                 ->select('COALESCE(SUM(vi.quantity), 0) as on_hand, COALESCE(SUM(vi.reserved), 0) as reserved')
                 ->join('variant_inventory vi', 'vi.variant_id = pv.id', 'left')
-                ->where('pv.product_id', $productId)
-                ->groupBy('pv.id')
+                ->where('pv.product_id', $productId);
+
+            $productVariantGroupBy = ['pv.id', 'pv.product_id', 'pv.art_number', 'pv.name', 'pv.price', 'pv.cost', 'pv.attributes'];
+            if (in_array('weight', $variantFields ?? [], true)) {
+                $productVariantGroupBy[] = 'pv.weight';
+            }
+            if (in_array('image', $variantFields ?? [], true)) {
+                $productVariantGroupBy[] = 'pv.image';
+            }
+
+            $variants = $variants
+                ->groupBy(implode(', ', $productVariantGroupBy))
                 ->orderBy('pv.id', 'ASC')
                 ->get()
                 ->getResultArray();

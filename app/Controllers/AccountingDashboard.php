@@ -145,7 +145,7 @@ class AccountingDashboard extends Controller
                 GROUP_CONCAT(jl.debit) as debits, GROUP_CONCAT(jl.credit) as credits, GROUP_CONCAT(jl.currency_code) as currencies, GROUP_CONCAT(jl.fx_rate) as fx_rates,
                 COUNT(jl.id) as line_count
                 FROM journal_entries je LEFT JOIN journal_lines jl ON je.id=jl.entry_id
-                GROUP BY je.id ORDER BY je.entry_date DESC, je.id DESC LIMIT 5";
+                GROUP BY je.id, je.entry_date, je.memo ORDER BY je.entry_date DESC, je.id DESC LIMIT 5";
             $recent_activity = $db->query($recentQ)->getResultArray();
         } else {
             // PKR view: stored PKR amounts used directly (no further conversion)
@@ -162,7 +162,7 @@ class AccountingDashboard extends Controller
                 GROUP_CONCAT(jl.debit) as debits, GROUP_CONCAT(jl.credit) as credits, GROUP_CONCAT(jl.currency_code) as currencies, GROUP_CONCAT(jl.fx_rate) as fx_rates,
                 COUNT(jl.id) as line_count
                 FROM journal_entries je LEFT JOIN journal_lines jl ON je.id=jl.entry_id
-                GROUP BY je.id ORDER BY je.entry_date DESC, je.id DESC LIMIT 5";
+                GROUP BY je.id, je.entry_date, je.memo ORDER BY je.entry_date DESC, je.id DESC LIMIT 5";
             $recent_activity = $db->query($recentQ)->getResultArray();
         }
         // Income vs Expenses (alternate aggregate used by some charts)

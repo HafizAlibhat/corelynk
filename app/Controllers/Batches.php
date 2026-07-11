@@ -114,7 +114,7 @@ class Batches extends BaseController
         ->join('products', 'products.id = work_order_items.product_id', 'left')
         ->join('processes', 'processes.id = process_batches.process_id', 'left')
         ->join('process_batch_logs', 'process_batch_logs.batch_id = process_batches.id', 'left')
-        ->groupBy('process_batches.id');
+        ->groupBy('process_batches.id, work_orders.wo_number, products.name, products.code, processes.name');
 
         // Apply same filters as index
         if ($search) {

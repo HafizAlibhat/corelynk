@@ -52,7 +52,7 @@ class ExpenseApi extends BaseApiController
              INNER JOIN journal_lines jl ON jl.entry_id = je.id
              INNER JOIN accounts a ON jl.account_id = a.id AND a.type = 'Expense'
              WHERE jl.debit > 0
-             GROUP BY je.id
+             GROUP BY je.id, je.entry_date, je.memo, je.total_debits, je.currency_code
              ORDER BY je.entry_date DESC, je.id DESC
              LIMIT ? OFFSET ?",
             [$perPage, $offset]

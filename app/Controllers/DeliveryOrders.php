@@ -597,7 +597,7 @@ class DeliveryOrders extends BaseController
             $meta['source'] = 'procurement';
 
             $poInfo = $db->table('purchase_orders')
-                ->select("MIN(COALESCE(NULLIF(order_date, '0000-00-00'), created_at)) as po_date")
+                ->select("MIN(CASE WHEN order_date IS NULL OR order_date < '1000-01-01' THEN created_at ELSE order_date END) as po_date", false)
                 ->whereIn('id', $poIds)
                 ->get()
                 ->getRowArray();

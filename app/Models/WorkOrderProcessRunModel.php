@@ -295,7 +295,7 @@ class WorkOrderProcessRunModel extends Model
             $builder->where('work_order_process_runs.completed_at <=', $endDate);
         }
 
-        return $builder->groupBy('processes.id')
+        return $builder->groupBy('processes.id, processes.name')
                        ->orderBy('processes.name', 'ASC')
                        ->findAll();
     }

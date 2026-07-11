@@ -111,7 +111,7 @@ class VendorLedger extends BaseController
                             je.source_type = 'vendor_payment' AND je.source_id IN 
                             (SELECT id FROM vendor_payments WHERE vendor_id = ?)
                          )
-                         GROUP BY je.id
+                         GROUP BY je.id, je.entry_date, je.memo, je.source_type, je.source_id, je.currency_code
                          ORDER BY je.entry_date ASC",
                         [$vendorId, $vendorId]
                     )->getResultArray();

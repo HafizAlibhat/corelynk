@@ -109,7 +109,7 @@ class ProcessBatchLogModel extends Model
             ->join('work_order_items woi', 'woi.id = pb.work_order_item_id')
             ->join('products p', 'p.id = woi.product_id')
             ->join('processes pr', 'pr.id = pb.process_id')
-            ->groupBy('pb.id')
+            ->groupBy('pb.id, pb.batch_code, p.name, pr.name, pb.planned_qty')
             ->orderBy('efficiency_percent', 'DESC');
 
         // Apply filters

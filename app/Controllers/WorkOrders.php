@@ -263,7 +263,7 @@ class WorkOrders extends BaseController
                    ->join('processes p', 'p.id = pb.process_id', 'left')
                    ->join('vendors v', 'v.id = p.vendor_id', 'left')
                    ->join('process_batch_logs pbl', 'pbl.process_batch_id = pb.id', 'left')
-                   ->groupBy('pb.id')
+                   ->groupBy('pb.id, p.name, p.is_vendor_process, p.vendor_id, v.name')
                    ->orderBy('pb.created_at', 'DESC');
             } else {
                 $pb->select('pb.*, p.name as process_name, p.is_vendor_process, p.vendor_id, v.name as vendor_name')

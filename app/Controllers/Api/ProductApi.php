@@ -181,7 +181,7 @@ class ProductApi extends BaseApiController
                  FROM product_variants pv
                  LEFT JOIN variant_inventory vi ON vi.variant_id = pv.id
                  WHERE pv.product_id = ?
-                 GROUP BY pv.id
+                 GROUP BY pv.id, pv.art_number, pv.name, pv.sale_price, pv.cost_price, pv.sale_currency, pv.cost_currency, pv.attributes
                  ORDER BY pv.name ASC
                  LIMIT 200",
                 [$id]

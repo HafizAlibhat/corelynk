@@ -89,7 +89,7 @@ class WorkOrderModel extends Model
                     ->join('work_order_items', 'work_order_items.work_order_id = work_orders.id')
                     ->join('products', 'products.id = work_order_items.product_id')
                     ->join('users', 'users.id = work_orders.created_by', 'left')
-                    ->groupBy('work_orders.id')
+                    ->groupBy('work_orders.id, users.first_name')
                     ->orderBy('work_orders.created_at', 'DESC')
                     ->findAll();
     }

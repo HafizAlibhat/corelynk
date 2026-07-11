@@ -221,3 +221,5 @@ database/debug_queries.sql
 debug_*.php
 
 test.php
+
+public/uploads.zip

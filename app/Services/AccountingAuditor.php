@@ -178,7 +178,7 @@ class AccountingAuditor
                 COUNT(jl.id) as line_count
             FROM journal_entries je
             LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            GROUP BY je.id
+            GROUP BY je.id, je.entry_number, je.entry_date, je.description
             HAVING ABS(total_debit - total_credit) > 0.01
             ORDER BY je.entry_date DESC
             LIMIT 10
