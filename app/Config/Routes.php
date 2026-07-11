@@ -254,6 +254,7 @@ $routes->group('', function($routes) {
         $routes->post($productIdentifier . '/assets/channels/(:num)/delete', 'ProductAssets::deleteChannel/$1/$2');
         $routes->post($productIdentifier . '/assets/upload', 'ProductAssets::upload/$1');
         $routes->post($productIdentifier . '/assets/listings', 'ProductAssets::saveListing/$1');
+        $routes->post($productIdentifier . '/assets/listings/(:num)/delete', 'ProductAssets::deleteListing/$1/$2');
         $routes->post($productIdentifier . '/assets/(:num)/primary', 'ProductAssets::setPrimary/$1/$2');
         $routes->post($productIdentifier . '/assets/(:num)/update-file', 'ProductAssets::updateAssetFile/$1/$2');
         $routes->post($productIdentifier . '/assets/(:num)/attach-source', 'ProductAssets::attachSource/$1/$2');

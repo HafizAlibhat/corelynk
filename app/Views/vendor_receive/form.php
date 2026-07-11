@@ -24,6 +24,9 @@
                 <div class="col-md-3"><strong>Product:</strong> <?= esc($send_note['product_name'] ?? '-') ?> (<?= esc($send_note['product_code'] ?? '-') ?>)</div>
                 <div class="col-md-3"><strong>Step:</strong> <?= esc($send_note['step_name'] ?? '-') ?></div>
                 <div class="col-md-3"><strong>Sent Qty:</strong> <?= number_format((float) ($send_note['qty'] ?? 0), 4) ?></div>
+                <?php if (!empty($send_items) && isset($send_items[0]['unit_price'])): ?>
+                    <div class="col-md-3"><strong>Unit Price:</strong> <?= number_format((float)($send_items[0]['unit_price'] ?? 0), 4) ?></div>
+                <?php endif; ?>
                 <div class="col-md-3"><strong>Already Received:</strong> <?= number_format((float) ($already_received ?? 0), 4) ?></div>
                 <div class="col-md-3"><strong>Remaining:</strong> <?= number_format((float) ($remaining_qty ?? 0), 4) ?></div>
             </div>

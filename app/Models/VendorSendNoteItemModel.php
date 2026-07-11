@@ -15,6 +15,7 @@ class VendorSendNoteItemModel extends Model
         'send_note_id',
         'product_id',
         'qty',
+        'unit_price',
     ];
 
     public function addItem(array $data): int

@@ -595,6 +595,40 @@ class InventoryService
         }
 
         $this->syncTemplateCurrentStock((int)$item['product_id']);
+
+        // Sync variant_inventory for moved variant across source and destination warehouses
+        try {
+            if (!empty($item['variant_id'])) {
+                $vid = (int)$item['variant_id'];
+                $viCols = array_flip($db->getFieldNames('variant_inventory'));
+                foreach ([$from_warehouse_id, $to_warehouse_id] as $wid) {
+                    $newTotal = (float)($db->table('stock_balances')
+                        ->selectSum('quantity')
+                        ->where('variant_id', $vid)
+                        ->where('warehouse_id', $wid)
+                        ->get()
+                        ->getRow()
+                        ->quantity ?? 0);
+
+                    $viRow = $db->table('variant_inventory')
+                        ->where(['variant_id' => $vid, 'warehouse_id' => $wid])
+                        ->get()->getRowArray();
+
+                    if ($viRow) {
+                        $updateData = ['quantity' => $newTotal, 'updated_at' => date('Y-m-d H:i:s')];
+                        $db->table('variant_inventory')
+                            ->where('id', (int)$viRow['id'])
+                            ->update(array_intersect_key($updateData, $viCols));
+                    } else {
+                        $insertData = ['variant_id' => $vid, 'warehouse_id' => $wid, 'quantity' => $newTotal, 'reserved' => 0, 'created_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')];
+                        $db->table('variant_inventory')->insert(array_intersect_key($insertData, $viCols));
+                    }
+                }
+            }
+        } catch (\Throwable $_) {
+            // best-effort: do not break transfer on variant sync failures
+        }
+
         return $transferId;
     }
 

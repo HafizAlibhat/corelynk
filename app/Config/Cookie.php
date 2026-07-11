@@ -36,7 +36,7 @@ class Cookie extends BaseConfig
      *
      * Typically will be a forward slash.
      */
-    public string $path = '/corelynk_dev/';
+    public string $path = '/corelynk/';
 
     /**
      * --------------------------------------------------------------------------

@@ -87,6 +87,20 @@ class VendorReceive extends BaseController
             return redirect()->back()->with('error', 'Vendor send note not found.');
         }
 
+        // Load send note items (including optional unit_price)
+        $sendItems = [];
+        try {
+            $sendItems = $db->table('vendor_send_note_items vsi')
+                ->select('vsi.*, p.name AS product_name, p.code AS product_code')
+                ->join('products p', 'p.id = vsi.product_id', 'left')
+                ->where('vsi.send_note_id', $sendNoteId)
+                ->orderBy('vsi.id', 'ASC')
+                ->get()
+                ->getResultArray();
+        } catch (\Throwable $_) {
+            $sendItems = [];
+        }
+
         $receivedTotalRow = $db->table('vendor_receive_notes vrn')
             ->select('COALESCE(SUM(vri.qty_received), 0) AS received_total', false)
             ->join('vendor_receive_items vri', 'vri.receive_note_id = vrn.id', 'left')
@@ -126,6 +140,7 @@ class VendorReceive extends BaseController
             'locations' => $locations,
             'vendors' => $vendors,
             'next_steps' => $nextSteps,
+            'send_items' => $sendItems,
         ]);
     }
 

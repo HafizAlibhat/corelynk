@@ -383,6 +383,7 @@ $scopeHint = $variantId > 0
             <h6 style="color: #e5e7eb; margin-bottom: 1rem;"><i class="bi bi-link"></i> Product Listings</h6>
             <form id="listingForm" class="row g-2 align-items-end">
                 <?= csrf_field() ?>
+                <input type="hidden" name="listing_id" id="listingIdInput" value="">
                 <div class="col-md-4">
                     <label class="form-label small" style="color: #d1d5db;">Channel</label>
                     <select name="channel_id" id="listingChannelSelect" class="form-select form-select-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;" required>
@@ -397,6 +398,9 @@ $scopeHint = $variantId > 0
                     <button class="btn btn-sm w-100" type="submit" style="background-color: #3b82f6; color: white; font-weight: 500;">
                         <i class="bi bi-save"></i> Save
                     </button>
+                </div>
+                <div class="col-12">
+                    <div id="listingEditHint" class="small text-muted mt-1"></div>
                 </div>
             </form>
 
@@ -605,6 +609,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const apiBase = <?= json_encode(site_url('products/' . rawurlencode((string) $productIdentifier) . '/assets')) ?>;
     const scopedDataUrl = `${apiBase}/data${variantId > 0 ? `?variant_id=${variantId}` : ''}`;
+    const csrfTokenKey = '<?= csrf_token() ?>';
+    const csrfTokenValue = '<?= csrf_hash() ?>';
 
     const selectChannel = document.getElementById('selectChannel');
     const selectBrand = document.getElementById('selectBrand');
@@ -638,6 +644,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const finalPickImageLabel = document.getElementById('finalPickImageLabel');
     const finalPickSourceLabel = document.getElementById('finalPickSourceLabel');
     const finalDoUploadBtn = document.getElementById('finalDoUploadBtn');
+    const listingForm = document.getElementById('listingForm');
+    const listingChannelSelect = document.getElementById('listingChannelSelect');
+    const listingUrlInput = listingForm.querySelector('input[name="listing_url"]');
+    const listingIdInput = document.getElementById('listingIdInput');
+    const listingEditHint = document.getElementById('listingEditHint');
+    const listingsList = document.getElementById('listingsList');
+    let currentListings = [];
     const finalCancelUploadBtn = document.getElementById('finalCancelUploadBtn');
     const commonRawGrid = document.getElementById('commonRawGrid');
     const commonFinalGrid = document.getElementById('commonFinalGrid');
@@ -1200,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 loadAssets();
                 populateListingChannels(channels);
+                renderListings(data.data.listings || []);
                 updateSelectionStatus();
                 updateAssetsSyncLabel();
             })
@@ -1291,6 +1305,127 @@ document.addEventListener('DOMContentLoaded', function() {
             opt.textContent = c.name;
             sel.appendChild(opt);
         });
+    }
+
+    function renderListings(listings) {
+        const listingsList = document.getElementById('listingsList');
+        if (!listingsList) {
+            return;
+        }
+
+        if (!Array.isArray(listings) || listings.length === 0) {
+            listingsList.innerHTML = '<small style="color: #9ca3af;">No listings yet</small>';
+            return;
+        }
+
+        currentListings = Array.isArray(listings) ? [...listings] : [];
+        const rows = listings.map((listing, index) => {
+            const channelName = listing.channel_name || 'Unknown channel';
+            const url = listing.listing_url || '';
+            const notes = listing.notes ? `<div class="small text-muted mt-1">${escapeHtml(listing.notes)}</div>` : '';
+            return `
+                <div class="py-2 border-bottom" style="border-color:#374151;" data-listing-id="${listing.id}">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <div style="color:#e5e7eb;font-weight:600;">${index + 1}. ${escapeHtml(channelName)}</div>
+                            <a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#60a5fa;word-break:break-all;">${escapeHtml(url)}</a>
+                        </div>
+                        <div class="btn-group" role="group" aria-label="Listing actions">
+                            <button type="button" class="btn btn-sm btn-outline-light listing-edit-btn" data-listing-id="${listing.id}" title="Edit listing">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger listing-delete-btn" data-listing-id="${listing.id}" title="Delete listing">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    ${notes}
+                </div>
+            `;
+        });
+
+        listingsList.innerHTML = rows.join('');
+        attachListingHandlers();
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function attachListingHandlers() {
+        if (!listingsList) {
+            return;
+        }
+
+        listingsList.querySelectorAll('.listing-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const listingId = btn.getAttribute('data-listing-id');
+                if (listingId) {
+                    setListingEditState(listingId);
+                }
+            });
+        });
+
+        listingsList.querySelectorAll('.listing-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const listingId = btn.getAttribute('data-listing-id');
+                if (listingId) {
+                    deleteListing(parseInt(listingId, 10));
+                }
+            });
+        });
+    }
+
+    function setListingEditState(listingId) {
+        const listing = currentListings.find(item => String(item.id) === String(listingId));
+        if (!listing) {
+            showError('Listing not found');
+            return;
+        }
+
+        listingIdInput.value = String(listing.id || '');
+        listingChannelSelect.value = String(listing.channel_id || '');
+        listingUrlInput.value = listing.listing_url || '';
+        listingEditHint.textContent = `Editing listing ${listing.id} for ${listing.channel_name || 'selected channel'}`;
+        listingUrlInput.focus();
+    }
+
+    function resetListingForm() {
+        listingIdInput.value = '';
+        listingChannelSelect.value = '';
+        listingUrlInput.value = '';
+        listingEditHint.textContent = '';
+    }
+
+    function deleteListing(listingId) {
+        if (!confirm('Delete this product listing?')) {
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append(csrfTokenKey, csrfTokenValue);
+
+        fetch(`${apiBase}/listings/${listingId}/delete`, {
+            method: 'POST',
+            body: fd,
+        })
+            .then(async r => {
+                const data = await r.json();
+                if (r.ok && data.success) {
+                    loadData();
+                    return;
+                }
+                showError(data.message || 'Failed to delete listing');
+            })
+            .catch(err => {
+                console.error('Listing delete failed', err);
+                showError('Failed to delete listing: ' + err.message);
+            });
     }
 
     function showChannelRules() {
@@ -2382,11 +2517,20 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch(`${apiBase}/listings`, {
             method: 'POST',
             body: fd
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                e.target.reset();
+        })
+        .then(async r => {
+            const data = await r.json();
+            if (r.ok && data.success) {
+                resetListingForm();
                 loadData();
+                return;
             }
+            const msg = data.message || data.error || 'Failed to save listing';
+            showError(msg);
+        })
+        .catch(err => {
+            console.error('Listing save failed', err);
+            showError('Failed to save listing: ' + err.message);
         });
     });
 });

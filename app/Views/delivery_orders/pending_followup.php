@@ -67,6 +67,31 @@ Pending Shipment Follow-up
         color: var(--cl-text-muted, #94a3b8);
     }
 
+    .pf-copy-track-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        margin-left: 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(148, 163, 184, .25);
+        background: rgba(30, 41, 59, .35);
+        color: #cbd5e1;
+        padding: 0;
+        vertical-align: middle;
+    }
+    .pf-copy-track-btn:hover {
+        color: #f1f5f9;
+        border-color: rgba(148, 163, 184, .45);
+        background: rgba(30, 41, 59, .6);
+    }
+    .pf-copy-track-btn.copied {
+        color: #34d399;
+        border-color: rgba(52, 211, 153, .45);
+        background: rgba(16, 185, 129, .14);
+    }
+
     @media (max-width: 992px) {
         .pf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -189,6 +214,9 @@ Pending Shipment Follow-up
                                 <?php else: ?>
                                     <?= esc($do['tracking_number']) ?>
                                 <?php endif; ?>
+                                <button type="button" class="pf-copy-track-btn js-copy-track" data-track="<?= esc((string)$do['tracking_number']) ?>" title="Copy tracking number" aria-label="Copy tracking number">
+                                    <i class="bi bi-clipboard" style="font-size:.72rem"></i>
+                                </button>
                             <?php else: ?>
                                 <span class="badge bg-warning text-dark">Missing</span>
                             <?php endif; ?>
@@ -296,6 +324,36 @@ Pending Shipment Follow-up
 
     document.querySelectorAll('.js-mark-delivered').forEach(function(btn) {
         btn.addEventListener('click', function() { markDelivered(btn); });
+    });
+
+    document.querySelectorAll('.js-copy-track').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const tracking = (this.dataset.track || '').trim();
+            if (!tracking) return;
+
+            const icon = this.querySelector('i');
+            const originalClass = icon ? icon.className : '';
+            try {
+                await navigator.clipboard.writeText(tracking);
+            } catch (_) {
+                const ta = document.createElement('textarea');
+                ta.value = tracking;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try { document.execCommand('copy'); } catch (__) {}
+                document.body.removeChild(ta);
+            }
+
+            this.classList.add('copied');
+            if (icon) icon.className = 'bi bi-check2';
+            setTimeout(() => {
+                this.classList.remove('copied');
+                if (icon) icon.className = originalClass;
+            }, 1200);
+        });
     });
 })();
 </script>
