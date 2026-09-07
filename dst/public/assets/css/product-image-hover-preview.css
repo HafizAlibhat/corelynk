@@ -1,0 +1,55 @@
+.js-product-hover-thumb {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+    cursor: zoom-in;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.js-product-hover-thumb:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 16px rgba(2, 6, 23, 0.22);
+}
+
+#global-product-hover-preview {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 2147483000;
+    width: 262px;
+    height: 262px;
+    border: 1px solid rgba(100, 116, 139, 0.45);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 20px 42px rgba(2, 6, 23, 0.5);
+    padding: 6px;
+    pointer-events: none;
+    display: none;
+}
+
+#global-product-hover-preview img {
+    display: block;
+    width: 250px;
+    height: 250px;
+    object-fit: contain;
+    border-radius: 7px;
+    background: #0b1220;
+}
+
+body.theme-dark #global-product-hover-preview {
+    background: rgba(2, 6, 23, 0.96);
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+@media print {
+    .js-product-hover-thumb {
+        cursor: default !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    #global-product-hover-preview {
+        display: none !important;
+    }
+}

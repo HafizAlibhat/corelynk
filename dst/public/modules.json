@@ -1,0 +1,20 @@
+[
+    {
+        "id": "production",
+        "name": "production",
+        "path": "/production",
+        "type": "group"
+    },
+    {
+        "id": "logs",
+        "name": "logs",
+        "path": "/logs",
+        "type": "group"
+    },
+    {
+        "id": "work-orders",
+        "name": "work-orders",
+        "path": "/work-orders",
+        "type": "group"
+    }
+]

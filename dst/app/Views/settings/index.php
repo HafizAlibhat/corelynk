@@ -1,0 +1,2109 @@
+<?= $this->extend('layouts/main') ?>
+
+<?= $this->section('title') ?>Settings<?= $this->endSection() ?>
+
+<?= $this->section('content') ?>
+<?php
+    $artBrand = esc($company['art_number_prefix'] ?? 'RI');
+    $artNext  = (int)($art_counter ?? 1);
+    $artPad   = str_pad((string)$artNext, 5, '0', STR_PAD_LEFT);
+    $custPrefix = esc($customer_code_prefix ?? ($company['customer_code_prefix'] ?? $company['art_number_prefix'] ?? 'RI'));
+    $custNext = (int)($customer_counter ?? 1);
+    $vendorPrefix = esc($vendor_code_prefix ?? ($company['vendor_code_prefix'] ?? 'VEN'));
+    $vendorNext = (int)($vendor_counter ?? 1);
+    $companyTimezone = trim((string)($company['timezone'] ?? '')) ?: 'Asia/Karachi';
+    $timezoneOptions = is_array($timezone_options ?? null) ? $timezone_options : ['Asia/Karachi' => 'Asia/Karachi (UTC+05:00)'];
+?>
+<style>
+/* ── Settings Page ── */
+.st-wrap { max-width: 1280px; margin: 0 auto; }
+
+.st-page-hdr { display:flex; align-items:flex-start; justify-content:space-between; padding:.5rem 0 1rem; }
+.st-page-title { font-size:1.05rem; font-weight:700; color:var(--gray-700); display:flex; align-items:center; gap:.4rem; margin:0; }
+.st-page-title i { color:var(--primary-color); font-size:1rem; }
+.st-page-sub { font-size:.73rem; color:var(--gray-500); margin-top:2px; }
+
+/* ── Sidebar nav ── */
+.st-nav {
+  position: sticky; top: 72px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: .5rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.st-nav-group-label {
+  font-size: .6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--gray-400);
+  padding: .6rem 1rem .15rem; display:block;
+}
+.st-nav a {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .45rem 1rem; font-size: .78rem; font-weight: 500;
+  color: var(--gray-500); text-decoration: none;
+  transition: background .1s, color .1s, border-color .1s;
+  border-left: 3px solid transparent;
+}
+.st-nav a i { font-size: .82rem; width: 16px; text-align: center; flex-shrink: 0; }
+.st-nav a:hover { background: var(--gray-100); color: var(--gray-700); }
+.st-nav a.active {
+  background: rgba(79,70,229,.08);
+  color: var(--primary-color);
+  border-left-color: var(--primary-color);
+  font-weight: 600;
+}
+.st-nav a.active i { color: var(--primary-color); }
+.st-nav-divider { height: 1px; background: var(--gray-200); margin: .2rem 0; }
+
+/* ── Show/hide sections ── */
+.settings-section { display: none; }
+.settings-section.active { display: block; animation: stFade .18s ease; }
+@keyframes stFade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Card ── */
+.settings-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: .5rem;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+.settings-card-header {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .6rem 1rem;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: .8rem; font-weight: 700; color: var(--gray-700);
+}
+.settings-card-header > i:first-child { color: var(--primary-color); font-size: .88rem; }
+.settings-card-body { padding: 1rem; }
+
+/* ── Labels ── */
+.compact-label {
+  display: block; font-size: .7rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .3px;
+  color: var(--gray-500); margin-bottom: .25rem;
+}
+
+/* ── Art preview ── */
+.art-preview-box {
+  background: rgba(79,70,229,.06);
+  border: 1px solid rgba(79,70,229,.18);
+  border-radius: .45rem; padding: .8rem 1rem; margin-bottom: 1rem;
+}
+
+/* ── Form save footer ── */
+.st-form-footer {
+  display: flex; justify-content: flex-end;
+  padding-top: .65rem;
+  border-top: 1px solid var(--gray-200);
+  margin-top: .75rem;
+}
+
+/* ── Tables inside settings ── */
+.settings-card .table { margin-bottom:0; }
+.settings-card .table th {
+  font-size:.68rem; text-transform:uppercase; letter-spacing:.4px;
+  color:var(--gray-500); background:var(--gray-50); border-color:var(--gray-200);
+}
+.settings-card .table td { font-size:.8rem; color:var(--gray-600); border-color:var(--gray-200); vertical-align:middle; }
+
+/* ── Active dot on form inputs (dark theme fix) ── */
+.settings-card-body .text-muted { color: var(--gray-500) !important; }
+.settings-card-body small, .settings-card-body p { color: var(--gray-500); }
+
+/* ── PDF Template Picker ── */
+.pdf-template-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+.tpl-card {
+  cursor: pointer;
+  width: 120px;
+  border: 2px solid var(--gray-200, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--gray-50, #f9fafb);
+  transition: border-color .15s, box-shadow .15s;
+  position: relative;
+}
+.tpl-card:hover { border-color: #6b7280; box-shadow: 0 0 0 3px rgba(107,114,128,.15); }
+.tpl-card.selected { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.2); }
+.tpl-card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 16px;
+  height: 16px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 9px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.tpl-preview {
+  width: 100%;
+  height: 90px;
+  padding: 4px;
+  background: #fff;
+  overflow: hidden;
+  position: relative;
+}
+.tpl-name {
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  padding: 5px 4px;
+  color: var(--gray-700, #374151);
+  border-top: 1px solid var(--gray-200, #e5e7eb);
+  background: var(--gray-50, #f9fafb);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Shared mini-preview atoms */
+.tp-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:3px; }
+.tp-logo-box { width:22px; height:13px; background:#cbd5e1; border-radius:2px; flex-shrink:0; }
+.tp-company-lines { text-align:right; }
+.tp-line { height:2px; border-radius:1px; background:#d1d5db; margin-bottom:1px; }
+.tp-line.w18 { width:18%; } .tp-line.w25 { width:25%; } .tp-line.w30 { width:30%; }
+.tp-line.w35 { width:35%; } .tp-line.w40 { width:40%; } .tp-line.w45 { width:45%; }
+.tp-line.w50 { width:50%; } .tp-line.w55 { width:55%; } .tp-line.w60 { width:60%; }
+.tp-line.w70 { width:70%; } .tp-line.w80 { width:80%; }
+.tp-line.bold { height:3px; } .tp-line.darker { background:#94a3b8; } .tp-line.mt2 { margin-top:2px; }
+.tp-divider { border-top:1px solid; margin:3px 0; }
+.tp-title-row { margin-bottom:3px; }
+.tp-customer { margin-bottom:3px; }
+.tp-banner { margin-bottom:4px; }
+.tp-table { width:100%; }
+.tp-thead { height:5px; border-radius:1px; margin-bottom:1px; background:#e5e7eb; }
+.tp-trow { height:4px; margin-bottom:1px; background:#f9fafb; }
+.tp-trow.alt { background:#f3f4f6; }
+.tp-totals-right { margin-top:3px; margin-left:auto; width:55%; }
+.tp-customer-card { margin-bottom:4px; }
+</style>
+<div class="accounting-scope">
+<div class="container-fluid px-3 py-2">
+<div class="st-wrap">
+
+    <?php if(session()->getFlashdata('success')): ?>
+        <div class="alert alert-success alert-dismissible fade show py-2 small mb-2"><i class="bi bi-check-circle me-1"></i><?= esc(session()->getFlashdata('success')) ?><button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button></div>
+    <?php elseif(session()->getFlashdata('error')): ?>
+        <div class="alert alert-danger alert-dismissible fade show py-2 small mb-2"><i class="bi bi-exclamation-triangle me-1"></i><?= esc(session()->getFlashdata('error')) ?><button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button></div>
+    <?php endif; ?>
+
+    <!-- Page Header -->
+    <div class="st-page-hdr">
+        <div>
+            <div class="st-page-title"><i class="bi bi-gear-wide-connected"></i>Settings</div>
+            <div class="st-page-sub">Configure your workspace, accounting, and integrations</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger" style="font-size:.75rem;padding:.3rem .7rem" data-bs-toggle="modal" data-bs-target="#cleanDbModal">
+            <i class="bi bi-trash3 me-1"></i>Clean Database
+        </button>
+    </div>
+
+    <div class="row g-3">
+        <!-- ═══ LEFT NAV ═══ -->
+        <div class="col-lg-3 col-md-4">
+            <nav class="st-nav" id="settingsNav">
+                <div class="st-nav-group-label">General</div>
+                <a href="#" class="active" data-section="company"><i class="bi bi-building"></i>Company</a>
+                <a href="#" data-section="numbering"><i class="bi bi-hash"></i>Numbering</a>
+                <a href="#" data-section="art-numbers"><i class="bi bi-upc-scan"></i>Art Numbers</a>
+                <a href="#" data-section="fiscal"><i class="bi bi-calendar-range"></i>Fiscal Year</a>
+                <div class="st-nav-divider"></div>
+                <div class="st-nav-group-label">Finance</div>
+                <a href="#" data-section="payments"><i class="bi bi-credit-card"></i>Payments</a>
+                <a href="#" data-section="payment-terms"><i class="bi bi-calendar2-check"></i>Payment Terms</a>
+                <a href="#" data-section="currencies"><i class="bi bi-coin"></i>Currencies</a>
+                <a href="#" data-section="exchange"><i class="bi bi-arrow-left-right"></i>Exchange Rates</a>
+                <div class="st-nav-divider"></div>
+                <div class="st-nav-group-label">System</div>
+                <a href="#" data-section="security"><i class="bi bi-shield-lock"></i>Security</a>
+                <a href="#" data-section="backups"><i class="bi bi-safe2"></i>Backups</a>
+                <a href="#" data-section="tags"><i class="bi bi-tags"></i>Tags</a>
+                <a href="#" data-section="sync"><i class="bi bi-diagram-3"></i>Sync</a>
+                <a href="#" data-section="odoo"><i class="bi bi-box-seam"></i>Odoo</a>
+                <div class="st-nav-divider"></div>
+                <div class="st-nav-group-label">Mobile</div>
+                <a href="#" data-section="mobile"><i class="bi bi-phone"></i>Mobile App</a>
+            </nav>
+        </div>
+
+        <!-- ═══ RIGHT CONTENT ═══ -->
+        <div class="col-lg-9 col-md-8">
+
+            <!-- ─── COMPANY ─── -->
+            <div class="settings-section active" id="section-company">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-images"></i>Product Assets Upload Limits</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/saveProductAssetUploadSettings') ?>" class="row g-2 align-items-end">
+                            <?= csrf_field() ?>
+                            <div class="col-md-4">
+                                <label class="compact-label">Raw Images Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_raw_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_raw_max_mb ?? 1000) ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Final Files Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_final_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_final_max_mb ?? 500) ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Channel Request Max (MB)</label>
+                                <input type="number" min="1" step="1" name="product_assets_channel_max_mb" class="form-control form-control-sm" value="<?= (int) ($product_assets_channel_max_mb ?? 2500) ?>" required>
+                            </div>
+                            <div class="col-12 d-flex justify-content-between align-items-center">
+                                <small class="text-muted">Global limits for Product Assets raw, final, and channel uploads.</small>
+                                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Upload Limits</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-building"></i>Company Information</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveCompany') ?>" enctype="multipart/form-data">
+                        <?= csrf_field() ?>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="compact-label">Company Name *</label>
+                                <input type="text" class="form-control form-control-sm" name="name" value="<?= esc($company['name'] ?? '') ?>" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Contact</label>
+                                <input type="text" class="form-control form-control-sm" name="contact" value="<?= esc($company['contact'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Email</label>
+                                <input type="email" class="form-control form-control-sm" name="email" value="<?= esc($company['email'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Address</label>
+                                <input type="text" class="form-control form-control-sm" name="address" value="<?= esc($company['address'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Phone</label>
+                                <input type="text" class="form-control form-control-sm" name="phone" value="<?= esc($company['phone'] ?? '') ?>" placeholder="For PDF footer">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Website</label>
+                                <input type="text" class="form-control form-control-sm" name="website" value="<?= esc($company['website'] ?? '') ?>" placeholder="e.g. www.company.com">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Application Timezone</label>
+                                <select name="timezone" class="form-select form-select-sm">
+                                    <?php foreach ($timezoneOptions as $tzValue => $tzLabel): ?>
+                                        <option value="<?= esc($tzValue) ?>" <?= $companyTimezone === $tzValue ? 'selected' : '' ?>><?= esc($tzLabel) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Used for PHP dates, printed times, and MySQL session time.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">PDF Footer Text</label>
+                                <input type="text" class="form-control form-control-sm" name="invoice_footer" value="<?= esc($company['invoice_footer'] ?? '') ?>" placeholder="Custom text for PDF footer (optional)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Bank Details (printed on invoices)</label>
+                                <textarea class="form-control form-control-sm rich-editor" name="bank_details" rows="5" placeholder="Bank Name&#10;Account Title&#10;Account #&#10;IBAN / SWIFT&#10;Branch"><?= esc($company['bank_details'] ?? '') ?></textarea>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Default for every invoice; an individual invoice can override it.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Invoice Terms &amp; Conditions</label>
+                                <textarea class="form-control form-control-sm rich-editor" name="invoice_terms" rows="5" placeholder="e.g. Goods remain the property of the seller until paid in full."><?= esc($company['invoice_terms'] ?? '') ?></textarea>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Default for every invoice; an individual invoice can override it.</div>
+                            </div>
+                            <div class="col-12">
+                                <label class="compact-label mb-2">PDF Template</label>
+                                <?php $pdfTemplate = $company['pdf_template'] ?? 'default'; ?>
+                                <input type="hidden" name="pdf_template" id="pdf_template_input" value="<?= esc($pdfTemplate) ?>">
+                                <div class="pdf-template-grid">
+
+                                    <!-- Default -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'default' ? 'selected' : '' ?>" data-tpl="default" title="Default">
+                                        <div class="tpl-preview tpl-default">
+                                            <div class="tp-header">
+                                                <div class="tp-logo-box"></div>
+                                                <div class="tp-company-lines">
+                                                    <div class="tp-line w70 darker"></div>
+                                                    <div class="tp-line w50"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-divider" style="border-color:#e5e7eb;"></div>
+                                            <div class="tp-title-row">
+                                                <div class="tp-line w40 bold" style="background:#0f172a;"></div>
+                                                <div class="tp-line w25 mt2"></div>
+                                            </div>
+                                            <div class="tp-customer">
+                                                <div class="tp-line w55 bold"></div>
+                                                <div class="tp-line w40 mt2"></div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#e5e7eb;"></div>
+                                                <div class="tp-trow"></div>
+                                                <div class="tp-trow alt"></div>
+                                                <div class="tp-trow"></div>
+                                            </div>
+                                            <div class="tp-totals-right">
+                                                <div class="tp-line w60"></div>
+                                                <div class="tp-line w60 mt2 bold accent" style="background:#0f172a;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Default</div>
+                                    </div>
+
+                                    <!-- Modern Blue -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'modern_blue' ? 'selected' : '' ?>" data-tpl="modern_blue" title="Modern Blue">
+                                        <div class="tpl-preview tpl-modern-blue">
+                                            <div class="tp-header">
+                                                <div class="tp-logo-box"></div>
+                                                <div class="tp-company-lines">
+                                                    <div class="tp-line w70 darker" style="background:#2563eb;"></div>
+                                                    <div class="tp-line w50"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-banner" style="background:#2563eb; height:14px; border-radius:2px; margin-bottom:5px; padding:2px 4px;">
+                                                <div class="tp-line w30" style="background:rgba(255,255,255,.8);"></div>
+                                            </div>
+                                            <div class="tp-customer-card" style="border-left:2px solid #2563eb; background:#f8fafc; padding:2px 3px; margin-bottom:4px;">
+                                                <div class="tp-line w50 bold"></div>
+                                                <div class="tp-line w40 mt2"></div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#2563eb;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #e2e8f0;"></div>
+                                                <div class="tp-trow alt" style="border-bottom:1px solid #e2e8f0; background:#f8fafc;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #e2e8f0;"></div>
+                                            </div>
+                                            <div class="tp-totals-right">
+                                                <div class="tp-line w60"></div>
+                                                <div class="tp-line w60 mt2" style="background:#2563eb;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Modern Blue</div>
+                                    </div>
+
+                                    <!-- Classic Green -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'classic_green' ? 'selected' : '' ?>" data-tpl="classic_green" title="Classic Green">
+                                        <div class="tpl-preview tpl-classic-green">
+                                            <div class="tp-header" style="border-bottom:2px double #16a34a; padding-bottom:4px;">
+                                                <div class="tp-logo-box"></div>
+                                                <div class="tp-company-lines">
+                                                    <div class="tp-line w70 darker" style="background:#15803d;"></div>
+                                                    <div class="tp-line w50"></div>
+                                                </div>
+                                            </div>
+                                            <div style="text-align:center; margin:4px 0; background:#f0fdf4; padding:3px; border-top:1px solid #16a34a; border-bottom:1px solid #16a34a;">
+                                                <div class="tp-line w40 bold" style="background:#15803d; margin:0 auto;"></div>
+                                                <div class="tp-line w30 mt2" style="margin:0 auto;"></div>
+                                            </div>
+                                            <div style="display:flex; gap:3px; margin-bottom:4px;">
+                                                <div style="flex:1; border:1px solid #d1d5db; padding:2px 3px;">
+                                                    <div class="tp-line w40" style="background:#16a34a; margin-bottom:2px;"></div>
+                                                    <div class="tp-line w60 bold"></div>
+                                                    <div class="tp-line w50 mt2"></div>
+                                                </div>
+                                                <div style="flex:1; border:1px solid #d1d5db; padding:2px 3px;">
+                                                    <div class="tp-line w40" style="background:#16a34a; margin-bottom:2px;"></div>
+                                                    <div class="tp-line w60"></div>
+                                                    <div class="tp-line w50 mt2"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#16a34a; border:1px solid #15803d;"></div>
+                                                <div class="tp-trow" style="border:1px solid #d1d5db;"></div>
+                                                <div class="tp-trow alt" style="border:1px solid #d1d5db; background:#f9fafb;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Classic Green</div>
+                                    </div>
+
+                                    <!-- Professional Gray -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'professional_gray' ? 'selected' : '' ?>" data-tpl="professional_gray" title="Professional Gray">
+                                        <div class="tpl-preview tpl-pro-gray">
+                                            <div style="background:#1f2937; padding:4px 5px; margin:-4px -4px 5px -4px; display:flex; justify-content:space-between; align-items:center;">
+                                                <div class="tp-logo-box" style="background:rgba(255,255,255,.3); width:22px; height:12px;"></div>
+                                                <div style="text-align:right;">
+                                                    <div class="tp-line w35" style="background:rgba(255,255,255,.9);"></div>
+                                                    <div class="tp-line w25 mt2" style="background:rgba(255,255,255,.5);"></div>
+                                                </div>
+                                            </div>
+                                            <div style="border-bottom:2px solid #e5e7eb; padding-bottom:4px; margin-bottom:4px;">
+                                                <div class="tp-line w40 bold" style="font-size:8px; background:#374151;"></div>
+                                                <div class="tp-line w55 mt2"></div>
+                                            </div>
+                                            <div style="display:flex; gap:3px; margin-bottom:4px;">
+                                                <div style="flex:1;">
+                                                    <div class="tp-line w30" style="background:#6b7280; margin-bottom:2px;"></div>
+                                                    <div class="tp-line w60 bold"></div>
+                                                    <div class="tp-line w45 mt2"></div>
+                                                </div>
+                                                <div style="flex:1;">
+                                                    <div class="tp-line w30" style="background:#6b7280; margin-bottom:2px;"></div>
+                                                    <div class="tp-line w60 bold"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#f3f4f6; border-bottom:2px solid #9ca3af;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #e5e7eb;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #e5e7eb;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Professional Gray</div>
+                                    </div>
+
+                                    <!-- Bold Red -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'bold_red' ? 'selected' : '' ?>" data-tpl="bold_red" title="Bold Red">
+                                        <div class="tpl-preview tpl-bold-red">
+                                            <div style="background:#dc2626; padding:5px; margin:-4px -4px 5px -4px; display:flex; justify-content:space-between; align-items:center;">
+                                                <div>
+                                                    <div class="tp-line w25" style="background:rgba(255,255,255,.9);"></div>
+                                                    <div class="tp-line w18 mt2" style="background:rgba(255,255,255,.6);"></div>
+                                                </div>
+                                                <div style="text-align:right;">
+                                                    <div class="tp-line w35" style="background:rgba(255,255,255,.95);"></div>
+                                                    <div class="tp-line w25 mt2" style="background:rgba(255,255,255,.6);"></div>
+                                                </div>
+                                            </div>
+                                            <div style="background:#fef2f2; border-left:3px solid #dc2626; padding:3px 4px; margin-bottom:4px;">
+                                                <div class="tp-line w50 bold"></div>
+                                                <div class="tp-line w40 mt2"></div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#dc2626;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #fecaca;"></div>
+                                                <div class="tp-trow alt" style="border-bottom:1px solid #fecaca; background:#fef2f2;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #fecaca;"></div>
+                                            </div>
+                                            <div class="tp-totals-right">
+                                                <div class="tp-line w60"></div>
+                                                <div class="tp-line w60 mt2" style="background:#dc2626;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Bold Red</div>
+                                    </div>
+
+                                    <!-- Elegant Purple -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'elegant_purple' ? 'selected' : '' ?>" data-tpl="elegant_purple" title="Elegant Purple">
+                                        <div class="tpl-preview tpl-elegant-purple">
+                                            <div style="padding-bottom:5px; margin-bottom:5px; border-bottom:3px solid #7c3aed; display:flex; justify-content:space-between; align-items:flex-start;">
+                                                <div class="tp-logo-box"></div>
+                                                <div class="tp-company-lines">
+                                                    <div class="tp-line w70" style="background:#6d28d9;"></div>
+                                                    <div class="tp-line w50 mt2"></div>
+                                                </div>
+                                            </div>
+                                            <div style="text-align:center; margin-bottom:5px;">
+                                                <div class="tp-line w40" style="background:#6d28d9; margin:0 auto; height:2.5px;"></div>
+                                                <div class="tp-line w35 mt2" style="margin:0 auto;"></div>
+                                            </div>
+                                            <div style="display:flex; gap:3px; margin-bottom:4px;">
+                                                <div style="flex:1; border:1px solid #e9d5ff; border-radius:3px; padding:2px 3px; background:linear-gradient(135deg,#faf5ff,#f5f3ff);">
+                                                    <div class="tp-line w60 bold"></div>
+                                                    <div class="tp-line w45 mt2"></div>
+                                                </div>
+                                                <div style="flex:1; border:1px solid #e9d5ff; border-radius:3px; padding:2px 3px; background:linear-gradient(135deg,#faf5ff,#f5f3ff);">
+                                                    <div class="tp-line w60 bold"></div>
+                                                    <div class="tp-line w45 mt2"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#7c3aed; border-radius:3px 3px 0 0;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #ede9fe;"></div>
+                                                <div class="tp-trow alt" style="border-bottom:1px solid #ede9fe; background:#faf5ff;"></div>
+                                                <div class="tp-trow" style="border-bottom:1px solid #ede9fe;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Elegant Purple</div>
+                                    </div>
+
+                                </div><!-- /.pdf-template-grid -->
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Default Sales Currency</label>
+                                <select name="default_sales_currency" class="form-select form-select-sm">
+                                    <?php $salesCurr = $company['default_sales_currency'] ?? ($company['base_currency'] ?? 'USD'); $currList = $currencies ?? []; ?>
+                                    <?php foreach ($currList as $cur): ?>
+                                        <option value="<?= esc($cur['code']) ?>" <?= ($salesCurr === ($cur['code'] ?? '')) ? 'selected' : '' ?>><?= esc($cur['code']) ?></option>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($currList)): ?><option value="<?= esc($salesCurr) ?>" selected><?= esc($salesCurr) ?></option><?php endif; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Default Purchase Currency</label>
+                                <select name="default_purchase_currency" class="form-select form-select-sm">
+                                    <?php $purchaseCurr = $company['default_purchase_currency'] ?? ($company['base_currency'] ?? 'USD'); ?>
+                                    <?php foreach ($currList as $cur): ?>
+                                        <option value="<?= esc($cur['code']) ?>" <?= ($purchaseCurr === ($cur['code'] ?? '')) ? 'selected' : '' ?>><?= esc($cur['code']) ?></option>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($currList)): ?><option value="<?= esc($purchaseCurr) ?>" selected><?= esc($purchaseCurr) ?></option><?php endif; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Logo</label>
+                                <input type="file" class="form-control form-control-sm" name="logo" accept="image/png,image/jpeg,image/webp">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <?php if (!empty($company['logo_path'])): ?>
+                                    <img src="<?= base_url($company['logo_path']) ?>" alt="Logo" style="height:32px; object-fit:contain; border:1px solid rgba(255,255,255,.1); padding:2px; border-radius:4px;">
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-12 mt-3">
+                                <label class="compact-label fw-bold"><i class="bi bi-file-pdf me-1"></i>PDF Visibility Controls</label>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-borderless align-middle mb-0" style="font-size: .8rem;">
+                                        <thead>
+                                            <tr class="text-muted" style="border-bottom: 1px solid rgba(0,0,0,.05);">
+                                                <th>Document Type</th>
+                                                <th class="text-center">Show Header Address</th>
+                                                <th class="text-center">Show Footer</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php 
+                                                $docs = [
+                                                    ['key' => 'inv', 'label' => 'Customer Invoice'],
+                                                    ['key' => 'quote', 'label' => 'Quotation'],
+                                                    ['key' => 'so', 'label' => 'Sales Order'],
+                                                    ['key' => 'po', 'label' => 'Purchase Order'],
+                                                    ['key' => 'rfq', 'label' => 'Request for Quotation (RFQ)'],
+                                                ];
+                                                foreach($docs as $d):
+                                                    $hKey = "pdf_{$d['key']}_show_header";
+                                                    $fKey = "pdf_{$d['key']}_show_footer";
+                                                    $hVal = !isset($company[$hKey]) || $company[$hKey];
+                                                    $fVal = !isset($company[$fKey]) || $company[$fKey];
+                                            ?>
+                                            <tr>
+                                                <td class="fw-semibold"><?= $d['label'] ?></td>
+                                                <td class="text-center">
+                                                    <div class="form-check form-switch d-inline-block">
+                                                        <input class="form-check-input" type="checkbox" name="<?= $hKey ?>" value="1" <?= $hVal ? 'checked' : '' ?>>
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    <div class="form-check form-switch d-inline-block">
+                                                        <input class="form-check-input" type="checkbox" name="<?= $fKey ?>" value="1" <?= $fVal ? 'checked' : '' ?>>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check form-switch mt-3">
+                                    <input class="form-check-input" type="checkbox" id="use_demo_data" name="use_demo_data" value="1" <?= !empty($company['use_demo_data']) ? 'checked' : '' ?>>
+                                    <label class="form-check-label small text-muted" for="use_demo_data">Use demo data on dashboard</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ─── NUMBERING ─── -->
+            <div class="settings-section" id="section-numbering">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-hash"></i>Sales Document Numbering</div>
+                    <div class="settings-card-body">
+                    <p class="small mb-3" style="color:var(--gray-500,#64748b)">Prefix codes used for quotation and sales order numbers (e.g., <code>RI</code>-Q0001).</p>
+                    <form method="post" action="<?= site_url('settings/saveCompany') ?>" enctype="multipart/form-data">
+                        <?= csrf_field() ?>
+                        <!-- hidden fields to preserve company data when this sub-form saves -->
+                        <input type="hidden" name="name" value="<?= esc($company['name'] ?? '') ?>">
+                        <input type="hidden" name="address" value="<?= esc($company['address'] ?? '') ?>">
+                        <input type="hidden" name="contact" value="<?= esc($company['contact'] ?? '') ?>">
+                        <input type="hidden" name="email" value="<?= esc($company['email'] ?? '') ?>">
+                        <input type="hidden" name="use_demo_data" value="<?= $company['use_demo_data'] ?? 0 ?>">
+                        <input type="hidden" name="art_number_prefix" value="<?= $artBrand ?>">
+                        <input type="hidden" name="art_number_next" value="<?= $artNext ?>">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="compact-label">Quotation Prefix</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase" name="quotation_prefix" value="<?= esc($company['quotation_prefix'] ?? 'RI') ?>" placeholder="RI">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Sales Order Prefix</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase" name="sales_order_prefix" value="<?= esc($company['sales_order_prefix'] ?? 'RI') ?>" placeholder="RI">
+                            </div>
+                            <div class="col-12">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── ART NUMBERS ─── -->
+            <div class="settings-section" id="section-art-numbers">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-upc-scan"></i>Product Art Number Configuration</div>
+                    <div class="settings-card-body">
+                    <p class="small mb-3" style="color:var(--gray-500,#64748b)">Controls the format and sequence of art numbers generated across all product categories.</p>
+
+                    <!-- Live Preview -->
+                    <div class="art-preview-box mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="text-muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:1px;">Next Art Number Preview</div>
+                                <div class="font-monospace fw-bold mt-1" style="font-size:1.4rem; letter-spacing:3px;" id="artPreviewSettings"><?= $artBrand ?>-[CODE]-<?= $artPad ?></div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-primary px-2 py-1" id="brandBadge" style="font-size:.75rem;"><?= $artBrand ?></span>
+                                <span class="text-muted small">-</span>
+                                <span class="badge bg-success px-2 py-1" style="font-size:.75rem;">CODE</span>
+                                <span class="text-muted small">-</span>
+                                <span class="badge bg-secondary px-2 py-1" id="seqBadge" style="font-size:.75rem;"><?= $artPad ?></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form method="post" action="<?= site_url('settings/saveCompany') ?>" enctype="multipart/form-data">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="name" value="<?= esc($company['name'] ?? '') ?>">
+                        <input type="hidden" name="address" value="<?= esc($company['address'] ?? '') ?>">
+                        <input type="hidden" name="contact" value="<?= esc($company['contact'] ?? '') ?>">
+                        <input type="hidden" name="email" value="<?= esc($company['email'] ?? '') ?>">
+                        <input type="hidden" name="use_demo_data" value="<?= $company['use_demo_data'] ?? 0 ?>">
+                        <input type="hidden" name="quotation_prefix" value="<?= esc($company['quotation_prefix'] ?? 'RI') ?>">
+                        <input type="hidden" name="sales_order_prefix" value="<?= esc($company['sales_order_prefix'] ?? 'RI') ?>">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="compact-label">Brand Code</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase fw-bold" name="art_number_prefix" id="artBrandInput"
+                                       value="<?= $artBrand ?>" placeholder="RI" maxlength="10" style="letter-spacing:2px;">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Company identifier at the start of every art number.</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Next Sequence Number</label>
+                                <input type="number" class="form-control form-control-sm fw-bold" name="art_number_next" id="artNextInput"
+                                       value="<?= $artNext ?>" min="1" max="99999999">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">
+                                    <i class="bi bi-info-circle me-1"></i>Min: <?= $artNext ?> (current). Cannot go backwards.
+                                </div>
+                            </div>
+
+                            <div class="col-12"><hr style="border-color:var(--gray-200,#e2e8f0);margin:.5rem 0 .2rem"></div>
+
+                            <div class="col-md-4">
+                                <label class="compact-label">Customer Code Prefix</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase fw-bold" name="customer_code_prefix" id="custPrefixInput"
+                                       value="<?= $custPrefix ?>" placeholder="RI" maxlength="20" style="letter-spacing:1px;">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Prefix used for customer codes (e.g. RI-528).</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Customer Next Number</label>
+                                <input type="number" class="form-control form-control-sm fw-bold" name="customer_code_next" id="custNextInput"
+                                       value="<?= $custNext ?>" min="1" max="99999999">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">
+                                    <i class="bi bi-info-circle me-1"></i>Min: <?= $custNext ?> (current). Cannot go backwards.
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Customer Code Preview</label>
+                                <div class="form-control form-control-sm fw-bold font-monospace" id="custPreviewSettings" style="letter-spacing:1px;"><?= $custPrefix ?>-<?= $custNext ?></div>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Next created customer will use this code.</div>
+                            </div>
+
+                            <div class="col-12"><hr style="border-color:var(--gray-200,#e2e8f0);margin:.5rem 0 .2rem"></div>
+
+                            <div class="col-md-4">
+                                <label class="compact-label">Vendor Code Prefix</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase fw-bold" name="vendor_code_prefix" id="vendorPrefixInput"
+                                       value="<?= $vendorPrefix ?>" placeholder="VEN" maxlength="20" style="letter-spacing:1px;">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Prefix used for vendor codes (e.g. VEN-102).</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Vendor Next Number</label>
+                                <input type="number" class="form-control form-control-sm fw-bold" name="vendor_code_next" id="vendorNextInput"
+                                       value="<?= $vendorNext ?>" min="1" max="99999999">
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">
+                                    <i class="bi bi-info-circle me-1"></i>Min: <?= $vendorNext ?> (current). Cannot go backwards.
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Vendor Code Preview</label>
+                                <div class="form-control form-control-sm fw-bold font-monospace" id="vendorPreviewSettings" style="letter-spacing:1px;"><?= $vendorPrefix ?>-<?= $vendorNext ?></div>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Next created vendor will use this code.</div>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="mt-2 small border-top pt-2" style="line-height:1.6;color:var(--gray-400,#94a3b8)">
+                        <strong>Format:</strong> <code>[BRAND]-[CATEGORY CODE]-[SEQ]</code>
+                        &nbsp;|&nbsp; <strong>Brand Code</strong> = global company prefix (shared by all products)
+                        &nbsp;|&nbsp; <strong>Category Code</strong> = set per category (2-4 letters)
+                        &nbsp;|&nbsp; <strong>Sequence</strong> = auto-incrementing global counter
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── FISCAL YEAR ─── -->
+            <div class="settings-section" id="section-fiscal">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-calendar-range"></i>Fiscal Year</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveFiscalYear') ?>">
+                        <?= csrf_field() ?>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="compact-label">Start Date</label>
+                                <input type="date" class="form-control form-control-sm" name="start_date" value="<?= esc($fy['start_date'] ?? '') ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">End Date</label>
+                                <input type="date" class="form-control form-control-sm" name="end_date" value="<?= esc($fy['end_date'] ?? '') ?>" required>
+                            </div>
+                            <div class="col-12">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── SECURITY ─── -->
+            <div class="settings-section" id="section-security">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-shield-lock"></i>Security</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveSecurity') ?>">
+                        <?= csrf_field() ?>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="compact-label">Back-date Password</label>
+                                <input type="password" class="form-control form-control-sm" name="backdate_password" placeholder="Set a password for back-dating" required>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-center">
+                                <?php if(!empty($security['backdate_password_hash'])): ?>
+                                    <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Password is set</span>
+                                <?php else: ?>
+                                    <span class="text-warning small"><i class="bi bi-exclamation-circle me-1"></i>No password set</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-12">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-shield-check me-1"></i>Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+
+                <?php
+                    $flags = $feature_flags ?? [];
+                    $securityFlagDefs = [
+                        'enable_2fa' => [
+                            'label' => 'Enforce Two-Factor Authentication',
+                            'hint'  => 'When enabled, users without MFA are redirected to MFA setup after login.',
+                        ],
+                        'force_https' => [
+                            'label' => 'Force HTTPS Redirect',
+                            'hint'  => 'Redirect all HTTP requests to HTTPS. Enable only when SSL is configured.',
+                        ],
+                        'enable_auth_logging' => [
+                            'label' => 'Authentication Logging',
+                            'hint'  => 'Write login success/failure, logout, and MFA events into auth logs.',
+                        ],
+                        'enable_public_ids' => [
+                            'label' => 'Public IDs in URLs',
+                            'hint'  => 'Use UUID-style public IDs in links instead of numeric IDs.',
+                        ],
+                        'enable_tenant_isolation' => [
+                            'label' => 'Tenant Data Isolation',
+                            'hint'  => 'Apply tenant-level data scoping for supported models.',
+                        ],
+                    ];
+                ?>
+
+                <div class="settings-card mt-3">
+                    <div class="settings-card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-toggles"></i>Security Feature Toggles</span>
+                        <a href="<?= base_url('admin/security') ?>" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>Advanced Security Page
+                        </a>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:32%">Feature</th>
+                                        <th>Description</th>
+                                        <th class="text-end" style="width:110px">On/Off</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($securityFlagDefs as $flagKey => $meta): ?>
+                                        <?php $isEnabled = !empty($flags[$flagKey]['enabled']); ?>
+                                        <tr>
+                                            <td class="fw-semibold"><?= esc($meta['label']) ?></td>
+                                            <td class="small text-muted"><?= esc($meta['hint']) ?></td>
+                                            <td class="text-end">
+                                                <div class="form-check form-switch d-inline-block mb-0">
+                                                    <input class="form-check-input security-flag-toggle" type="checkbox" role="switch"
+                                                        data-flag="<?= esc($flagKey) ?>" <?= $isEnabled ? 'checked' : '' ?>>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            CSRF toggle intentionally hidden from quick panel. Enable CSRF only after verifying all forms have tokens.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card mt-3">
+                    <div class="settings-card-header"><i class="bi bi-hdd-network"></i>System Network Access</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveNetwork') ?>">
+                        <?= csrf_field() ?>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="compact-label">Local IP Address</label>
+                                <input type="text" class="form-control form-control-sm font-monospace fw-bold" name="network_ip" value="<?= esc($current_ip ?? '') ?>" placeholder="192.168.1.x">
+                            </div>
+                            <div class="col-md-8 d-flex align-items-center pb-1">
+                                <?php if(!empty($current_ip)): ?>
+                                    <span class="text-success small fw-semibold" style="letter-spacing:0.3px;"><i class="bi bi-broadcast me-1"></i>Now active at: http://<?= esc($current_ip) ?>/corelynk/</span>
+                                <?php else: ?>
+                                    <span class="text-secondary small"><i class="bi bi-pc-display me-1"></i>Currently local only (localhost)</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-12 mt-1">
+                                <div class="text-muted" style="font-size: .75rem;">Enter your PC's Wi-Fi IPv4 address here to permit access to this system from other devices on your network. (Leave blank to revert to localhost default).</div>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-link me-1"></i>Update Access</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+
+                <div class="settings-card mt-3">
+                    <div class="settings-card-header"><i class="bi bi-calendar3"></i>Global Date Format</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveDateFormat') ?>">
+                        <?= csrf_field() ?>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="compact-label">Date Format</label>
+                                <select class="form-select form-select-sm" name="global_date_format" required>
+                                    <?php $gdf = (string)($global_date_format ?? 'Y-m-d'); ?>
+                                    <option value="Y-m-d" <?= $gdf === 'Y-m-d' ? 'selected' : '' ?>>YYYY-MM-DD</option>
+                                    <option value="d-m-Y" <?= $gdf === 'd-m-Y' ? 'selected' : '' ?>>DD-MM-YYYY</option>
+                                    <option value="d/m/Y" <?= $gdf === 'd/m/Y' ? 'selected' : '' ?>>DD/MM/YYYY</option>
+                                    <option value="m/d/Y" <?= $gdf === 'm/d/Y' ? 'selected' : '' ?>>MM/DD/YYYY</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="text-muted" style="font-size:.75rem;">This controls how dates are displayed in Corelynk screens that use the global formatter.</div>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <div class="st-form-footer">
+                                    <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Date Format</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── PAYMENT METHODS ─── -->
+            <div class="settings-section" id="section-payments">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-credit-card"></i>Payment Methods</div>
+                    <div class="settings-card-body">
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addPaymentMethod') ?>">
+                        <?= csrf_field() ?>
+                        <div class="col">
+                            <input type="text" class="form-control form-control-sm" name="method_name" placeholder="New method name (e.g., Cheque)" required>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus me-1"></i>Add</button>
+                        </div>
+                    </form>
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                        <?php foreach(($methods ?? []) as $m): ?>
+                            <span class="badge <?= $m['is_active'] ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary' ?> px-3 py-2" style="font-size:.75rem;border:1px solid rgba(99,102,241,.15)">
+                                <?= esc($m['method_name']) ?>
+                                <?php if($m['is_active']): ?><i class="bi bi-check-circle-fill ms-1"></i><?php endif; ?>
+                            </span>
+                        <?php endforeach; ?>
+                        <?php if (empty($methods)): ?>
+                            <span style="color:var(--gray-400,#94a3b8);font-size:.8rem">No payment methods defined.</span>
+                        <?php endif; ?>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── PAYMENT TERMS ─── -->
+            <div class="settings-section" id="section-payment-terms">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-calendar2-check"></i>Payment Terms</div>
+                    <div class="settings-card-body">
+                    <p class="text-muted" style="font-size:.8rem;">
+                        Define how an invoice is split into instalments &mdash; for example <strong>80% advance</strong> on the invoice date
+                        plus <strong>20%</strong> due 30 days after delivery. Percentages must add up to 100%. Leave the milestone rows
+                        empty for a plain single-due-date term.
+                    </p>
+
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/savePaymentTerm') ?>" id="paymentTermForm">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="id" id="ptId" value="">
+                        <div class="col-md-4">
+                            <label class="compact-label">Name</label>
+                            <input type="text" class="form-control form-control-sm" name="name" id="ptName" placeholder="80% Advance / 20% Net 30 After Delivery" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Code</label>
+                            <input type="text" class="form-control form-control-sm" name="code" id="ptCode" placeholder="ADV80_NET30" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Net Days</label>
+                            <input type="number" min="0" class="form-control form-control-sm" name="net_days" id="ptNetDays" value="0">
+                            <div class="text-muted" style="font-size:.7rem;">Ignored when milestones are set.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="compact-label">Description (printed on invoice)</label>
+                            <input type="text" class="form-control form-control-sm" name="description" id="ptDescription" placeholder="80% before production, 20% 30 days after delivery">
+                        </div>
+
+                        <div class="col-12 mt-2">
+                            <label class="compact-label">Milestones</label>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-1" style="font-size:.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:32%;">Label</th>
+                                            <th style="width:14%;">Percentage</th>
+                                            <th style="width:26%;">Counted From</th>
+                                            <th style="width:18%;">Days After</th>
+                                            <th style="width:10%;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ptMilestoneRows"></tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="ptAddRow"><i class="bi bi-plus me-1"></i>Add Milestone</button>
+                                <span class="fw-semibold" id="ptPctTotal" style="font-size:.8rem;"></span>
+                            </div>
+                        </div>
+
+                        <div class="col-12 mt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="ptActive" value="1" checked>
+                                <label class="form-check-label" for="ptActive" style="font-size:.8rem;">Active</label>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <div class="st-form-footer">
+                                <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Payment Term</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="ptReset">New / Clear</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                            <thead><tr><th>Name</th><th>Code</th><th>Milestones</th><th class="text-end">Active</th><th class="text-end">Actions</th></tr></thead>
+                            <tbody>
+                            <?php foreach (($payment_terms ?? []) as $pt): ?>
+                                <?php $ptMilestones = json_decode((string)($pt['milestones'] ?? ''), true) ?: []; ?>
+                                <tr>
+                                    <td class="fw-semibold"><?= esc($pt['name']) ?></td>
+                                    <td><code><?= esc($pt['code']) ?></code></td>
+                                    <td>
+                                        <?php if (empty($ptMilestones)): ?>
+                                            <span class="text-muted">Net <?= (int)$pt['net_days'] ?> days</span>
+                                        <?php else: ?>
+                                            <?php foreach ($ptMilestones as $ptM): ?>
+                                                <div>
+                                                    <?= esc(rtrim(rtrim(number_format((float)($ptM['percentage'] ?? 0), 2), '0'), '.')) ?>%
+                                                    &mdash; <?= esc($ptM['label'] ?? '') ?>
+                                                    <span class="text-muted">
+                                                        (<?= (int)($ptM['offset_days'] ?? 0) ?> days after
+                                                        <?= ($ptM['basis'] ?? '') === 'delivery_date' ? 'delivery' : 'invoice date' ?>)
+                                                    </span>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-end"><?= !empty($pt['is_active']) ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-dash-circle text-secondary"></i>' ?></td>
+                                    <td class="text-end text-nowrap">
+                                        <button type="button" class="btn btn-sm btn-outline-primary js-pt-edit"
+                                                data-term='<?= esc(json_encode($pt), 'attr') ?>'><i class="bi bi-pencil"></i></button>
+                                        <form method="post" action="<?= site_url('settings/deletePaymentTerm/' . (int)$pt['id']) ?>" class="d-inline"
+                                              onsubmit="return confirm('Delete this payment term? If invoices already use it, it will be deactivated instead.');">
+                                            <?= csrf_field() ?>
+                                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($payment_terms)): ?>
+                                <tr><td colspan="5" class="text-muted">No payment terms defined.</td></tr>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── CURRENCIES ─── -->
+            <div class="settings-section" id="section-currencies">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-coin"></i>Currencies</div>
+                    <div class="settings-card-body">
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addCurrency') ?>">
+                        <?= csrf_field() ?>
+                        <div class="col-md-2">
+                            <label class="compact-label">Code</label>
+                            <input type="text" name="code" class="form-control form-control-sm" placeholder="USD" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="compact-label">Name</label>
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="US Dollar">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Symbol</label>
+                            <input type="text" name="symbol" class="form-control form-control-sm" placeholder="$">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus me-1"></i>Add</button>
+                        </div>
+                    </form>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                            <thead><tr><th>Code</th><th>Name</th><th>Symbol</th><th class="text-end">Active</th></tr></thead>
+                            <tbody>
+                            <?php foreach (($currencies ?? []) as $c): ?>
+                                <tr>
+                                    <td class="fw-semibold"><?= esc($c['code']) ?></td>
+                                    <td><?= esc($c['name']) ?></td>
+                                    <td><?= esc($c['symbol'] ?? '') ?></td>
+                                    <td class="text-end">
+                                        <div class="form-check form-switch d-inline">
+                                            <input class="form-check-input currency-toggle" data-code="<?= esc($c['code']) ?>" type="checkbox" <?= (!isset($c['is_active']) || $c['is_active']) ? 'checked' : '' ?>>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($currencies)): ?>
+                                <tr><td colspan="4" class="text-muted">No currencies defined.</td></tr>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── EXCHANGE RATES ─── -->
+            <div class="settings-section" id="section-exchange">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <i class="bi bi-arrow-left-right"></i>Exchange Rates (USD → PKR)
+                        <span class="ms-auto badge bg-primary bg-opacity-10 text-primary" style="font-size:.75rem;">
+                            Active: <?= isset($activeRate['rate']) ? number_format($activeRate['rate'], 4) : 'N/A' ?>
+                        </span>
+                    </div>
+                    <div class="settings-card-body">
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addExchangeRate') ?>">
+                        <?= csrf_field() ?>
+                        <div class="col-md-3">
+                            <label class="compact-label">Rate</label>
+                            <input type="number" step="0.0001" class="form-control form-control-sm" name="rate" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="compact-label">Effective Date</label>
+                            <input type="date" class="form-control form-control-sm" name="as_of" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-primary"><i class="bi bi-plus me-1"></i>Add Rate</button>
+                        </div>
+                    </form>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                            <thead><tr><th>Base</th><th>Quote</th><th>Rate</th><th>As Of</th></tr></thead>
+                            <tbody>
+                            <?php foreach(($rates ?? []) as $r): ?>
+                                <tr>
+                                    <td><?= esc($r['base_code']) ?></td>
+                                    <td><?= esc($r['quote_code']) ?></td>
+                                    <td class="fw-semibold"><?= number_format($r['rate'], 4) ?></td>
+                                    <td><?= esc($r['as_of']) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($rates)): ?>
+                                <tr><td colspan="4" class="text-muted">No rates recorded.</td></tr>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2 small" style="color:var(--gray-400,#94a3b8)"><i class="bi bi-info-circle me-1"></i>Historical tracking ensures old transactions stay at their original rate.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── ODOO ─── -->
+            <div class="settings-section" id="section-odoo">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-box-seam"></i>Odoo Integration</div>
+                    <div class="settings-card-body">
+                    <form method="post" action="<?= site_url('settings/saveOdoo') ?>" id="odooForm">
+                        <?= csrf_field() ?>
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label class="compact-label">Host</label>
+                                <input type="text" class="form-control form-control-sm" name="host" value="<?= esc($odoo['host'] ?? '') ?>" placeholder="http://odoo.local">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Port</label>
+                                <input type="number" class="form-control form-control-sm" name="port" value="<?= esc($odoo['port'] ?? '') ?>" placeholder="8069">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Database</label>
+                                <input type="text" class="form-control form-control-sm" name="db_name" value="<?= esc($odoo['db_name'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Username</label>
+                                <input type="text" class="form-control form-control-sm" name="username" value="<?= esc($odoo['username'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Password</label>
+                                <input type="password" class="form-control form-control-sm" name="password" value="<?= esc($odoo['password'] ?? '') ?>">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end gap-1">
+                                <button type="button" id="odooTest" class="btn btn-sm btn-outline-secondary flex-fill">Test</button>
+                                <button class="btn btn-sm btn-primary flex-fill">Save</button>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="odooTestResult" class="mt-2"></div>
+
+                    <hr class="my-2 opacity-10">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="compact-label">Fetch Mode</label>
+                            <select class="form-select form-select-sm" name="job_mode">
+                                <option value="disabled" <?= (isset($odoo['job_mode']) && $odoo['job_mode']=='disabled')? 'selected':'' ?>>Disabled</option>
+                                <option value="manual" <?= (empty($odoo['job_mode']) || $odoo['job_mode']=='manual')? 'selected':'' ?>>Manual</option>
+                                <option value="cron" <?= (isset($odoo['job_mode']) && $odoo['job_mode']=='cron')? 'selected':'' ?>>Scheduled</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Interval (sec)</label>
+                            <input type="number" class="form-control form-control-sm" name="job_interval" value="<?= esc($odoo['job_interval'] ?? 30) ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Fetch Limit</label>
+                            <input type="number" class="form-control form-control-sm" name="fetch_limit" value="<?= esc($odoo['fetch_limit'] ?? 10) ?>">
+                        </div>
+                        <div class="col-md-3">
+                            <button id="manualRefresh" class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-arrow-clockwise me-1"></i>Reload From Odoo</button>
+                        </div>
+                    </div>
+                    <div id="manualRefreshResult" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── BACKUPS ─── -->
+            <div class="settings-section" id="section-backups">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-safe2"></i>Backup Center</div>
+                    <div class="settings-card-body">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-lg-7">
+                                <form method="post" action="<?= site_url('settings/createBackup') ?>" class="row g-2 align-items-end" id="createBackupForm">
+                                    <?= csrf_field() ?>
+                                    <div class="col-md-4">
+                                        <label class="compact-label">Backup Type</label>
+                                        <select name="backup_type" class="form-select form-select-sm">
+                                            <option value="full">Full backup</option>
+                                            <option value="db_only">Database only</option>
+                                            <option value="code_only">Application only</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="p-2 rounded border bg-light small text-muted">
+                                            Full backups include the application snapshot, SQL dump, manifest, checksum, and zip integrity verification.
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <button class="btn btn-sm btn-primary" id="createBackupButton"><i class="bi bi-download me-1"></i>Create Backup</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-lg-5">
+                                <div class="p-3 rounded border h-100 small">
+                                    <div class="fw-semibold mb-2">Scheduler runner</div>
+                                    <div class="text-muted mb-2">Run due schedules with the CLI command below from Windows Task Scheduler.</div>
+                                    <div class="bg-dark text-light rounded p-2" style="font-family:monospace; font-size:.8rem;">php spark system:backup --run-schedules</div>
+                                    <div class="text-muted mt-2">Restore always creates a safety backup first. Full restore applies both database and application files from the selected archive.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-clock-history"></i>Backup Schedules</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/saveBackupSchedule') ?>" class="row g-2 align-items-end mb-3">
+                            <?= csrf_field() ?>
+                            <div class="col-md-3">
+                                <label class="compact-label">Name</label>
+                                <input type="text" name="name" class="form-control form-control-sm" placeholder="Nightly full backup" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Backup Type</label>
+                                <select name="backup_type" class="form-select form-select-sm">
+                                    <option value="full">Full</option>
+                                    <option value="db_only">DB only</option>
+                                    <option value="code_only">Code only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Frequency</label>
+                                <select name="frequency_type" class="form-select form-select-sm">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="interval">Interval</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="compact-label">Time</label>
+                                <input type="time" name="time_of_day" class="form-control form-control-sm" value="02:00">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Day</label>
+                                <select name="day_of_week" class="form-select form-select-sm">
+                                    <option value="0">Sun</option>
+                                    <option value="1" selected>Mon</option>
+                                    <option value="2">Tue</option>
+                                    <option value="3">Wed</option>
+                                    <option value="4">Thu</option>
+                                    <option value="5">Fri</option>
+                                    <option value="6">Sat</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Every</label>
+                                <input type="number" min="5" step="5" name="interval_minutes" class="form-control form-control-sm" value="60">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="compact-label">Keep</label>
+                                <input type="number" min="1" name="retention_count" class="form-control form-control-sm" value="5">
+                            </div>
+                            <div class="col-md-12 d-flex justify-content-between align-items-center">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="is_active" value="1" id="backupScheduleActive" checked>
+                                    <label class="form-check-label small" for="backupScheduleActive">Active schedule</label>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Schedule</button>
+                            </div>
+                        </form>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Frequency</th>
+                                        <th>Next Run</th>
+                                        <th>Retention</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($backup_schedules ?? []) as $schedule): ?>
+                                        <tr>
+                                            <td class="fw-semibold"><?= esc($schedule['name'] ?? '') ?></td>
+                                            <td><?= esc(strtoupper((string) ($schedule['backup_type'] ?? ''))) ?></td>
+                                            <td><?= esc(ucfirst((string) ($schedule['frequency_type'] ?? ''))) ?></td>
+                                            <td><?= esc($schedule['next_run_at'] ?? 'Pending') ?></td>
+                                            <td><?= (int) ($schedule['retention_count'] ?? 0) ?></td>
+                                            <td>
+                                                <span class="badge <?= !empty($schedule['is_active']) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' ?>">
+                                                    <?= !empty($schedule['is_active']) ? 'Active' : 'Paused' ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($backup_schedules)): ?>
+                                        <tr><td colspan="6" class="text-muted">No backup schedules defined yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-archive"></i>Recent Backups</div>
+                    <div class="settings-card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Health</th>
+                                        <th>Size</th>
+                                        <th>Archive</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($backup_jobs ?? []) as $job): ?>
+                                        <?php $health = strtolower((string) ($job['health_status'] ?? 'pending')); ?>
+                                        <tr>
+                                            <td><?= esc($job['created_at'] ?? '') ?></td>
+                                            <td><?= esc(strtoupper((string) ($job['backup_type'] ?? ''))) ?></td>
+                                            <td><?= esc(ucfirst((string) ($job['status'] ?? ''))) ?></td>
+                                            <td>
+                                                <span class="badge <?= $health === 'verified' ? 'bg-success-subtle text-success' : ($health === 'warning' ? 'bg-warning-subtle text-warning' : ($health === 'failed' ? 'bg-danger-subtle text-danger' : 'bg-secondary-subtle text-secondary')) ?>">
+                                                    <?= esc(ucfirst($health)) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <?php $size = (int) ($job['archive_size_bytes'] ?? 0); ?>
+                                                <?= $size > 0 ? number_format($size / 1048576, 2) . ' MB' : 'N/A' ?>
+                                            </td>
+                                            <td>
+                                                <div class="fw-semibold"><?= esc($job['archive_name'] ?? 'Pending') ?></div>
+                                                <?php if (!empty($job['archive_sha256'])): ?>
+                                                    <div class="text-muted" style="font-size:.72rem;"><?= esc(substr((string) $job['archive_sha256'], 0, 16)) ?>...</div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-1 flex-wrap align-items-start">
+                                                    <?php if (!empty($job['archive_path'])): ?>
+                                                        <a href="<?= site_url('settings/downloadBackup/' . $job['public_id']) ?>" class="btn btn-sm btn-outline-primary">Download</a>
+                                                        <form method="post" action="<?= site_url('settings/verifyBackup/' . $job['public_id']) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <button class="btn btn-sm btn-outline-secondary">Verify</button>
+                                                        </form>
+                                                        <?php if (($job['status'] ?? '') === 'completed'): ?>
+                                                            <form method="post" action="<?= site_url('settings/restoreBackup/' . $job['public_id']) ?>" class="d-flex gap-1 flex-wrap align-items-center restore-backup-form" data-backup-type="<?= esc((string) ($job['backup_type'] ?? '')) ?>">
+                                                                <?= csrf_field() ?>
+                                                                <select name="restore_mode" class="form-select form-select-sm" style="width:auto">
+                                                                    <option value="db_only">Restore DB</option>
+                                                                    <?php if (($job['backup_type'] ?? '') === 'full'): ?>
+                                                                        <option value="full">Restore Full</option>
+                                                                    <?php endif; ?>
+                                                                </select>
+                                                                <input type="hidden" name="restore_confirmation" value="">
+                                                                <button class="btn btn-sm btn-outline-danger">Restore</button>
+                                                            </form>
+                                                        <?php endif; ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">No file</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if (!empty($job['error_message'])): ?>
+                                                    <div class="text-danger mt-1" style="font-size:.72rem;"><?= esc($job['error_message']) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($backup_jobs)): ?>
+                                        <tr><td colspan="7" class="text-muted">No backups created yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── TAGS ─── -->
+            <div class="settings-section" id="section-tags">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-tags"></i>Tag Management</div>
+                    <div class="settings-card-body">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-lg-8 col-md-12">
+                                <form method="post" action="<?= site_url('settings/saveTag') ?>" class="row g-2 align-items-end">
+                                    <?= csrf_field() ?>
+                                    <div class="col-md-6">
+                                        <label class="compact-label" for="newTagName">Tag Name</label>
+                                        <input type="text" id="newTagName" name="name" class="form-control form-control-sm" value="<?= esc(old('name')) ?>" placeholder="Enter a new tag" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="compact-label" for="newTagDescription">Description</label>
+                                        <input type="text" id="newTagDescription" name="description" class="form-control form-control-sm" value="<?= esc(old('description')) ?>" placeholder="Optional description">
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-lg-4 col-md-12">
+                                <div class="small text-muted">Create tag names once and reuse them across all documents.</div>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Usage</th>
+                                        <th>Updated</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($tags ?? []) as $tag): ?>
+                                        <?php $attached = !empty($tag['usage_count']); ?>
+                                        <tr>
+                                            <td>
+                                                <input type="text" name="name" form="tag_update_<?= (int)$tag['id'] ?>" class="form-control form-control-sm" value="<?= esc($tag['name'] ?? '') ?>" aria-label="Tag name for <?= esc($tag['name'] ?? '') ?>" <?= $attached ? 'readonly' : '' ?> required>
+                                            </td>
+                                            <td>
+                                                <input type="text" name="description" form="tag_update_<?= (int)$tag['id'] ?>" class="form-control form-control-sm" value="<?= esc($tag['description'] ?? '') ?>" aria-label="Description for <?= esc($tag['name'] ?? '') ?>" <?= $attached ? 'readonly' : '' ?>>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= $attached ? 'bg-secondary-subtle text-secondary' : 'bg-success-subtle text-success' ?>">
+                                                    <?= (int) ($tag['usage_count'] ?? 0) ?> attached
+                                                </span>
+                                            </td>
+                                            <td><?= esc($tag['updated_at'] ? date('Y-m-d', strtotime($tag['updated_at'])) : '') ?></td>
+                                            <td class="text-end">
+                                                <form id="tag_update_<?= (int)$tag['id'] ?>" method="post" action="<?= site_url('settings/updateTag/' . (int)$tag['id']) ?>" class="d-inline">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" <?= $attached ? 'disabled' : '' ?>>Save</button>
+                                                </form>
+                                                <form method="post" action="<?= site_url('settings/deleteTag/' . (int)$tag['id']) ?>" class="d-inline ms-1">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" <?= $attached ? 'disabled' : '' ?>>Delete</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($tags)): ?>
+                                        <tr><td colspan="5" class="text-center text-muted py-4">No tags created yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── SYNC ─── -->
+            <div class="settings-section" id="section-sync">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-diagram-3"></i>Environment Profiles</div>
+                    <div class="settings-card-body">
+                        <div class="small text-muted mb-3">Define source and destination environments for read-only diff scans and controlled updates.</div>
+                        <?php foreach (($sync_environments ?? []) as $env): ?>
+                            <form method="post" action="<?= site_url('settings/saveSyncEnvironment') ?>" class="row g-2 align-items-end mb-3 p-2 border rounded">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="environment_id" value="<?= (int) ($env['id'] ?? 0) ?>">
+                                <div class="col-md-2">
+                                    <label class="compact-label">Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="<?= esc($env['name'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="compact-label">App Path</label>
+                                    <input type="text" class="form-control form-control-sm" name="app_path" value="<?= esc($env['app_path'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="compact-label">DB Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_name" value="<?= esc($env['db_name'] ?? '') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">Host</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_host" value="<?= esc($env['db_host'] ?? '127.0.0.1') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">Port</label>
+                                    <input type="number" class="form-control form-control-sm" name="db_port" value="<?= (int) ($env['db_port'] ?? 3306) ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">DB User</label>
+                                    <input type="text" class="form-control form-control-sm" name="db_user" value="<?= esc($env['db_user'] ?? 'root') ?>" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="compact-label">DB Password</label>
+                                    <input type="password" class="form-control form-control-sm" name="db_password" value="<?= esc($env['db_password'] ?? '') ?>">
+                                </div>
+                                <div class="col-md-1 d-flex align-items-center">
+                                    <div class="form-check mt-3">
+                                        <input class="form-check-input" type="checkbox" name="is_active" value="1" <?= !empty($env['is_active']) ? 'checked' : '' ?>>
+                                    </div>
+                                </div>
+                                <div class="col-md-12 d-flex justify-content-end">
+                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-save me-1"></i>Save Profile</button>
+                                </div>
+                            </form>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-search"></i>Scan Differences</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/runSyncScan') ?>" class="row g-2 align-items-end" id="syncScanForm">
+                            <?= csrf_field() ?>
+                            <div class="col-md-4">
+                                <label class="compact-label">Source Environment</label>
+                                <select class="form-select form-select-sm" name="source_environment_id" required>
+                                    <option value="">Select source</option>
+                                    <?php foreach (($sync_environments ?? []) as $env): ?>
+                                        <?php if (!empty($env['is_active'])): ?>
+                                            <option value="<?= (int) ($env['id'] ?? 0) ?>"><?= esc(($env['name'] ?? '') . ' (' . ($env['db_name'] ?? '') . ')') ?></option>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="compact-label">Destination Environment</label>
+                                <select class="form-select form-select-sm" name="destination_environment_id" required>
+                                    <option value="">Select destination</option>
+                                    <?php foreach (($sync_environments ?? []) as $env): ?>
+                                        <?php if (!empty($env['is_active'])): ?>
+                                            <option value="<?= (int) ($env['id'] ?? 0) ?>"><?= esc(($env['name'] ?? '') . ' (' . ($env['db_name'] ?? '') . ')') ?></option>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-2 rounded border bg-light small text-muted">Scan is read-only and reports file and schema differences. No data rows are changed.</div>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-sm btn-primary" id="runSyncScanButton"><i class="bi bi-search me-1"></i>Run Scan</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-list-check"></i>Recent Sync Scans</div>
+                    <div class="settings-card-body">
+                        <div class="alert alert-warning py-2 small mb-3"><i class="bi bi-exclamation-triangle me-1"></i>Create and verify a backup before pressing Apply. Apply only copies changed system files and executes safe schema-only SQL (no row data copy).</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Flow</th>
+                                        <th>Summary</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($sync_scans ?? []) as $scan): ?>
+                                        <?php
+                                            $summary = json_decode((string) ($scan['summary_json'] ?? ''), true);
+                                            $sourceLabel = '';
+                                            $destinationLabel = '';
+                                            foreach (($sync_environments ?? []) as $envLabel) {
+                                                if ((int) ($envLabel['id'] ?? 0) === (int) ($scan['source_env_id'] ?? 0)) $sourceLabel = (string) ($envLabel['name'] ?? '');
+                                                if ((int) ($envLabel['id'] ?? 0) === (int) ($scan['destination_env_id'] ?? 0)) $destinationLabel = (string) ($envLabel['name'] ?? '');
+                                            }
+                                        ?>
+                                        <tr>
+                                            <td><?= esc($scan['created_at'] ?? '') ?></td>
+                                            <td><span class="fw-semibold"><?= esc($sourceLabel) ?></span> <i class="bi bi-arrow-right mx-1"></i> <span class="fw-semibold"><?= esc($destinationLabel) ?></span></td>
+                                            <td>
+                                                <?php if (is_array($summary)): ?>
+                                                    <div>Files: <?= (int) ($summary['file_copy_count'] ?? 0) ?></div>
+                                                    <div>SQL ops: <?= (int) (($summary['table_create_count'] ?? 0) + ($summary['column_add_count'] ?? 0) + ($summary['index_add_count'] ?? 0)) ?></div>
+                                                    <div class="text-muted">Manual review: <?= (int) ($summary['manual_review_count'] ?? 0) ?></div>
+                                                <?php else: ?>
+                                                    <span class="text-muted">No summary</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= ($scan['status'] ?? '') === 'applied' ? 'bg-success-subtle text-success' : 'bg-primary-subtle text-primary' ?>">
+                                                    <?= esc(ucfirst((string) ($scan['status'] ?? 'unknown'))) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-1 flex-wrap">
+                                                    <a href="<?= site_url('settings/downloadSyncReport/' . $scan['public_id']) ?>" class="btn btn-sm btn-outline-secondary">Report</a>
+                                                    <?php if (($scan['status'] ?? '') === 'scanned'): ?>
+                                                        <form method="post" action="<?= site_url('settings/applySyncScan/' . $scan['public_id']) ?>" class="sync-apply-form d-flex gap-1 align-items-center">
+                                                            <?= csrf_field() ?>
+                                                            <div class="form-check small mt-1">
+                                                                <input class="form-check-input" type="checkbox" name="backup_confirmed" value="1" required>
+                                                                <label class="form-check-label">Backup done</label>
+                                                            </div>
+                                                            <button class="btn btn-sm btn-outline-danger">Apply</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($sync_scans)): ?>
+                                        <tr><td colspan="5" class="text-muted">No sync scans yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+    <!-- Clean DB Modal -->
+    <div class="modal fade" id="cleanDbModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title"><i class="bi bi-trash3 me-2"></i>Clean Database</h6>
+                    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="post" action="<?= site_url('settings/cleanDatabase') ?>">
+                    <?= csrf_field() ?>
+                    <div class="modal-body">
+                        <div class="alert alert-warning py-2 small mb-3"><i class="bi bi-exclamation-triangle me-1"></i>This will permanently delete selected module data. This action cannot be undone.</div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="cleanSelectAll">
+                            <label class="form-check-label small fw-semibold" for="cleanSelectAll">Select All</label>
+                        </div>
+                        <div class="row g-1">
+                            <?php
+                            $cleanModules = [
+                                'po' => 'Purchase Orders', 'rfq' => 'RFQ', 'sales_orders' => 'Sales Orders',
+                                'quotations' => 'Quotations', 'invoices' => 'Invoices', 'accounting_journals' => 'Journals',
+                                'accounting_cheques' => 'Cheques', 'products' => 'Products', 'grn' => 'GRN',
+                                'delivery_orders' => 'Delivery Orders', 'shipped_dos' => 'Shipped DOs', 'ready_to_ship' => 'Ready to Ship',
+                            ];
+                            foreach ($cleanModules as $val => $label): ?>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input clean-module" type="checkbox" name="modules[]" value="<?= $val ?>" id="clean-<?= $val ?>">
+                                    <label class="form-check-label small" for="clean-<?= $val ?>"><?= $label ?></label>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="mt-3">
+                            <label class="compact-label">Confirm Password</label>
+                            <input type="password" class="form-control form-control-sm" name="clean_password" placeholder="Enter password" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash3 me-1"></i>Clean Selected</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+            <!-- ─── MOBILE APP ─── -->
+            <div class="settings-section" id="section-mobile">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-phone"></i>Mobile App Server</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/saveMobileSettings') ?>">
+                            <?= csrf_field() ?>
+                            <div class="mb-3">
+                                <label class="compact-label">API Server URL</label>
+                                <input type="url" name="mobile_api_url" class="form-control form-control-sm"
+                                       value="<?= esc($mobile_api_url ?? '') ?>"
+                                       placeholder="http://192.168.1.100/corelynk/public/api">
+                                <small class="text-muted">The base URL the mobile app will connect to. Leave empty to use the device default.</small>
+                            </div>
+                            <div class="p-2 bg-light rounded border mb-3 small">
+                                <strong>Current server base URL:</strong> <?= esc(base_url('api')) ?>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-floppy me-1"></i>Save</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+</div>
+</div>
+</div>
+<?= $this->endSection() ?>
+
+<?= $this->section('js') ?>
+<?= $this->include('partials/_rich_editor') ?>
+<script>
+// ─── Settings Navigation ───
+(function(){
+    var links = document.querySelectorAll('#settingsNav a[data-section]');
+    var sections = document.querySelectorAll('.settings-section');
+    function activateSection(sectionName) {
+        links.forEach(function(l){ l.classList.remove('active'); });
+        sections.forEach(function(s){ s.classList.remove('active'); });
+        var activeLink = document.querySelector('#settingsNav a[data-section="' + sectionName + '"]');
+        var target = document.getElementById('section-' + sectionName);
+        if (activeLink) activeLink.classList.add('active');
+        if (target) target.classList.add('active');
+    }
+    links.forEach(function(link){
+        link.addEventListener('click', function(e){
+            e.preventDefault();
+            activateSection(link.dataset.section);
+            if (history.replaceState) {
+                history.replaceState(null, '', '#'+link.dataset.section);
+            }
+            // scroll content to top smoothly
+            var right = document.querySelector('.col-lg-10');
+            if(right) right.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        });
+    });
+
+    var initial = (window.location.hash || '').replace('#', '');
+    if (initial && document.getElementById('section-' + initial)) {
+        activateSection(initial);
+    }
+})();
+
+// ─── Security Flag Toggles ───
+(function(){
+    var toggles = document.querySelectorAll('.security-flag-toggle');
+    if(!toggles.length) return;
+
+    toggles.forEach(function(toggle){
+        toggle.addEventListener('change', async function(){
+            var flagKey = this.getAttribute('data-flag');
+            var enabled = this.checked ? '1' : '0';
+            var original = this.checked;
+            this.disabled = true;
+
+            try {
+                var resp = await fetch('<?= base_url('admin/security/toggle-flag') ?>', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: 'flag_key=' + encodeURIComponent(flagKey)
+                        + '&enabled=' + encodeURIComponent(enabled)
+                        + '&<?= csrf_token() ?>=<?= csrf_hash() ?>'
+                });
+
+                var data = await resp.json();
+                if(!resp.ok || !data.success){
+                    this.checked = !original;
+                    alert((data && data.message) ? data.message : 'Unable to update security flag.');
+                }
+            } catch (err) {
+                this.checked = !original;
+                alert('Network error while updating security flag.');
+            } finally {
+                this.disabled = false;
+            }
+        });
+    });
+})();
+
+// ─── Art Number Live Preview ───
+(function(){
+    var brandIn = document.getElementById('artBrandInput');
+    var nextIn  = document.getElementById('artNextInput');
+    var custPrefixIn = document.getElementById('custPrefixInput');
+    var custNextIn = document.getElementById('custNextInput');
+    var custPreview = document.getElementById('custPreviewSettings');
+    var vendorPrefixIn = document.getElementById('vendorPrefixInput');
+    var vendorNextIn = document.getElementById('vendorNextInput');
+    var vendorPreview = document.getElementById('vendorPreviewSettings');
+    var preview = document.getElementById('artPreviewSettings');
+    var brandB  = document.getElementById('brandBadge');
+    var seqB    = document.getElementById('seqBadge');
+    function upd(){
+        var b = (brandIn && brandIn.value||'RI').toUpperCase().replace(/[^A-Z]/g,'');
+        var n = parseInt(nextIn && nextIn.value)||1;
+        var pad = String(n).padStart(5,'0');
+        if(preview) preview.textContent = b+'-[CODE]-'+pad;
+        if(brandB) brandB.textContent = b||'??';
+        if(seqB)   seqB.textContent = pad;
+
+        var cp = (custPrefixIn && custPrefixIn.value || 'RI').toUpperCase().replace(/[^A-Z0-9]/g,'');
+        var cn = parseInt(custNextIn && custNextIn.value) || 1;
+        if (custPreview) custPreview.textContent = (cp || 'RI') + '-' + cn;
+
+        var vp = (vendorPrefixIn && vendorPrefixIn.value || 'VEN').toUpperCase().replace(/[^A-Z0-9]/g,'');
+        var vn = parseInt(vendorNextIn && vendorNextIn.value) || 1;
+        if (vendorPreview) vendorPreview.textContent = (vp || 'VEN') + '-' + vn;
+    }
+    if(brandIn){ brandIn.addEventListener('input',function(){ this.value=this.value.toUpperCase().replace(/[^A-Z]/g,''); upd(); }); }
+    if(nextIn){ nextIn.addEventListener('input', upd); }
+    if(custPrefixIn){ custPrefixIn.addEventListener('input', function(){ this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,''); upd(); }); }
+    if(custNextIn){ custNextIn.addEventListener('input', upd); }
+    if(vendorPrefixIn){ vendorPrefixIn.addEventListener('input', function(){ this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,''); upd(); }); }
+    if(vendorNextIn){ vendorNextIn.addEventListener('input', upd); }
+})();
+
+// ─── Currency Toggle ───
+Array.from(document.querySelectorAll('.currency-toggle')).forEach(function(cb){
+    cb.addEventListener('change', function(){
+        var code = this.dataset.code;
+        fetch('<?= site_url('settings/toggleCurrency') ?>/' + encodeURIComponent(code), { method: 'POST', headers: { 'X-Requested-With':'XMLHttpRequest', '<?= csrf_token() ?>':'<?= csrf_hash() ?>' } })
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (!d.success) alert(d.message || 'Failed'); })
+            .catch(function(err){ console.error(err); alert('Request failed'); });
+    });
+});
+
+// ─── Odoo Test ───
+document.getElementById('odooTest')?.addEventListener('click', function(){
+    var btn = this; btn.disabled = true; btn.textContent = 'Testing...';
+    var resultEl = document.getElementById('odooTestResult'); resultEl.innerHTML = '';
+    var form = document.getElementById('odooForm');
+    var data = new FormData(form);
+    fetch('<?= site_url('settings/saveOdoo') ?>', { method: 'POST', body: data })
+        .then(function(){ return fetch('<?= base_url('/integrations/odoo/api/test') ?>'); })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            btn.disabled = false; btn.textContent = 'Test';
+            if(d && d.data && d.data.error) resultEl.innerHTML = '<div class="text-danger small">'+d.data.error+'</div>';
+            else if(d && d.data && d.data.result) resultEl.innerHTML = '<div class="text-success small">Connected (uid: '+d.data.result+')</div>';
+            else resultEl.innerHTML = '<div class="text-muted small">Unexpected response</div>';
+        })
+        .catch(function(err){ btn.disabled = false; btn.textContent = 'Test'; resultEl.innerHTML = '<div class="text-danger small">'+err.message+'</div>'; });
+});
+
+// ─── Odoo Manual Refresh ───
+document.getElementById('manualRefresh')?.addEventListener('click', function(e){
+    e.preventDefault();
+    var btn = this; btn.disabled = true; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1 spin"></i>Reloading...';
+    fetch('<?= base_url('/integrations/odoo/screen/action/refresh') ?>',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})
+        .then(function(r){ return r.json(); }).then(function(d){
+            btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reload From Odoo';
+            var el = document.getElementById('manualRefreshResult');
+            if(d && d.ok) el.innerHTML = '<div class="text-success small">Done. Last run: '+(d.last_run||'')+'</div>';
+            else el.innerHTML = '<div class="text-danger small">Reload failed</div>';
+        }).catch(function(err){ btn.disabled=false; btn.innerHTML='<i class="bi bi-arrow-clockwise me-1"></i>Reload From Odoo'; document.getElementById('manualRefreshResult').innerHTML = '<div class="text-danger small">'+err.message+'</div>'; });
+});
+
+// ─── Backup Forms ───
+var createBackupForm = document.getElementById('createBackupForm');
+if (createBackupForm) {
+    createBackupForm.addEventListener('submit', function(e) {
+        var button = document.getElementById('createBackupButton');
+        if (button && button.disabled) {
+            e.preventDefault();
+            return;
+        }
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Creating...';
+        }
+    });
+}
+
+document.querySelectorAll('.restore-backup-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        var modeField = form.querySelector('select[name="restore_mode"]');
+        var confirmationField = form.querySelector('input[name="restore_confirmation"]');
+        var selectedMode = modeField ? modeField.value : 'db_only';
+        var typed = window.prompt('Type RESTORE to confirm ' + (selectedMode === 'full' ? 'full system restore' : 'database restore') + '. A safety backup will be created first.');
+        if (typed !== 'RESTORE') {
+            e.preventDefault();
+            return;
+        }
+        if (confirmationField) {
+            confirmationField.value = typed;
+        }
+    });
+});
+
+var syncScanForm = document.getElementById('syncScanForm');
+if (syncScanForm) {
+    syncScanForm.addEventListener('submit', function(e) {
+        var src = syncScanForm.querySelector('select[name="source_environment_id"]');
+        var dst = syncScanForm.querySelector('select[name="destination_environment_id"]');
+        if (src && dst && src.value !== '' && src.value === dst.value) {
+            e.preventDefault();
+            alert('Source and destination must be different.');
+            return;
+        }
+
+        var btn = document.getElementById('runSyncScanButton');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Scanning...';
+        }
+    });
+}
+
+document.querySelectorAll('.sync-apply-form').forEach(function(form){
+    form.addEventListener('submit', function(e){
+        var ok = confirm('Apply this scan now? This will copy changed system files and run safe schema SQL on destination.');
+        if (!ok) {
+            e.preventDefault();
+        }
+    });
+});
+
+// ─── Clean DB Select All ───
+var cleanAll = document.getElementById('cleanSelectAll');
+if(cleanAll){
+    cleanAll.addEventListener('change', function(){ document.querySelectorAll('.clean-module').forEach(function(cb){ cb.checked = cleanAll.checked; }); });
+}
+var cleanForm = document.querySelector('#cleanDbModal form');
+if(cleanForm){
+    cleanForm.addEventListener('submit', function(e){
+        if(!Array.from(document.querySelectorAll('.clean-module')).some(function(cb){ return cb.checked; })){ e.preventDefault(); alert('Select at least one module.'); return; }
+        if(!confirm('This will permanently delete selected data. Continue?')) e.preventDefault();
+    });
+}
+
+// ─── PDF Template Picker ───
+document.querySelectorAll('.tpl-card').forEach(function(card) {
+    card.addEventListener('click', function() {
+        document.querySelectorAll('.tpl-card').forEach(function(c){ c.classList.remove('selected'); });
+        card.classList.add('selected');
+        var input = document.getElementById('pdf_template_input');
+        if (input) input.value = card.getAttribute('data-tpl');
+    });
+});
+
+// ─── Payment Term Milestones ───
+(function(){
+    var rows = document.getElementById('ptMilestoneRows');
+    if (!rows) return;
+
+    var form = document.getElementById('paymentTermForm');
+    var totalEl = document.getElementById('ptPctTotal');
+
+    function esc(v){ return String(v == null ? '' : v).replace(/"/g, '&quot;'); }
+
+    function refreshTotal(){
+        var sum = 0;
+        rows.querySelectorAll('input[name="milestone_percentage[]"]').forEach(function(i){
+            var v = parseFloat(i.value);
+            if (!isNaN(v)) sum += v;
+        });
+        if (!totalEl) return;
+        if (rows.children.length === 0) { totalEl.textContent = ''; return; }
+        var ok = Math.abs(sum - 100) < 0.01;
+        totalEl.textContent = 'Total: ' + sum.toFixed(2) + '% ' + (ok ? '✓' : '(must equal 100%)');
+        totalEl.className = 'fw-semibold ' + (ok ? 'text-success' : 'text-danger');
+    }
+
+    function addRow(m){
+        m = m || {};
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="text" class="form-control form-control-sm" name="milestone_label[]" value="' + esc(m.label) + '" placeholder="Advance Payment"></td>' +
+            '<td><div class="input-group input-group-sm"><input type="number" step="0.01" min="0" max="100" class="form-control" name="milestone_percentage[]" value="' + esc(m.percentage) + '"><span class="input-group-text">%</span></div></td>' +
+            '<td><select class="form-select form-select-sm" name="milestone_basis[]">' +
+                '<option value="invoice_date"' + (m.basis === 'delivery_date' ? '' : ' selected') + '>Invoice date</option>' +
+                '<option value="delivery_date"' + (m.basis === 'delivery_date' ? ' selected' : '') + '>Delivery date</option>' +
+            '</select></td>' +
+            '<td><input type="number" min="0" class="form-control form-control-sm" name="milestone_offset_days[]" value="' + esc(m.offset_days == null ? 0 : m.offset_days) + '"></td>' +
+            '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger js-pt-remove"><i class="bi bi-x"></i></button></td>';
+        rows.appendChild(tr);
+        refreshTotal();
+    }
+
+    rows.addEventListener('click', function(e){
+        var btn = e.target.closest('.js-pt-remove');
+        if (!btn) return;
+        btn.closest('tr').remove();
+        refreshTotal();
+    });
+    rows.addEventListener('input', refreshTotal);
+
+    var addBtn = document.getElementById('ptAddRow');
+    if (addBtn) addBtn.addEventListener('click', function(){ addRow(); });
+
+    function resetForm(){
+        form.reset();
+        document.getElementById('ptId').value = '';
+        document.getElementById('ptActive').checked = true;
+        rows.innerHTML = '';
+        refreshTotal();
+    }
+    var resetBtn = document.getElementById('ptReset');
+    if (resetBtn) resetBtn.addEventListener('click', resetForm);
+
+    document.querySelectorAll('.js-pt-edit').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            var term;
+            try { term = JSON.parse(btn.getAttribute('data-term')); } catch (err) { return; }
+            document.getElementById('ptId').value = term.id || '';
+            document.getElementById('ptName').value = term.name || '';
+            document.getElementById('ptCode').value = term.code || '';
+            document.getElementById('ptNetDays').value = term.net_days || 0;
+            document.getElementById('ptDescription').value = term.description || '';
+            document.getElementById('ptActive').checked = !!Number(term.is_active);
+            rows.innerHTML = '';
+            var ms = [];
+            try { ms = JSON.parse(term.milestones || '[]') || []; } catch (err) { ms = []; }
+            ms.forEach(addRow);
+            refreshTotal();
+            form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    });
+
+    // Catch a bad split before the round-trip; the server re-validates anyway.
+    form.addEventListener('submit', function(e){
+        if (rows.children.length === 0) return;
+        var sum = 0;
+        rows.querySelectorAll('input[name="milestone_percentage[]"]').forEach(function(i){
+            var v = parseFloat(i.value);
+            if (!isNaN(v)) sum += v;
+        });
+        if (Math.abs(sum - 100) > 0.01) {
+            e.preventDefault();
+            alert('Milestone percentages must add up to exactly 100%. Current total: ' + sum.toFixed(2) + '%');
+        }
+    });
+})();
+</script>
+<?= $this->endSection() ?>

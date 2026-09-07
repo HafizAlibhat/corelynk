@@ -1,0 +1,340 @@
+/**
+ * CoreLynk shared navigation contract.
+ * Loaded after page styles so the same rail and utility bar remain stable everywhere.
+ */
+
+.cl-skip-link {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  z-index: 2000;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: #fff;
+  color: #312e81;
+  font-size: .82rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+  transform: translate(-50%, -150%);
+  transition: transform 160ms ease;
+}
+
+.cl-skip-link:focus {
+  color: #312e81;
+  transform: translate(-50%, 0);
+}
+
+@media (min-width: 1200px) {
+  .app-layout #globalNavBar .cl-sidebar-content,
+  .app-layout #globalNavBar .nav-actions {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .app-layout #globalNavBar .nav-actions {
+    justify-content: flex-end !important;
+    position: relative !important;
+    overflow: visible !important;
+    z-index: 5000 !important;
+  }
+
+  .app-layout #globalNavBar .cl-topbar-search {
+    flex: 0 1 390px;
+    margin-right: auto;
+  }
+
+  .app-layout #globalNavBar #globalNav .navbar-nav,
+  .app-layout > .main-content {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (min-width: 1200px) {
+  html[data-bs-theme="light"] .app-layout #globalNavBar .nav-actions {
+    border-bottom: 1px solid #d9e2ef !important;
+    background: #ffffff !important;
+    color-scheme: light;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions :is(.cl-quick-create, .cl-icon-btn) {
+    border: 1px solid #d7e0ec !important;
+    background: linear-gradient(180deg, #ffffff, #f4f7fb) !important;
+    color: #243044 !important;
+    box-shadow: none !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions :is(.cl-quick-create, .cl-icon-btn):is(:hover, :focus-visible) {
+    border-color: rgba(107, 78, 230, .42) !important;
+    background: #f1efff !important;
+    color: #5b43d6 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions #userBtn {
+    border-color: #d7e0ec !important;
+    background: linear-gradient(180deg, #ffffff, #f6f8fc) !important;
+    color: #243044 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions #userBtn:is(:hover, :focus-visible) {
+    border-color: rgba(107, 78, 230, .42) !important;
+    background: #f1efff !important;
+    color: #5b43d6 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions .dropdown,
+  html[data-bs-theme="light"] #globalNavBar .nav-actions .dropdown-toggle,
+  html[data-bs-theme="light"] #globalNavBar .nav-actions > * {
+    position: relative;
+    overflow: visible !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .nav-actions .dropdown-menu {
+    top: calc(100% + 10px) !important;
+    right: 0 !important;
+    left: auto !important;
+    z-index: 9000 !important;
+    max-height: calc(100vh - 122px);
+    overflow-y: auto;
+    border-radius: 18px !important;
+    padding: 10px 0 !important;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, .14), 0 2px 6px rgba(15, 23, 42, .06) !important;
+    backdrop-filter: blur(14px);
+    transform: none !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-content {
+    border-right-color: #d9e2ef !important;
+    background: #ffffff !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .navbar-brand {
+    color: #162033 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-brand-row {
+    border-bottom-color: #e1e7f0 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-collapse {
+    border-color: #d7e0ec !important;
+    background: #f6f8fc !important;
+    color: #536178 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-collapse:is(:hover, :focus-visible) {
+    border-color: rgba(107, 78, 230, .42) !important;
+    background: #f1efff !important;
+    color: #5b43d6 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar :is(.nav-link, .cl-sidebar-module-row .nav-link) {
+    color: #536178 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar :is(.nav-link, .cl-sidebar-module-row .nav-link) > i {
+    background: #f3f6fb !important;
+    color: #65748a !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar :is(.nav-link, .cl-sidebar-submenu-link):is(:hover, :focus-visible) {
+    border-color: rgba(107, 78, 230, .22) !important;
+    background: #f5f2ff !important;
+    color: #3d2f8f !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-module.is-active > .cl-sidebar-module-row,
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-module.is-open > .cl-sidebar-module-row,
+  html[data-bs-theme="light"] #globalNavBar .nav-link.active {
+    border-color: rgba(107, 78, 230, .38) !important;
+    background: linear-gradient(135deg, #6b4ee6, #7f5af0) !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-submenu.is-open {
+    border-left-color: rgba(107, 78, 230, .2) !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-submenu-link {
+    color: #64748b !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-submenu-link > i {
+    background: #f3f6fb !important;
+    color: #6b4ee6 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-sidebar-submenu-link.active {
+    background: #f1efff !important;
+    color: #4c35c4 !important;
+    box-shadow: inset 2px 0 #6b4ee6 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-topbar-search {
+    border-color: #d7e0ec !important;
+    background: #f7f9fd !important;
+    color: #536178 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-topbar-search input {
+    color: #162033 !important;
+  }
+
+  html[data-bs-theme="light"] #globalNavBar .cl-topbar-search-advanced {
+    background: #ede9ff !important;
+    color: #6b4ee6 !important;
+  }
+}
+
+html[data-bs-theme="light"] #globalNavBar .dropdown-menu {
+  z-index: 9000 !important;
+  border: 1px solid #d7e0ec !important;
+  background: #ffffff !important;
+  color: #243044 !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, .18) !important;
+  opacity: 1 !important;
+}
+
+@media (min-width: 1200px) {
+  body:not(.theme-dark) .app-layout #globalNavBar .nav-actions {
+    border-bottom: 1px solid #d9e2ef !important;
+    background: #ffffff !important;
+    position: relative !important;
+    overflow: visible !important;
+    z-index: 5000 !important;
+    color-scheme: light;
+  }
+
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-content {
+    border-right-color: #d9e2ef !important;
+    background: #ffffff !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .navbar-brand {
+    color: #162033 !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-brand-row {
+    border-bottom-color: #e1e7f0 !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .nav-actions :is(.cl-quick-create, .cl-icon-btn),
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-collapse {
+    border: 1px solid #d7e0ec !important;
+    background: linear-gradient(180deg, #ffffff, #f4f7fb) !important;
+    color: #243044 !important;
+    box-shadow: none !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar #userBtn {
+    border: 1px solid #d7e0ec !important;
+    background: linear-gradient(180deg, #ffffff, #f6f8fc) !important;
+    color: #243044 !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .nav-actions .dropdown,
+  body:not(.theme-dark) #globalNavBar .nav-actions .dropdown-toggle,
+  body:not(.theme-dark) #globalNavBar .nav-actions > * {
+    position: relative;
+    overflow: visible !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .nav-actions .dropdown-menu {
+    top: calc(100% + 10px) !important;
+    right: 0 !important;
+    left: auto !important;
+    z-index: 9000 !important;
+    max-height: calc(100vh - 122px);
+    overflow-y: auto;
+    border-radius: 18px !important;
+    padding: 10px 0 !important;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, .14), 0 2px 6px rgba(15, 23, 42, .06) !important;
+    backdrop-filter: blur(14px);
+    transform: none !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar :is(.nav-link, .cl-sidebar-module-row .nav-link) {
+    color: #536178 !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar :is(.nav-link, .cl-sidebar-module-row .nav-link) > i,
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-submenu-link > i {
+    background: #f3f6fb !important;
+    color: #65748a !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-module.is-active > .cl-sidebar-module-row,
+  body:not(.theme-dark) #globalNavBar .cl-sidebar-module.is-open > .cl-sidebar-module-row,
+  body:not(.theme-dark) #globalNavBar .nav-link.active {
+    border-color: rgba(107, 78, 230, .38) !important;
+    background: linear-gradient(135deg, #6b4ee6, #7f5af0) !important;
+  }
+
+  body:not(.theme-dark) #globalNavBar .cl-topbar-search {
+    border-color: #d7e0ec !important;
+    background: #f7f9fd !important;
+  }
+}
+
+body:not(.theme-dark) #globalNavBar .dropdown-menu {
+  z-index: 9000 !important;
+  border: 1px solid #d7e0ec !important;
+  background: #ffffff !important;
+  color: #243044 !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, .18) !important;
+  opacity: 1 !important;
+}
+
+body:not(.theme-dark) .app-layout > #globalNavBar {
+  border-bottom-color: #d9e2ef !important;
+  background: #ffffff !important;
+}
+
+@media (max-width: 1199.98px) {
+  .app-layout > #globalNavBar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1040 !important;
+    border-bottom: 1px solid rgba(138, 114, 240, .16) !important;
+    background: #0b0819 !important;
+    box-shadow: 0 10px 28px rgba(3, 2, 12, .22) !important;
+  }
+
+  .app-layout #globalNavBar > .container-fluid {
+    min-height: 68px;
+  }
+
+  .app-layout #globalNavBar .nav-actions {
+    justify-content: flex-end;
+    gap: 7px !important;
+  }
+
+  .app-layout #globalNavBar .cl-mobile-search {
+    margin-right: auto;
+  }
+
+  .app-layout #globalNavBar .navbar-collapse.show,
+  .app-layout #globalNavBar .navbar-collapse.collapsing {
+    max-height: calc(100dvh - 136px);
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .app-layout #globalNavBar .nav-actions #userBtn {
+    min-width: 40px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-skip-link {
+    transition: none;
+  }
+}
+
+@media print {
+  .cl-skip-link {
+    display: none !important;
+  }
+}

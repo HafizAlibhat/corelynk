@@ -1,0 +1,218 @@
+<?php
+
+namespace Config;
+
+use CodeIgniter\Database\Config;
+
+/**
+ * Database Configuration
+ */
+class Database extends Config
+{
+    /**
+     * The directory that holds the Migrations and Seeds directories.
+     */
+    public string $filesPath = APPPATH . 'Database' . DIRECTORY_SEPARATOR;
+
+    /**
+     * Lets you choose which connection group to use if no other is specified.
+     */
+    public string $defaultGroup = 'default';
+
+    /**
+     * The default database connection.
+     *
+     * @var array<string, mixed>
+     */
+    public array $default = [
+        'DSN'          => '',
+        'hostname'     => '127.0.0.1',
+        'username'     => 'root',
+        'password'     => '',
+        'database'     => 'corelynk_db',
+        'DBDriver'     => 'MySQLi',
+        'DBPrefix'     => '',
+        'pConnect'     => false,
+        'DBDebug'      => true,
+        'charset'      => 'utf8mb4',
+        'DBCollat'     => 'utf8mb4_unicode_ci',
+        'swapPre'      => '',
+        'encrypt'      => false,
+        'compress'     => false,
+        'strictOn'     => false,
+        'failover'     => [],
+        'port'         => 3306,
+        'numberNative' => false,
+        'dateFormat'   => [
+            'date'     => 'Y-m-d',
+            'datetime' => 'Y-m-d H:i:s',
+            'time'     => 'H:i:s',
+        ],
+    ];
+
+    // Unified single database: accounting group removed. If rollback needed, restore previous group definition.
+
+    //    /**
+    //     * Sample database connection for SQLite3.
+    //     *
+    //     * @var array<string, mixed>
+    //     */
+    //    public array $default = [
+    //        'database'    => 'database.db',
+    //        'DBDriver'    => 'SQLite3',
+    //        'DBPrefix'    => '',
+    //        'DBDebug'     => true,
+    //        'swapPre'     => '',
+    //        'failover'    => [],
+    //        'foreignKeys' => true,
+    //        'busyTimeout' => 1000,
+    //        'synchronous' => null,
+    //        'dateFormat'  => [
+    //            'date'     => 'Y-m-d',
+    //            'datetime' => 'Y-m-d H:i:s',
+    //            'time'     => 'H:i:s',
+    //        ],
+    //    ];
+
+    //    /**
+    //     * Sample database connection for Postgre.
+    //     *
+    //     * @var array<string, mixed>
+    //     */
+    //    public array $default = [
+    //        'DSN'        => '',
+    //        'hostname'   => 'localhost',
+    //        'username'   => 'root',
+    //        'password'   => 'root',
+    //        'database'   => 'ci4',
+    //        'schema'     => 'public',
+    //        'DBDriver'   => 'Postgre',
+    //        'DBPrefix'   => '',
+    //        'pConnect'   => false,
+    //        'DBDebug'    => true,
+    //        'charset'    => 'utf8',
+    //        'swapPre'    => '',
+    //        'failover'   => [],
+    //        'port'       => 5432,
+    //        'dateFormat' => [
+    //            'date'     => 'Y-m-d',
+    //            'datetime' => 'Y-m-d H:i:s',
+    //            'time'     => 'H:i:s',
+    //        ],
+    //    ];
+
+    //    /**
+    //     * Sample database connection for SQLSRV.
+    //     *
+    //     * @var array<string, mixed>
+    //     */
+    //    public array $default = [
+    //        'DSN'        => '',
+    //        'hostname'   => 'localhost',
+    //        'username'   => 'root',
+    //        'password'   => 'root',
+    //        'database'   => 'ci4',
+    //        'schema'     => 'dbo',
+    //        'DBDriver'   => 'SQLSRV',
+    //        'DBPrefix'   => '',
+    //        'pConnect'   => false,
+    //        'DBDebug'    => true,
+    //        'charset'    => 'utf8',
+    //        'swapPre'    => '',
+    //        'encrypt'    => false,
+    //        'failover'   => [],
+    //        'port'       => 1433,
+    //        'dateFormat' => [
+    //            'date'     => 'Y-m-d',
+    //            'datetime' => 'Y-m-d H:i:s',
+    //            'time'     => 'H:i:s',
+    //        ],
+    //    ];
+
+    //    /**
+    //     * Sample database connection for OCI8.
+    //     *
+    //     * You may need the following environment variables:
+    //     *   NLS_LANG                = 'AMERICAN_AMERICA.UTF8'
+    //     *   NLS_DATE_FORMAT         = 'YYYY-MM-DD HH24:MI:SS'
+    //     *   NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD HH24:MI:SS'
+    //     *   NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS'
+    //     *
+    //     * @var array<string, mixed>
+    //     */
+    //    public array $default = [
+    //        'DSN'        => 'localhost:1521/XEPDB1',
+    //        'username'   => 'root',
+    //        'password'   => 'root',
+    //        'DBDriver'   => 'OCI8',
+    //        'DBPrefix'   => '',
+    //        'pConnect'   => false,
+    //        'DBDebug'    => true,
+    //        'charset'    => 'AL32UTF8',
+    //        'swapPre'    => '',
+    //        'failover'   => [],
+    //        'dateFormat' => [
+    //            'date'     => 'Y-m-d',
+    //            'datetime' => 'Y-m-d H:i:s',
+    //            'time'     => 'H:i:s',
+    //        ],
+    //    ];
+
+    /**
+     * Isolated test database.
+     *
+     * Batch 2A: this group was CodeIgniter's stock SQLite ":memory:" default, which
+     * cannot be used to test this application. The defect family that produced every
+     * blank status in this database -- silent MySQL ENUM truncation under a non-strict
+     * sql_mode -- does not exist in SQLite, which has no ENUM type at all. Testing
+     * against SQLite would have reported PASS for all six known defects.
+     *
+     * So this points at a real MySQL database, corelynk_test, whose schema is a
+     * structural clone of corelynk_db. It holds no business data.
+     *
+     * strictOn is deliberately false to MATCH PRODUCTION. Setting it true here would
+     * make MySQL reject invalid writes with an error, and the domain test would then
+     * pass for the wrong reason -- it would be exercising a configuration nobody runs.
+     * With strictOn = false the test reproduces the real failure mode: the write
+     * reports success and silently stores the empty string. The test catches that by
+     * reading the value back and comparing it to what was written.
+     */
+    public array $tests = [
+        'DSN'         => '',
+        'hostname'    => '127.0.0.1',
+        'username'    => 'root',
+        'password'    => '',
+        'database'    => 'corelynk_test',
+        'DBDriver'    => 'MySQLi',
+        'DBPrefix'    => '',
+        'pConnect'    => false,
+        'DBDebug'     => true,
+        'charset'     => 'utf8mb4',
+        'DBCollat'    => 'utf8mb4_general_ci',
+        'swapPre'     => '',
+        'encrypt'     => false,
+        'compress'    => false,
+        'strictOn'    => false,
+        'failover'    => [],
+        'port'        => 3306,
+        'foreignKeys' => true,
+        'busyTimeout' => 1000,
+        'dateFormat'  => [
+            'date'     => 'Y-m-d',
+            'datetime' => 'Y-m-d H:i:s',
+            'time'     => 'H:i:s',
+        ],
+    ];
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Ensure that we always set the database group to 'tests' if
+        // we are currently running an automated test suite, so that
+        // we don't overwrite live data on accident.
+        if (ENVIRONMENT === 'testing') {
+            $this->defaultGroup = 'tests';
+        }
+    }
+}

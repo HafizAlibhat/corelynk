@@ -1,0 +1,5 @@
+<?php
+namespace App\Database\Migrations;use CodeIgniter\Database\Migration;
+class CreateCreditNotes extends Migration{public function up(){ $this->forge->addField([
+ 'id'=>['type'=>'INT','auto_increment'=>true],'party_type'=>['type'=>'ENUM','constraint'=>['vendor','customer'],'null'=>false],'party_id'=>['type'=>'INT','null'=>false],'account_id'=>['type'=>'INT','null'=>false],'reference'=>['type'=>'VARCHAR','constraint'=>100,'null'=>true],'note'=>['type'=>'TEXT','null'=>true],'amount'=>['type'=>'DECIMAL','constraint'=>'15,2','null'=>false],'applied_amount'=>['type'=>'DECIMAL','constraint'=>'15,2','null'=>false,'default'=>'0.00'],'status'=>['type'=>'VARCHAR','constraint'=>20,'null'=>false,'default'=>'open'],'created_at'=>['type'=>'DATETIME','null'=>true],'updated_at'=>['type'=>'DATETIME','null'=>true],]);
+ $this->forge->addKey('id', true);$this->forge->addKey(['party_type','party_id']);$this->forge->addKey('account_id');$this->forge->createTable('credit_notes', true);}public function down(){ $this->forge->dropTable('credit_notes'); }}
