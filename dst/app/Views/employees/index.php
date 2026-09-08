@@ -53,11 +53,17 @@
                                     <span class="badge bg-secondary"><?= esc($employee['employee_code']) ?></span>
                                 </td>
                                 <td>
-                                    <div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <?php if (!empty($employee['photo_path'])): ?>
+                                            <img src="<?= base_url($employee['photo_path']) ?>" alt=""
+                                                 class="rounded-circle border" style="width:32px;height:32px;object-fit:cover;">
+                                        <?php endif; ?>
+                                        <div>
                                         <strong><?= esc($employee['first_name'] . ' ' . $employee['last_name']) ?></strong>
                                         <?php if (!empty($employee['email'])): ?>
                                         <br><small class="text-muted"><?= esc($employee['email']) ?></small>
                                         <?php endif; ?>
+                                        </div>
                                     </div>
                                 </td>
                                 <td>

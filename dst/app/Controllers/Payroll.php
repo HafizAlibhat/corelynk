@@ -76,17 +76,21 @@ class Payroll extends BaseController
 
         $basic      = (float) $this->request->getPost('basic_amount');
         $allowances = (float) $this->request->getPost('allowances');
+        $commission = (float) $this->request->getPost('commission');
         $deductions = (float) $this->request->getPost('deductions');
 
         $data = [
-            'employee_id'   => $employeeId,
-            'period_month'  => $month,
-            'basic_amount'  => $basic,
-            'allowances'    => $allowances,
-            'deductions'    => $deductions,
-            'net_amount'    => round($basic + $allowances - $deductions, 2),
-            'currency_code' => strtoupper((string) $this->request->getPost('currency_code')) ?: base_currency_code(),
-            'notes'         => $this->request->getPost('notes') ?: null,
+            'employee_id'     => $employeeId,
+            'period_month'    => $month,
+            'basic_amount'    => $basic,
+            'allowances'      => $allowances,
+            'commission'      => $commission,
+            // The reason for the commission belongs with the month it was paid.
+            'commission_note' => $commission > 0 ? ($this->request->getPost('commission_note') ?: null) : null,
+            'deductions'      => $deductions,
+            'net_amount'      => round($basic + $allowances + $commission - $deductions, 2),
+            'currency_code'   => strtoupper((string) $this->request->getPost('currency_code')) ?: base_currency_code(),
+            'notes'           => $this->request->getPost('notes') ?: null,
         ];
 
         $existing = $this->slipFor($employeeId, $month);

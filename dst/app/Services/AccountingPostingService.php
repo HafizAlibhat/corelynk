@@ -1162,6 +1162,20 @@ class AccountingPostingService
         if (!empty($slip['cheque_number'])) {
             $memo .= ' (Cheque ' . $slip['cheque_number'] . ')';
         }
+
+        // Commission carries its own expense head so it can be read apart from
+        // basic pay; without account 5210 it simply stays in Salaries Expense.
+        $commission = $this->roundMoney((float)($slip['commission'] ?? 0));
+        $salaryPart = $this->roundMoney($amount - $commission);
+        $commissionAccountId = $commission > 0
+            ? $this->findAccountIdByCodeOrName(['5210'], ['commission expense'])
+            : 0;
+        if ($commissionAccountId <= 0 || $salaryPart <= 0) {
+            $commission = 0.0;
+            $salaryPart = $amount;
+        }
+        $commissionMemo = 'Commission ' . date('F Y', strtotime($slip['period_month'])) . ' - ' . $name
+            . (!empty($slip['commission_note']) ? ': ' . $slip['commission_note'] : '');
         $fxRate = 1.0;
 
         $jeModel = new JournalEntryModel();
@@ -1187,12 +1201,25 @@ class AccountingPostingService
                 'entry_id' => $jeId,
                 'account_id' => $expenseAccountId,
                 'description' => $memo,
-                'debit' => $amount,
+                'debit' => $salaryPart,
                 'credit' => 0,
                 'currency_code' => $currency,
                 'fx_rate' => $fxRate,
-                'base_amount' => $this->roundMoney($amount * $fxRate),
+                'base_amount' => $this->roundMoney($salaryPart * $fxRate),
             ]);
+
+            if ($commission > 0) {
+                $this->insertLine($jlModel, [
+                    'entry_id' => $jeId,
+                    'account_id' => $commissionAccountId,
+                    'description' => $commissionMemo,
+                    'debit' => $commission,
+                    'credit' => 0,
+                    'currency_code' => $currency,
+                    'fx_rate' => $fxRate,
+                    'base_amount' => $this->roundMoney($commission * $fxRate),
+                ]);
+            }
 
             $this->insertLine($jlModel, [
                 'entry_id' => $jeId,

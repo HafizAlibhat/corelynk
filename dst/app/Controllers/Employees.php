@@ -57,6 +57,7 @@ class Employees extends BaseController
         $data = [
             'page_title' => 'Add New Employee',
             'skills' => $skills,
+            'departments' => $this->employeeModel->departmentList(),
             'employeeError' => $employeeError
         ];
 
@@ -83,7 +84,16 @@ class Employees extends BaseController
             return redirect()->back()->withInput()->with('validation', $validation);
         }
 
+        $photo = $this->storePhoto();
+        if ($photo === false) {
+            session()->setFlashdata('error', 'The photo must be a JPG, PNG or WEBP image under 5 MB.');
+            return redirect()->back()->withInput();
+        }
+
         $employeeData = array_merge($this->employmentFields(), ['is_active' => 1]);
+        if ($photo !== null) {
+            $employeeData['photo_path'] = $photo;
+        }
 
         // Handle skills
         $skills = [];
@@ -127,6 +137,34 @@ class Employees extends BaseController
             'monthly_salary'  => ($salary === null || $salary === '') ? null : (float) $salary,
             'salary_currency' => $this->request->getPost('salary_currency') ?: base_currency_code(),
         ];
+    }
+
+    /**
+     * Profile picture upload. Same shape as the payroll cheque upload:
+     * @return string|null|false path on success, null when nothing was sent,
+     *                           false when the file was rejected
+     */
+    private function storePhoto()
+    {
+        $file = $this->request->getFile('photo');
+        if (! $file || ! $file->isValid() || $file->hasMoved()) {
+            return null;
+        }
+
+        if ($file->getSize() > 5 * 1024 * 1024
+            || ! in_array($file->getMimeType(), ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            return false;
+        }
+
+        $dir = FCPATH . 'uploads/employees';
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $name = 'emp_' . time() . mt_rand(100, 999) . '.' . $file->getExtension();
+        $file->move($dir, $name);
+
+        return 'uploads/employees/' . $name;
     }
 
     public function show($id)
@@ -214,6 +252,7 @@ class Employees extends BaseController
             'page_title' => 'Edit Employee',
             'employee' => $employee,
             'skills' => $skills,
+            'departments' => $this->employeeModel->departmentList(),
             'all_skills' => $this->skillModel->getUniqueSkills()
         ];
 
@@ -245,7 +284,18 @@ class Employees extends BaseController
             return redirect()->back()->withInput()->with('validation', $validation);
         }
 
+        $photo = $this->storePhoto();
+        if ($photo === false) {
+            session()->setFlashdata('error', 'The photo must be a JPG, PNG or WEBP image under 5 MB.');
+            return redirect()->back()->withInput();
+        }
+
         $employeeData = $this->employmentFields();
+        if ($photo !== null) {
+            $employeeData['photo_path'] = $photo;
+        } elseif ($this->request->getPost('remove_photo')) {
+            $employeeData['photo_path'] = null;
+        }
 
         $this->employeeModel->update($id, $employeeData);
 

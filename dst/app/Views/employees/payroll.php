@@ -68,7 +68,7 @@ $methodLabels = [
                 </form>
                 <?= form_open('employees/payroll/generate', ['class' => 'd-inline']) ?>
                     <input type="hidden" name="month" value="<?= esc($month) ?>">
-                    <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-magic me-1"></i>Prepare this month</button>
+                    <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-magic me-1"></i>Prepare <?= esc($label) ?></button>
                 <?= form_close() ?>
                 <a href="<?= base_url('employees') ?>" class="btn btn-sm btn-secondary"><i class="bi bi-people me-1"></i>Employees</a>
             </div>
@@ -80,11 +80,11 @@ $methodLabels = [
                 <div class="row g-3 small">
                     <div class="col-md-4 d-flex gap-2">
                         <span class="badge bg-primary align-self-start">1</span>
-                        <div><strong>Prepare</strong><br><span class="text-muted">Creates a slip for every employee with an agreed monthly salary. Nothing is paid yet.</span></div>
+                        <div><strong>Prepare</strong><br><span class="text-muted">Creates a slip for every employee with an agreed monthly salary, for whichever month is picked above — past months included. Nothing is paid yet.</span></div>
                     </div>
                     <div class="col-md-4 d-flex gap-2">
                         <span class="badge bg-primary align-self-start">2</span>
-                        <div><strong>Adjust</strong><br><span class="text-muted">Edit allowances or deductions on any unpaid slip with the pencil button.</span></div>
+                        <div><strong>Adjust</strong><br><span class="text-muted">Edit allowances, commission or deductions on any unpaid slip with the pencil button.</span></div>
                     </div>
                     <div class="col-md-4 d-flex gap-2">
                         <span class="badge bg-success align-self-start">3</span>
@@ -144,6 +144,7 @@ $methodLabels = [
                                 <th>Employee</th>
                                 <th class="text-end">Basic</th>
                                 <th class="text-end">Allowances</th>
+                                <th class="text-end">Commission</th>
                                 <th class="text-end">Deductions</th>
                                 <th class="text-end">Net pay</th>
                                 <th>Status</th>
@@ -161,7 +162,9 @@ $methodLabels = [
                                     'employee_id'   => (int) $row['employee_id'],
                                     'name'          => $name,
                                     'basic_amount'  => (float) ($row['basic_amount'] ?? $row['monthly_salary'] ?? 0),
-                                    'allowances'    => (float) ($row['allowances'] ?? 0),
+                                    'allowances'      => (float) ($row['allowances'] ?? 0),
+                                    'commission'      => (float) ($row['commission'] ?? 0),
+                                    'commission_note' => $row['commission_note'] ?? '',
                                     'deductions'    => (float) ($row['deductions'] ?? 0),
                                     'currency_code' => $currency,
                                     'notes'         => $row['notes'] ?? '',
@@ -175,7 +178,7 @@ $methodLabels = [
                                         </div>
                                     </td>
                                     <?php if (! $hasSlip): ?>
-                                        <td colspan="4" class="text-muted small">
+                                        <td colspan="5" class="text-muted small">
                                             No slip for <?= esc($label) ?>.
                                             <?php if ($row['monthly_salary'] === null || (float) $row['monthly_salary'] <= 0): ?>
                                                 <a href="<?= base_url('employees/' . (int) $row['employee_id'] . '/edit') ?>">Set a monthly salary first</a>,
@@ -189,6 +192,12 @@ $methodLabels = [
                                     <?php else: ?>
                                         <td class="text-end"><?= esc(number_format((float) $row['basic_amount'], 2)) ?></td>
                                         <td class="text-end text-success"><?= esc(number_format((float) $row['allowances'], 2)) ?></td>
+                                        <td class="text-end text-success">
+                                            <?= esc(number_format((float) $row['commission'], 2)) ?>
+                                            <?php if (! empty($row['commission_note'])): ?>
+                                                <i class="bi bi-info-circle text-muted" title="<?= esc($row['commission_note'], 'attr') ?>"></i>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end text-danger"><?= esc(number_format((float) $row['deductions'], 2)) ?></td>
                                         <td class="text-end fw-semibold"><?= esc(format_money((float) $row['net_amount'], $currency)) ?></td>
                                         <td>
@@ -266,7 +275,7 @@ $methodLabels = [
             <div class="modal-body">
                 <input type="hidden" name="month" value="<?= esc($month) ?>">
                 <input type="hidden" name="employee_id" id="salaryEmployeeId">
-                <p class="text-muted small">For <?= esc($label) ?>. Net pay is basic plus allowances, less deductions. Saving does not pay anything.</p>
+                <p class="text-muted small">For <?= esc($label) ?>. Net pay is basic plus allowances and commission, less deductions. Saving does not pay anything.</p>
 
                 <div class="row g-2">
                     <div class="col-6">
@@ -284,6 +293,16 @@ $methodLabels = [
                     <div class="col-6">
                         <label class="form-label">Allowances / bonus</label>
                         <input type="number" step="0.01" min="0" class="form-control js-amount" name="allowances" id="salaryAllowances" value="0">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Commission</label>
+                        <input type="number" step="0.01" min="0" class="form-control js-amount" name="commission" id="salaryCommission" value="0">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Why this commission?</label>
+                        <textarea class="form-control" name="commission_note" id="salaryCommissionNote" rows="2" maxlength="500"
+                                  placeholder="e.g. 2% on the Al-Noor order delivered in March"></textarea>
+                        <div class="form-text">Kept with this month's slip and carried onto the ledger entry for Commission Expense.</div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Deductions / advances</label>
@@ -378,6 +397,7 @@ $methodLabels = [
     function recalcNet() {
         var net = (parseFloat(document.getElementById('salaryBasic').value) || 0)
                 + (parseFloat(document.getElementById('salaryAllowances').value) || 0)
+                + (parseFloat(document.getElementById('salaryCommission').value) || 0)
                 - (parseFloat(document.getElementById('salaryDeductions').value) || 0);
         document.getElementById('salaryNet').textContent =
             net.toFixed(2) + ' ' + document.getElementById('salaryCurrency').value;
@@ -395,6 +415,8 @@ $methodLabels = [
             document.getElementById('salaryEmployeeId').value = s.employee_id;
             document.getElementById('salaryBasic').value = s.basic_amount;
             document.getElementById('salaryAllowances').value = s.allowances;
+            document.getElementById('salaryCommission').value = s.commission;
+            document.getElementById('salaryCommissionNote').value = s.commission_note || '';
             document.getElementById('salaryDeductions').value = s.deductions;
             document.getElementById('salaryCurrency').value = s.currency_code;
             document.getElementById('salaryNotes').value = s.notes || '';

@@ -47,12 +47,13 @@
             <th scope="col">Warehouse</th>
             <th scope="col">Location</th>
             <th scope="col">Created By</th>
+            <th scope="col" class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           <?php if (empty($grns)): ?>
             <tr>
-              <td colspan="8" class="text-center text-muted py-4">
+              <td colspan="9" class="text-center text-muted py-4">
                 <i class="bi bi-inbox d-block fs-4 mb-1" aria-hidden="true"></i>
                 <?= ($search ?? '') !== '' ? 'No receipt notes match your search.' : 'No goods receipt notes found.' ?>
               </td>
@@ -69,6 +70,9 @@
                 <td><?= esc($g['warehouse_name'] ?? '') ?></td>
                 <td><?= esc($g['location_name'] ?? '') ?></td>
                 <td><?= esc($g['created_by_name'] ?? $g['created_by_username'] ?? $g['created_by'] ?? '') ?></td>
+                <td class="text-end">
+                  <a href="<?= site_url('new-purchase-grns/detail/'.$grnRef) ?>" class="cl-action-icon cl-action-view" title="View" aria-label="View"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                </td>
               </tr>
             <?php endforeach; ?>
           <?php endif; ?>

@@ -9,7 +9,7 @@ class EmployeeModel extends Model
     protected $table = 'employees';
     protected $primaryKey = 'id';
     protected $allowedFields = [
-        'employee_code', 'first_name', 'last_name', 'phone', 'email', 'user_id',
+        'employee_code', 'first_name', 'last_name', 'phone', 'email', 'photo_path', 'user_id',
         'department', 'designation', 'joining_date', 'monthly_salary',
         'salary_currency', 'is_active'
     ];
@@ -27,6 +27,22 @@ class EmployeeModel extends Model
                     ->orderBy('employees.is_active', 'DESC')
                     ->orderBy('employees.first_name', 'ASC')
                     ->findAll();
+    }
+
+    /** Departments already in use, plus the standard ones, for the picker. */
+    public function departmentList(): array
+    {
+        $used = array_column($this->db->query(
+            "SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department <> ''"
+        )->getResultArray(), 'department');
+
+        $all = array_unique(array_merge(
+            ['Production', 'Quality Control', 'Maintenance', 'Packing', 'Stores'],
+            $used
+        ));
+        sort($all, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $all;
     }
 
     public function getEmployeesBySkill($skillName)

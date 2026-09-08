@@ -252,7 +252,10 @@ class CustomerReceivablesHelper
                     . 'COALESCE(SUM(cp.amount), 0) AS total_amount '
                     . 'FROM customer_payments cp '
                     . 'WHERE cp.customer_id = ? '
-                    . 'GROUP BY ' . ($hasStatus ? 'LOWER(COALESCE(cp.status, \'draft\'))' : 'IF(cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0, \'posted\', \'draft\')') . ', ' . $payCurrency;
+                    // Group on the select aliases: MariaDB's ONLY_FULL_GROUP_BY will not
+                    // match a repeated IF()/LOWER() expression back to the select list, and
+                    // the error was swallowed, leaving every payment total at zero.
+                    . 'GROUP BY status, currency_code';
                 
                 $payments = $db->query($paymentQuery, [(int)$customerId])->getResultArray();
                 

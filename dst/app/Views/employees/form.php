@@ -26,7 +26,7 @@
                 <?php if (session()->getFlashdata('success')): ?>
                     <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i><?= esc(session()->getFlashdata('success')) ?></div>
                 <?php endif; ?>
-                <?= form_open(isset($employee) ? '/employees/' . $employee['id'] . '/update' : '/employees/store') ?>
+                <?= form_open_multipart(isset($employee) ? '/employees/' . $employee['id'] . '/update' : '/employees/store') ?>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -78,6 +78,7 @@
                                    id="email" 
                                    name="email" 
                                    value="<?= old('email', $employee['email'] ?? '') ?>">
+                            <div class="form-text">If a login is linked to this employee, the login's email is used as the main one and this becomes the secondary email.</div>
                         </div>
                     </div>
                 </div>
@@ -86,14 +87,40 @@
                     <div class="col-md-6">
                         <div class="mb-3">
                             <label for="department" class="form-label">Department</label>
-                            <select class="form-select" id="department" name="department">
-                                <option value="">Select Department</option>
-                                <option value="Production" <?= (old('department', $employee['department'] ?? '') === 'Production') ? 'selected' : '' ?>>Production</option>
-                                <option value="Quality Control" <?= (old('department', $employee['department'] ?? '') === 'Quality Control') ? 'selected' : '' ?>>Quality Control</option>
-                                <option value="Maintenance" <?= (old('department', $employee['department'] ?? '') === 'Maintenance') ? 'selected' : '' ?>>Maintenance</option>
-                                <option value="Packing" <?= (old('department', $employee['department'] ?? '') === 'Packing') ? 'selected' : '' ?>>Packing</option>
-                                <option value="Stores" <?= (old('department', $employee['department'] ?? '') === 'Stores') ? 'selected' : '' ?>>Stores</option>
-                            </select>
+                            <?php $selectedDept = old('department', $employee['department'] ?? ''); ?>
+                            <input type="text" class="form-control" id="department" name="department"
+                                   list="departmentOptions" maxlength="50" autocomplete="off"
+                                   value="<?= esc($selectedDept) ?>"
+                                   placeholder="Pick one, or type a new department">
+                            <datalist id="departmentOptions">
+                                <?php foreach (($departments ?? []) as $dept): ?>
+                                    <option value="<?= esc($dept, 'attr') ?>"></option>
+                                <?php endforeach; ?>
+                            </datalist>
+                            <div class="form-text">Not in the list? Just type it — the new department is saved with the employee.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="photo" class="form-label">Profile picture</label>
+                            <div class="d-flex align-items-center gap-3">
+                                <?php $photo = $employee['photo_path'] ?? null; ?>
+                                <img id="photoPreview"
+                                     src="<?= $photo ? base_url($photo) : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==' ?>"
+                                     alt="" class="rounded-circle border <?= $photo ? '' : 'd-none' ?>"
+                                     style="width:56px;height:56px;object-fit:cover;">
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control" id="photo" name="photo"
+                                           accept="image/jpeg,image/png,image/webp">
+                                    <div class="form-text">JPG, PNG or WEBP, up to 5 MB.</div>
+                                    <?php if ($photo): ?>
+                                        <div class="form-check mt-1">
+                                            <input class="form-check-input" type="checkbox" name="remove_photo" value="1" id="removePhoto">
+                                            <label class="form-check-label small" for="removePhoto">Remove current picture</label>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -260,6 +287,14 @@ function addSkillRow() {
     `;
     container.appendChild(skillRow);
 }
+
+// Show the picked picture before saving, so the wrong file is obvious.
+document.getElementById('photo').addEventListener('change', function () {
+    const img = document.getElementById('photoPreview');
+    if (!this.files || !this.files[0]) { return; }
+    img.src = URL.createObjectURL(this.files[0]);
+    img.classList.remove('d-none');
+});
 
 function removeSkillRow(button) {
     const skillRow = button.closest('.skill-row');

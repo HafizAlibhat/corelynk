@@ -47,7 +47,7 @@ class EmployeeAccess extends BaseController
                 return redirect()->to($back)->with('error', 'That login is already linked to another employee.');
             }
 
-            $this->employees->update($employeeId, ['user_id' => $userId]);
+            $this->employees->update($employeeId, ['user_id' => $userId] + $this->emailFromLogin($employee, $user['email']));
             AuditLogModel::record('employee_user_linked', (int) session('user_id'), 'employees', $employeeId, [
                 'user_id' => $userId,
             ]);
@@ -85,7 +85,8 @@ class EmployeeAccess extends BaseController
         if ($roleIds) {
             $this->users->syncRoles($newId, $roleIds);
         }
-        $this->employees->update($employeeId, ['user_id' => $newId]);
+        $this->employees->update($employeeId, ['user_id' => $newId]
+            + $this->emailFromLogin($employee, (string) $this->request->getPost('email')));
 
         AuditLogModel::record('user_created', (int) session('user_id'), 'users', $newId, [
             'username'    => $this->request->getPost('username'),
@@ -94,6 +95,20 @@ class EmployeeAccess extends BaseController
         ]);
 
         return redirect()->to($back)->with('success', 'Login created. The employee can sign in with their email or username.');
+    }
+
+    /**
+     * Carry the login's email onto the employee record when it has none, so
+     * HR does not have to type it twice. An email already on the employee is
+     * kept — the employee page then shows it as the secondary address.
+     *
+     * @return array<string, string> the email field to merge into the update, or []
+     */
+    private function emailFromLogin(array $employee, string $loginEmail): array
+    {
+        return (trim((string) $employee['email']) === '' && $loginEmail !== '')
+            ? ['email' => $loginEmail]
+            : [];
     }
 
     /** Unlink only — the user account itself is left for Settings to manage. */

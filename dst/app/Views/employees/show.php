@@ -66,8 +66,14 @@ if ($joined) {
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div class="d-flex align-items-center gap-3">
-        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
-             style="width:56px;height:56px;font-size:1.25rem;"><?= esc($initials) ?></div>
+        <?php $photo = $employee['photo_path'] ?: ($account['avatar_path'] ?? null); ?>
+        <?php if ($photo): ?>
+            <img src="<?= base_url($photo) ?>" alt="<?= esc($name, 'attr') ?>"
+                 class="rounded-circle border" style="width:56px;height:56px;object-fit:cover;">
+        <?php else: ?>
+            <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
+                 style="width:56px;height:56px;font-size:1.25rem;"><?= esc($initials) ?></div>
+        <?php endif; ?>
         <div>
             <h4 class="mb-0"><?= esc($name) ?>
                 <span class="badge <?= $employee['is_active'] ? 'bg-success' : 'bg-danger' ?> align-middle">
@@ -142,12 +148,26 @@ if ($joined) {
                         ? '<a href="tel:' . esc($employee['phone'], 'attr') . '">' . esc($employee['phone']) . '</a>'
                         : '<span class="text-muted">—</span>' ?></span>
                 </li>
+                <?php
+                // The linked login's email is the one that reaches this person,
+                // so it leads; anything typed on the employee record stays as
+                // the secondary address when it differs.
+                $loginEmail  = $account['email'] ?? null;
+                $ownEmail    = $employee['email'] ?: null;
+                $primary     = $loginEmail ?: $ownEmail;
+                $secondary   = ($loginEmail && $ownEmail && strcasecmp($loginEmail, $ownEmail) !== 0) ? $ownEmail : null;
+                $mailto      = static fn ($e) => '<a href="mailto:' . esc($e, 'attr') . '">' . esc($e) . '</a>';
+                ?>
                 <li class="list-group-item d-flex justify-content-between">
-                    <span class="text-muted">Email</span>
-                    <span><?= ! empty($employee['email'])
-                        ? '<a href="mailto:' . esc($employee['email'], 'attr') . '">' . esc($employee['email']) . '</a>'
-                        : '<span class="text-muted">—</span>' ?></span>
+                    <span class="text-muted">Email<?= $loginEmail ? ' <small>(from login)</small>' : '' ?></span>
+                    <span><?= $primary ? $mailto($primary) : '<span class="text-muted">—</span>' ?></span>
                 </li>
+                <?php if ($secondary): ?>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">Secondary email</span>
+                        <span><?= $mailto($secondary) ?></span>
+                    </li>
+                <?php endif; ?>
             </ul>
         </div>
 
@@ -310,6 +330,7 @@ if ($joined) {
                                 <th>Month</th>
                                 <th class="text-end">Basic</th>
                                 <th class="text-end">Allow.</th>
+                                <th class="text-end">Comm.</th>
                                 <th class="text-end">Deduct.</th>
                                 <th class="text-end">Net</th>
                                 <th>Status</th>
@@ -322,6 +343,12 @@ if ($joined) {
                                     <td><?= esc(date('M Y', strtotime($slip['period_month']))) ?></td>
                                     <td class="text-end"><?= esc(number_format((float) $slip['basic_amount'], 2)) ?></td>
                                     <td class="text-end text-success"><?= esc(number_format((float) $slip['allowances'], 2)) ?></td>
+                                    <td class="text-end text-success">
+                                        <?= esc(number_format((float) ($slip['commission'] ?? 0), 2)) ?>
+                                        <?php if (! empty($slip['commission_note'])): ?>
+                                            <i class="bi bi-info-circle text-muted" title="<?= esc($slip['commission_note'], 'attr') ?>"></i>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-end text-danger"><?= esc(number_format((float) $slip['deductions'], 2)) ?></td>
                                     <td class="text-end fw-semibold">
                                         <?= esc(format_money((float) $slip['net_amount'], $slip['currency_code'] ?: $currency)) ?>

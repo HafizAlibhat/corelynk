@@ -215,6 +215,69 @@
     });
   }
 
+  /**
+   * Places a fixed-position row-action menu (.pl-more-menu) next to its trigger.
+   *
+   * The list pages used to pin the menu at the trigger's bottom edge and nothing
+   * else, so a row near the foot of the window opened its menu below the fold —
+   * all the user saw was a clipped sliver. This flips the menu above the button
+   * when there is no room under it, keeps it inside the viewport on every side,
+   * and lets a menu taller than the window scroll instead of being cut off.
+   */
+  function openFloatingMenu(menu, trigger) {
+    if (!menu || !trigger) return;
+
+    var gap = 4;
+    var pad = 8;
+
+    // Measure while it is laid out but not yet visible, so nothing flashes.
+    menu.style.visibility = 'hidden';
+    menu.style.maxHeight = '';
+    menu.style.overflowY = '';
+    menu.style.right = 'auto';
+    menu.classList.add('is-open');
+
+    var rect = trigger.getBoundingClientRect();
+    var width = menu.offsetWidth;
+    var height = menu.offsetHeight;
+    var roomBelow = window.innerHeight - rect.bottom - gap - pad;
+    var roomAbove = rect.top - gap - pad;
+
+    if (height > Math.max(roomBelow, roomAbove)) {
+      menu.style.maxHeight = Math.max(120, Math.max(roomBelow, roomAbove)) + 'px';
+      menu.style.overflowY = 'auto';
+      height = menu.offsetHeight;
+    }
+
+    var top = (height <= roomBelow || roomBelow >= roomAbove)
+      ? rect.bottom + gap
+      : rect.top - gap - height;
+    top = Math.min(Math.max(pad, top), Math.max(pad, window.innerHeight - pad - height));
+
+    var left = Math.min(Math.max(pad, rect.right - width), Math.max(pad, window.innerWidth - pad - width));
+
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+    menu.style.visibility = '';
+  }
+
+  function closeFloatingMenus() {
+    document.querySelectorAll('.pl-more-menu.is-open').forEach(function (menu) {
+      menu.classList.remove('is-open');
+    });
+  }
+
+  // The menu is fixed to the viewport: once the page moves under it, it is
+  // pointing at nothing, so it closes rather than floating over the wrong row.
+  window.addEventListener('scroll', closeFloatingMenus, true);
+  window.addEventListener('resize', closeFloatingMenus);
+  window.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeFloatingMenus();
+  });
+
+  window.clOpenFloatingMenu = openFloatingMenu;
+  window.clCloseFloatingMenus = closeFloatingMenus;
+
   function enhance(root) {
     root.querySelectorAll('table').forEach(enhanceTable);
     enhanceProductChips(root);

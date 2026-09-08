@@ -27,6 +27,9 @@ $base   = $biz['base_currency'] ?? base_currency_code();
 $usage  = $currencyUsage ?? [];
 $active = $activeCurrency ?? $base;
 $multi  = count($usage) > 1;
+// False only when the customer has no order, quotation, invoice or payment at
+// all: there is no currency to report in, so none is claimed.
+$hasCurrencyHistory = $hasCurrencyHistory ?? true;
 
 $m = static fn ($v, ?string $code = null): string => format_money($v, $code ?: $active);
 
@@ -131,16 +134,6 @@ if ($pickedYear !== null) { $yearOptions[] = (int) $pickedYear; }
 $yearOptions = array_unique($yearOptions);
 rsort($yearOptions);
 
-// Currency switching preserves whichever period is on screen.
-$baseQuery = array_filter([
-    'from'  => $isCustom ? ($bizCustom['from'] ?? null) : null,
-    'to'    => $isCustom ? ($bizCustom['to'] ?? null) : null,
-    'year'  => $pickedYear,
-    'month' => $pickedMonth,
-]);
-$currencyUrl = static function (string $code) use ($customerIdentifier, $baseQuery): string {
-    return site_url('customers/' . $customerIdentifier) . '?' . http_build_query($baseQuery + ['currency' => $code]);
-};
 ?>
 
 <div class="cl-detail" data-customer="<?= esc($customerIdentifier) ?>">
@@ -205,23 +198,37 @@ $currencyUrl = static function (string $code) use ($customerIdentifier, $baseQue
     <form method="get" action="<?= site_url('customers/' . $customerIdentifier) ?>" class="cl-toolbar">
         <div class="cl-toolbar-group">
             <span class="cl-toolbar-label">Currency</span>
-            <?php if ($multi): ?>
-                <?php /* Only a customer who actually trades in several currencies gets a switch. */ ?>
-                <div class="cl-seg" role="group" aria-label="Reporting currency">
+            <?php if (! $hasCurrencyHistory): ?>
+                <?php /* Nothing has ever been raised for this customer — no currency to claim. */ ?>
+                <span class="cl-chip is-muted"><i class="bi bi-dash-circle"></i>No transactions yet</span>
+                <input type="hidden" name="currency" value="<?= esc($active) ?>">
+            <?php elseif ($multi): ?>
+                <?php /* Traded in several currencies: pick one, and see what came in per currency. */ ?>
+                <select class="cl-select" name="currency" id="currencySwitch" aria-label="Reporting currency">
                     <?php foreach ($usage as $code => $ordersInCode): ?>
-                        <a class="cl-seg-btn<?= $code === $active ? ' is-on' : '' ?>" href="<?= esc($currencyUrl((string) $code)) ?>">
-                            <?= esc($code) ?><?php if ($ordersInCode > 0): ?><span class="cl-seg-count"><?= (int) $ordersInCode ?></span><?php endif; ?>
-                        </a>
+                        <?php
+                        $received = (float) ($postedCur[(string) $code] ?? 0);
+                        $optLabel = (string) $code;
+                        if ($received > 0) {
+                            // The code is already the option's own label, so the figure stays plain.
+                            $optLabel .= ' · received ' . number_format($received, 2);
+                        } elseif ($ordersInCode > 0) {
+                            $optLabel .= ' · ' . (int) $ordersInCode . ' order' . ($ordersInCode === 1 ? '' : 's');
+                        }
+                        ?>
+                        <option value="<?= esc((string) $code, 'attr') ?>"<?= $code === $active ? ' selected' : '' ?>>
+                            <?= esc($optLabel) ?>
+                        </option>
                     <?php endforeach; ?>
-                </div>
+                </select>
                 <span class="cl-toolbar-note"><i class="bi bi-info-circle"></i>Trades in <?= count($usage) ?> currencies — everything below is <?= esc($active) ?> only.</span>
             <?php else: ?>
                 <span class="cl-chip is-mono"><?= esc($active) ?></span>
+                <input type="hidden" name="currency" value="<?= esc($active) ?>">
             <?php endif; ?>
         </div>
 
         <div class="cl-toolbar-group cl-detail-spacer" id="periodPicker">
-            <input type="hidden" name="currency" value="<?= esc($active) ?>">
             <span class="cl-toolbar-label" aria-hidden="true"><i class="bi bi-calendar3"></i></span>
 
             <select name="year" class="cl-select" data-period aria-label="Year">
@@ -665,6 +672,13 @@ $currencyUrl = static function (string $code) use ($customerIdentifier, $baseQue
             });
         });
     });
+
+    // Currency is a different question from the period: switching it reloads
+    // the page in that currency and leaves the date filter alone.
+    var currencySwitch = document.getElementById('currencySwitch');
+    if (currencySwitch) {
+        currencySwitch.addEventListener('change', function () { this.form.submit(); });
+    }
 
     // ---- period picker: choosing is applying -----------------------------
     var picker = document.getElementById('periodPicker');

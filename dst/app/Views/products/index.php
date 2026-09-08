@@ -1776,11 +1776,7 @@ function bulkAction(action) {
         if (menuProcesses) menuProcesses.href = BASE + pid + '/processes';
         if (menuToggleLbl) menuToggleLbl.textContent = active ? 'Deactivate' : 'Activate';
 
-        const rect = btn.getBoundingClientRect();
-        menu.style.top   = (rect.bottom + 4) + 'px';
-        menu.style.left  = 'auto';
-        menu.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
-        menu.classList.add('is-open');
+        window.clOpenFloatingMenu(menu, btn);
     }
 
     document.addEventListener('click', function (e) {

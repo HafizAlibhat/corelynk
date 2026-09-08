@@ -280,7 +280,6 @@ Customers
     document.querySelectorAll('.pl-more-trigger').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const rect = btn.getBoundingClientRect();
             const cStatus = btn.dataset.status;
 
             document.getElementById('custMenuView').href = btn.dataset.view;
@@ -289,12 +288,7 @@ Customers
             document.getElementById('custToggleForm').action = btn.dataset.delete.replace('/delete', '/toggle-status');
             document.getElementById('custDeleteForm').action = btn.dataset.delete;
 
-            menu.style.top = (rect.bottom + 2) + 'px';
-            menu.style.left = '0px';
-            menu.classList.add('is-open');
-            requestAnimationFrame(function() {
-                menu.style.left = Math.max(4, rect.right - menu.offsetWidth) + 'px';
-            });
+            window.clOpenFloatingMenu(menu, btn);
         });
     });
 

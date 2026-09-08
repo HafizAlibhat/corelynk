@@ -1295,20 +1295,45 @@ class Customers extends BaseController
         try {
             if ($db->tableExists('customer_payments')) {
                 $payCols = $db->getFieldNames('customer_payments');
-                $statusExpr = in_array('status', $payCols, true) ? 'cp.status' : "'draft' AS status";
-                $payCurExpr = in_array('currency_code', $payCols, true) ? 'cp.currency_code' : "'' AS currency_code";
+                // A payment with a journal entry behind it is posted; this table has no
+                // status column of its own, and calling every payment a draft made the
+                // history disagree with the totals above it.
+                $statusExpr = in_array('status', $payCols, true)
+                    ? 'cp.status AS status'
+                    : (in_array('posted_entry_id', $payCols, true)
+                        ? "IF(cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0, 'posted', 'draft') AS status"
+                        : "'draft' AS status");
+                $payCurExpr = in_array('currency_code', $payCols, true) ? 'cp.currency_code' : "''";
                 $methodExpr = in_array('payment_method', $payCols, true)
                     ? 'cp.payment_method'
-                    : (in_array('payment_method_id', $payCols, true) ? "CONCAT('method#', cp.payment_method_id)" : "''");
+                    : (in_array('payment_method_id', $payCols, true) && $db->tableExists('payment_methods')
+                        ? '(SELECT pm.method_name FROM payment_methods pm WHERE pm.id = cp.payment_method_id)'
+                        : (in_array('payment_method_id', $payCols, true) ? "CONCAT('method#', cp.payment_method_id)" : "''"));
 
-                $allocExpr = 'COALESCE(cpa.amount, cpa.amount_allocated, cpa.allocated_amount, 0)';
+                // Only columns this database actually has: cp.memo and the guessed
+                // allocation columns did not exist, and the error left the whole
+                // payment history empty on every customer page.
+                $allocCols = $db->tableExists('customer_payment_allocations')
+                    ? $db->getFieldNames('customer_payment_allocations') : [];
+                $allocCol  = null;
+                foreach (['allocated_amount', 'amount_allocated', 'amount'] as $candidate) {
+                    if (in_array($candidate, $allocCols, true)) {
+                        $allocCol = $candidate;
+                        break;
+                    }
+                }
+                $allocSelect = $allocCol
+                    ? '(SELECT COALESCE(SUM(cpa.' . $allocCol . '),0) FROM customer_payment_allocations cpa WHERE cpa.payment_id = cp.id)'
+                    : '0';
+
                 $paymentHistory = $db->query(
                     'SELECT cp.id, cp.payment_date, cp.amount, '
                     . $statusExpr . ', '
                     . $methodExpr . ' AS payment_method, '
-                    . $payCurExpr . ', '
-                    . 'cp.memo, cp.notes, cp.posted_entry_id, '
-                    . '(SELECT COALESCE(SUM(' . $allocExpr . '),0) FROM customer_payment_allocations cpa WHERE cpa.payment_id = cp.id) AS allocated_amount '
+                    . $payCurExpr . ' AS currency_code, '
+                    . (in_array('notes', $payCols, true) ? 'cp.notes, ' : "'' AS notes, ")
+                    . (in_array('posted_entry_id', $payCols, true) ? 'cp.posted_entry_id, ' : '0 AS posted_entry_id, ')
+                    . $allocSelect . ' AS allocated_amount '
                     . 'FROM customer_payments cp '
                     . 'WHERE cp.customer_id = ? '
                     . 'ORDER BY cp.payment_date DESC, cp.id DESC '
@@ -1366,6 +1391,10 @@ class Customers extends BaseController
         } catch (\Throwable $e) {
             log_message('error', 'Customers::show currency scan failed: ' . $e->getMessage());
         }
+        // A customer with no orders, quotations, invoices or payments has no
+        // currency of their own yet. The page still needs one to format zeroes
+        // with, but it must not be presented as "this customer trades in PKR".
+        $hasCurrencyHistory = $currencyUsage !== [];
         if ($currencyUsage === []) {
             $currencyUsage[$baseCurrency] = 0;
         }
@@ -1427,6 +1456,7 @@ class Customers extends BaseController
             'analytics' => $analytics,
             'currencyUsage' => $currencyUsage,
             'activeCurrency' => $activeCurrency,
+            'hasCurrencyHistory' => $hasCurrencyHistory,
             'recentOrders' => $recentOrders,
             'recentQuotes' => $recentQuotes,
             'countries' => $countries,

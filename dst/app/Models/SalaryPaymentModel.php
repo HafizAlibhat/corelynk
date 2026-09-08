@@ -14,7 +14,8 @@ class SalaryPaymentModel extends Model
     protected $returnType    = 'array';
     protected $useTimestamps = true;
     protected $allowedFields = [
-        'employee_id', 'period_month', 'basic_amount', 'allowances', 'deductions',
+        'employee_id', 'period_month', 'basic_amount', 'allowances', 'commission',
+        'commission_note', 'deductions',
         'net_amount', 'currency_code', 'status', 'paid_on', 'payment_method',
         'source_account_id', 'cheque_number', 'cheque_image', 'posted_entry_id',
         'notes', 'created_by',
@@ -27,6 +28,7 @@ class SalaryPaymentModel extends Model
             'SELECT e.id AS employee_id, e.employee_code, e.first_name, e.last_name,
                     e.department, e.designation, e.monthly_salary, e.salary_currency,
                     sp.id AS payment_id, sp.basic_amount, sp.allowances, sp.deductions,
+                    sp.commission, sp.commission_note,
                     sp.net_amount, sp.currency_code, sp.status, sp.paid_on,
                     sp.payment_method, sp.notes, sp.source_account_id,
                     sp.cheque_number, sp.cheque_image, sp.posted_entry_id,
@@ -65,6 +67,7 @@ class SalaryPaymentModel extends Model
                 'period_month'  => $month,
                 'basic_amount'  => (float) $row['monthly_salary'],
                 'allowances'    => 0,
+                'commission'    => 0,
                 'deductions'    => 0,
                 'net_amount'    => (float) $row['monthly_salary'],
                 'currency_code' => $row['salary_currency'] ?: base_currency_code(),
