@@ -34,6 +34,7 @@ class ProductModel extends Model
         'vendor_price_pkr',
         'vendor_currency',
         'detailed_type',
+        'manufacturing_route',
         'service_policy',
         'product_type',
         'attributes_definitions',
@@ -61,6 +62,7 @@ class ProductModel extends Model
         'description' => 'permit_empty|max_length[1000]',
         'is_active'   => 'permit_empty|in_list[0,1]',
         'detailed_type' => 'permit_empty|in_list[storable,consumable,service]',
+        'manufacturing_route' => 'permit_empty|in_list[buy,manufacture]',
         'service_policy'=> 'permit_empty|in_list[ordered_qty,delivered_qty]',
         'product_type'=> 'permit_empty|in_list[simple,variable]',
         // Pricing and physical attributes
@@ -706,30 +708,7 @@ class ProductModel extends Model
                 $variantCode = trim((string)($vr['art_number'] ?? ''));
                 $stockQty = $variantStockMap[$vid] ?? 0.0;
 
-                // Build an attributes summary string for the description cell.
-                $attrSummary = '';
-                if (!empty($vr['attributes'])) {
-                    $decoded = json_decode((string)$vr['attributes'], true);
-                    if (is_array($decoded)) {
-                        $pairs = [];
-                        $isList = !empty($decoded) && array_keys($decoded) === range(0, count($decoded) - 1);
-                        if ($isList) {
-                            foreach ($decoded as $item) {
-                                if (!is_array($item)) continue;
-                                $k = trim((string)($item['name'] ?? ($item['attribute'] ?? ($item['key'] ?? ''))));
-                                $v = trim((string)($item['value'] ?? ''));
-                                if ($k !== '' && $v !== '') $pairs[] = $k . ': ' . $v;
-                            }
-                        } else {
-                            foreach ($decoded as $k => $v) {
-                                $kk = trim((string)$k);
-                                $vv = is_scalar($v) ? trim((string)$v) : '';
-                                if ($kk !== '' && $vv !== '') $pairs[] = $kk . ': ' . $vv;
-                            }
-                        }
-                        $attrSummary = implode(' | ', $pairs);
-                    }
-                }
+                $attrSummary = self::attributesSummary($vr['attributes'] ?? null);
 
                 // Shape the variant row to look like a product row for the view.
                 $variantRow = $p; // inherit all parent fields (category, unit, status, dates, etc.)
@@ -751,6 +730,35 @@ class ProductModel extends Model
         }
 
         return $result;
+    }
+
+    /**
+     * "Colors & Patterns: Feather | Size: L: 12" | Thickness: 3mm" from a
+     * variant attributes JSON (object map or list of {name,value} pairs).
+     */
+    public static function attributesSummary($attributes): string
+    {
+        if (empty($attributes)) {
+            return '';
+        }
+        $decoded = is_array($attributes) ? $attributes : json_decode((string)$attributes, true);
+        if (!is_array($decoded)) {
+            return '';
+        }
+        $pairs = [];
+        $isList = !empty($decoded) && array_keys($decoded) === range(0, count($decoded) - 1);
+        foreach ($decoded as $k => $v) {
+            if ($isList) {
+                if (!is_array($v)) continue;
+                $key = trim((string)($v['name'] ?? ($v['attribute'] ?? ($v['key'] ?? ''))));
+                $val = trim((string)($v['value'] ?? ''));
+            } else {
+                $key = trim((string)$k);
+                $val = is_scalar($v) ? trim((string)$v) : '';
+            }
+            if ($key !== '' && $val !== '') $pairs[] = $key . ': ' . $val;
+        }
+        return implode(' | ', $pairs);
     }
 
     /**
@@ -844,6 +852,7 @@ class ProductModel extends Model
             'pv.name as variant_name',
             'pv.price',
             'pv.cost',
+            'pv.cost_currency',
             'pv.attributes',
             'p.code as parent_code',
             'p.name as parent_name',
@@ -864,6 +873,8 @@ class ProductModel extends Model
             'weight' => 'p.weight as parent_weight',
             'weight_unit' => 'p.weight_unit as parent_weight_unit',
             'sale_price' => 'p.sale_price as parent_sale_price',
+            'cost_price' => 'p.cost_price as parent_cost_price',
+            'cost_currency' => 'p.cost_currency as parent_cost_currency',
             'sale_currency' => 'p.sale_currency as parent_sale_currency',
             'special_price' => 'p.special_price as parent_special_price',
             'tax_rate' => 'p.tax_rate as parent_tax_rate',
@@ -985,6 +996,9 @@ class ProductModel extends Model
             'variant_name' => $variantName,
             'variant_price' => isset($variant['price']) && $variant['price'] !== '' ? (float)$variant['price'] : null,
             'attributes' => $variant['attributes'] ?? null,
+            'attributes_text' => self::attributesSummary($variant['attributes'] ?? null),
+            'cost_price' => isset($variant['cost']) && $variant['cost'] !== '' && (float)$variant['cost'] > 0 ? (float)$variant['cost'] : (float)($variant['parent_cost_price'] ?? 0),
+            'cost_currency' => isset($variant['cost']) && (float)($variant['cost'] ?? 0) > 0 ? ($variant['cost_currency'] ?? '') : ($variant['parent_cost_currency'] ?? ''),
             'variant_image' => $variant['variant_image'] ?? null,
         ];
     }

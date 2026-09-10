@@ -71,6 +71,10 @@ Quotation <?= esc($quote['quote_number']) ?>
                     <a href="<?= site_url('quotations/print/' . (!empty($quote['public_id']) ? $quote['public_id'] : (int)$quote['id'])) ?>" class="btn btn-outline-light btn-sm" title="Print Quotation" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Print</a>
                     <a href="<?= site_url('quotations/warehouse-document/' . (int)$quote['id']) ?>" class="btn btn-outline-warning btn-sm" title="Open Warehouse Pick Slip" target="_blank" rel="noopener"><i class="bi bi-box-seam me-1"></i>Warehouse Pick Slip</a>
                     <a href="<?= site_url('quotations/edit/' . (int)$quote['id']) ?>" class="btn btn-outline-primary btn-sm" title="Edit Quotation"><i class="bi bi-pencil-square me-1"></i>Edit</a>
+                    <form method="post" action="<?= site_url('quotations/duplicate/' . (int)$quote['id']) ?>" class="d-inline" onsubmit="return confirm('Create a copy of this quotation as a new draft?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="btn btn-outline-info btn-sm" title="Duplicate Quotation"><i class="bi bi-files me-1"></i>Duplicate</button>
+                    </form>
                     <a href="<?= site_url('document-studio?edit=quotation&id='.(int)$quote['id']) ?>" class="btn btn-outline-primary btn-sm" title="Edit in Document Studio"><i class="bi bi-easel me-1"></i>Edit in Studio</a>
                 <?php endif; ?>
                 <a href="<?= site_url('quotations') ?>" class="btn btn-outline-secondary btn-sm">Back</a>
@@ -479,19 +483,8 @@ Quotation <?= esc($quote['quote_number']) ?>
                     $discountExcludeShipping = ((int)($quote['discount_exclude_shipping'] ?? 1) === 1);
                     $hasQuote = !empty($quote['id']);
                     $totalWeight = $hasQuote ? (float)($quote['total_weight'] ?? 0) : 0;
-                    // Show the unit the user picked on the products when every
-                    // weighed line agrees; mixed units fall back to kg.
-                    $weightUnitsUsed = [];
-                    foreach ($lines as $ln) {
-                        if ((float)($ln['unit_weight'] ?? 0) > 0) {
-                            $weightUnitsUsed[strtolower(trim((string)($ln['weight_unit'] ?? 'kg')))] = true;
-                        }
-                    }
-                    $shipmentWeightUnit = count($weightUnitsUsed) === 1 ? (string)array_key_first($weightUnitsUsed) : null;
-                    $formatShipmentWeight = static function (float $kg) use ($shipmentWeightUnit): string {
-                        return \App\Helpers\WeightHelper::formatShipment($kg, $shipmentWeightUnit);
-                    };
-                    $displayShipmentWeight = $formatShipmentWeight($totalWeight);
+                    // 1 kg and above reads in kg, lighter reads in grams.
+                    $displayShipmentWeight = \App\Helpers\WeightHelper::formatShipment($totalWeight);
                     $showDiscCols = false;
                     $showTaxCols = false;
                     foreach ($lines as $ln) {
@@ -603,6 +596,126 @@ Quotation <?= esc($quote['quote_number']) ?>
     </div>
 </div>
 
+<!-- Payment Terms / instalment plan proposed with this quotation -->
+<?php
+    helper('invoice_terms');
+    $qSchedule = $paymentSchedule ?? ['has_schedule' => false, 'rows' => []];
+    $qTermName = trim((string)($qSchedule['term']['name'] ?? ''));
+    $qTermNote = invoice_short_note((string)($qSchedule['term']['description'] ?? ''));
+    $qCurrency = trim((string)($quote['quote_currency'] ?? ($quote['currency'] ?? '')));
+    $qMoney = static function ($v) use ($qCurrency) {
+        return number_format((float)$v, 2) . ($qCurrency !== '' ? ' ' . $qCurrency : '');
+    };
+    $qTermsAction = site_url('quotations/payment-terms/' . (!empty($quote['public_id']) ? $quote['public_id'] : (int)($quote['id'] ?? 0)));
+?>
+<div class="card mt-3 cl-detail-card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h5 class="mb-0" style="font-size:1rem;">
+                Payment Terms<?= $qTermName !== '' ? ' - ' . esc($qTermName) : '' ?>
+                <?php if ($qTermNote !== ''): ?>
+                    <span class="text-muted fw-normal" style="font-size:.8rem;">(<?= esc($qTermNote) ?>)</span>
+                <?php endif; ?>
+            </h5>
+            <?php if (!$isConvertedToSalesOrder): ?>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quotePaymentTermsModal">
+                    <i class="bi bi-calendar2-check me-1"></i><?= $qTermName !== '' ? 'Change Payment Terms' : 'Set Payment Terms' ?>
+                </button>
+            <?php endif; ?>
+        </div>
+
+        <?php if (empty($qSchedule['has_schedule'])): ?>
+            <div class="text-muted" style="font-size:0.9rem;">
+                No payment terms selected. The full amount falls due on a single date, and the invoice raised
+                after approval carries no instalment plan.
+            </div>
+        <?php else: ?>
+            <div class="table-responsive mb-2">
+                <table class="table table-sm align-middle" style="font-size:0.9rem;">
+                    <thead>
+                        <tr>
+                            <th style="width:4%;">#</th>
+                            <th>Instalment</th>
+                            <th class="text-end" style="width:8%;">%</th>
+                            <th style="width:26%;">Due</th>
+                            <th class="text-end" style="width:18%;">Amount</th>
+                            <th class="text-end" style="width:14%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($qSchedule['rows'] as $qRow): ?>
+                            <tr>
+                                <td><?= (int)$qRow['seq'] ?></td>
+                                <td class="fw-semibold"><?= esc($qRow['label']) ?></td>
+                                <td class="text-end"><?= esc(rtrim(rtrim(number_format((float)$qRow['percentage'], 2), '0'), '.')) ?>%</td>
+                                <td><?= esc($qRow['due_label']) ?></td>
+                                <td class="text-end"><?= esc($qMoney($qRow['amount'])) ?></td>
+                                <td class="text-end"><span class="badge bg-secondary">PAYABLE</span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end">
+                <table style="min-width:280px;font-size:.9rem;">
+                    <tr>
+                        <td class="text-muted py-1">Quotation Total</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($qMoney($qSchedule['total'])) ?></td>
+                    </tr>
+                    <tr style="border-top:1px solid #334155;">
+                        <td class="fw-bold pt-2">
+                            Payable On Approval<?= trim((string)($qSchedule['now_due_label'] ?? '')) !== '' ? ' - ' . esc($qSchedule['now_due_label']) : '' ?>
+                        </td>
+                        <td class="text-end fw-bold pt-2" style="font-size:1.05rem;"><?= esc($qMoney($qSchedule['now_due'])) ?></td>
+                    </tr>
+                    <?php if ((float)$qSchedule['due'] - (float)$qSchedule['now_due'] > 0.005): ?>
+                    <tr>
+                        <td class="text-muted py-1">Payable Later</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($qMoney((float)$qSchedule['due'] - (float)$qSchedule['now_due'])) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+            <div class="text-muted mt-2" style="font-size:.8rem;">
+                Instalment dates are set from the invoice date once the quotation is approved and invoiced.
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php if (!$isConvertedToSalesOrder): ?>
+<div class="modal fade" id="quotePaymentTermsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="<?= $qTermsAction ?>">
+            <?= csrf_field() ?>
+            <div class="modal-header">
+                <h5 class="modal-title">Payment Terms</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Payment Terms</label>
+                <select name="payment_term_id" class="form-select">
+                    <option value="">No payment terms (single due date)</option>
+                    <?php foreach (($paymentTermOptions ?? []) as $qTerm): ?>
+                        <option value="<?= (int)$qTerm['id'] ?>" <?= (int)($quote['payment_term_id'] ?? 0) === (int)$qTerm['id'] ? 'selected' : '' ?>>
+                            <?= esc($qTerm['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-text">
+                    Shown on the quotation and its PDF so the customer approves the payment plan with the quote.
+                    Amounts and lines are not affected. Manage the available terms under Settings &rarr; Payment Terms.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Payment Terms</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Tags Section -->
 <div class="card mt-3 cl-detail-card">
     <div class="card-body">
@@ -650,16 +763,9 @@ Quotation <?= esc($quote['quote_number']) ?>
             if (!totals) return;
             // Mirrors WeightHelper::formatShipment() so the live AJAX total reads
             // the same as the server-rendered one.
-            var shipmentWeightUnit = <?= json_encode($shipmentWeightUnit) ?>;
-            var shipmentUnitPerKg = { g: 1000, gram: 1000, grams: 1000, mg: 1000000, lb: 1 / 0.453592, lbs: 1 / 0.453592, oz: 1 / 0.0283495, ton: 0.001, tonne: 0.001 };
             function formatShipmentWeight(kg){
-                var val = parseFloat(kg || 0) || 0;
-                var factor = shipmentWeightUnit ? shipmentUnitPerKg[shipmentWeightUnit] : null;
-                if (factor) {
-                    var converted = val * factor;
-                    return converted.toFixed(converted >= 100 ? 0 : 2) + ' ' + shipmentWeightUnit + ' (' + val.toFixed(3) + ' kg)';
-                }
-                if (val >= 1) return val.toFixed(3) + ' kg';
+                var val = Math.max(0, parseFloat(kg || 0) || 0);
+                if (val >= 1) return val.toFixed(3).replace(/\.?0+$/, '') + ' kg';
                 return Math.round(val * 1000) + ' g';
             }
             var elSub = document.getElementById('view-subtotal');

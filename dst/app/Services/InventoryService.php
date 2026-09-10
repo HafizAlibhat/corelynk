@@ -136,6 +136,24 @@ class InventoryService
      */
     public function receiveFromGrn(int $product_id, int $warehouse_id, int $location_id, float $quantity, int $grn_id, int $user_id, ?int $variant_id = null): bool
     {
+        return $this->receiveStock($product_id, $warehouse_id, $location_id, $quantity, $grn_id, $user_id, $variant_id);
+    }
+
+    /**
+     * Book stock into a location. Defaults to a GRN receipt; preparation output
+     * and any other producer passes its own movement/reference type.
+     */
+    public function receiveStock(
+        int $product_id,
+        int $warehouse_id,
+        int $location_id,
+        float $quantity,
+        int $reference_id,
+        int $user_id,
+        ?int $variant_id = null,
+        string $movement_type = 'grn',
+        string $reference_type = 'grn'
+    ): bool {
         if ($warehouse_id <= 0) throw new InvalidArgumentException('Warehouse is required.');
         if ($location_id <= 0) throw new InvalidArgumentException('Location is required.');
         if ($product_id <= 0) {
@@ -171,9 +189,9 @@ class InventoryService
             'warehouse_id'   => $warehouse_id,
             'location_id'    => $location_id,
             'qty_change'     => $quantity, // positive for receipt
-            'movement_type'  => 'grn',
-            'reference_type' => 'grn',
-            'reference_id'   => $grn_id,
+            'movement_type'  => $movement_type,
+            'reference_type' => $reference_type,
+            'reference_id'   => $reference_id,
             'created_by'     => $user_id,
             'created_at'     => $now,
         ];

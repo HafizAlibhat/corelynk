@@ -1,6 +1,6 @@
 <tr>
     <td>
-        <select class="form-select searchable" name="material_product_id[<?= esc($index) ?>]" required>
+        <select class="form-select form-select-sm searchable" name="material_product_id[<?= esc($index) ?>]" required>
             <option value="">Select Product</option>
             <?php
             $selectedValue = (string) ($material_select_value ?? ($material_product_id ?? ''));
@@ -25,12 +25,13 @@
         </select>
     </td>
     <td>
-        <input type="number" class="form-control" step="0.0001" min="0.0001" name="material_qty_per_unit[<?= esc($index) ?>]" value="<?= esc($material_qty_per_unit ?? '') ?>" required>
+        <?php $qtyValue = ($material_qty_per_unit ?? '') === '' ? '' : number_format((float) $material_qty_per_unit, 2, '.', ''); ?>
+        <input type="number" class="form-control form-control-sm" step="0.01" min="0.01" name="material_qty_per_unit[<?= esc($index) ?>]" value="<?= esc($qtyValue) ?>" placeholder="0.00" required>
     </td>
     <td class="text-center">
         <input type="checkbox" class="form-check-input" name="material_is_optional[<?= esc($index) ?>]" value="1" <?= !empty($material_is_optional) ? 'checked' : '' ?>>
     </td>
     <td class="text-center">
-        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeMaterialRow(this)">Remove</button>
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeMaterialRow(this)" title="Remove this material"><i class="bi bi-trash"></i></button>
     </td>
 </tr>

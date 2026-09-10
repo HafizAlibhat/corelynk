@@ -60,14 +60,19 @@ class Quotations extends BaseController
             return false;
         }
         $validPrices = [];
-        if ($customerId > 0) {
-            try {
-                $item = (new \App\Models\PriceListItemModel())->getCustomerProductPrice($customerId, $productId, (int) max(1, $quantity));
-                if ($item && isset($item['special_price'])) {
-                    $validPrices[] = (float) $item['special_price'];
-                }
-            } catch (\Throwable $e) { /* best-effort */ }
-        }
+        // A price coming from the applicable price list is a normal price, not
+        // an override: resolve it the same way the line does.
+        try {
+            $resolved = (new \App\Services\PriceListService())->resolve([
+                'party_type'    => 'customer',
+                'party_id'      => $customerId,
+                'price_list_id' => (int) $this->request->getPost('price_list_id'),
+                'product_id'    => $productId,
+                'quantity'      => max(1, $quantity),
+                'currency'      => (string) $this->request->getPost('currency'),
+            ]);
+            $validPrices[] = (float) $resolved['unit_price'];
+        } catch (\Throwable $e) { /* best-effort */ }
         try {
             $pricing = (new \App\Models\ProductModel())->getPricingInfo($productId);
             if (isset($pricing['sale_price'])) {
@@ -142,6 +147,9 @@ class Quotations extends BaseController
         return view('quotations/create', [
             'currencies' => $currencies,
             'defaultCurrency' => $this->getDefaultSalesCurrency(),
+            'paymentTermOptions' => $this->paymentTermsPayload([])['paymentTermOptions'],
+            'priceListOptions' => [],
+            'countries' => $this->countryOptions(),
         ]);
     }
 
@@ -206,6 +214,9 @@ class Quotations extends BaseController
             'currencies' => $currencies ?? [],
             'defaultCurrency' => $this->getDefaultSalesCurrency(),
             'tags' => $tags,
+            'paymentTermOptions' => $this->paymentTermsPayload($quote)['paymentTermOptions'],
+            'priceListOptions' => (new \App\Models\PriceListModel())->optionsFor('customer', (int)($quote['customer_id'] ?? 0)),
+            'countries' => $this->countryOptions(),
         ]);
     }
 
@@ -233,6 +244,8 @@ class Quotations extends BaseController
             'document_discount_type' => strtolower((string)($post['document_discount_type'] ?? '')) === 'percent' ? 'percent' : 'fixed',
             'document_discount_value' => isset($post['document_discount_value']) ? (float)$post['document_discount_value'] : 0.0,
             'discount_exclude_shipping' => isset($post['discount_exclude_shipping']) ? 1 : 0,
+            'price_list_id' => !empty($post['price_list_id']) ? (int)$post['price_list_id'] : null,
+            'payment_term_id' => !empty($post['payment_term_id']) ? (int)$post['payment_term_id'] : null,
             'lines' => []
         ];
 
@@ -389,6 +402,91 @@ class Quotations extends BaseController
         }
     }
 
+    /**
+     * Payment term options plus the instalment schedule proposed by the term
+     * selected on the quotation. Mirrors the invoice block, but nothing is
+     * stored: the concrete schedule is only generated when the invoice is
+     * raised after the quote is approved.
+     */
+    /** Countries for the quick "Add New Customer" address block. */
+    private function countryOptions(): array
+    {
+        try {
+            return \Config\Database::connect()->table('countries')
+                ->select('id, name')->orderBy('name', 'ASC')->get()->getResultArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private function paymentTermsPayload(array $quote): array
+    {
+        try {
+            return [
+                'paymentTermOptions' => (new \App\Models\PaymentTermModel())->active(),
+                'paymentSchedule'    => (new \App\Services\InvoicePaymentScheduleService())->preview(
+                    (int)($quote['payment_term_id'] ?? 0),
+                    (float)($quote['total'] ?? 0)
+                ),
+            ];
+        } catch (\Throwable $e) {
+            log_message('error', 'Quotation payment terms load failed: ' . $e->getMessage());
+
+            return [
+                'paymentTermOptions' => [],
+                'paymentSchedule'    => [
+                    'has_schedule' => false, 'rows' => [], 'term' => null,
+                    'total' => 0.0, 'paid' => 0.0, 'due' => 0.0,
+                    'now_due' => 0.0, 'now_due_label' => '', 'now_due_percentage' => 0.0,
+                ],
+            ];
+        }
+    }
+
+    /**
+     * Set the payment term on a quotation. Amounts and lines are untouched:
+     * the term only changes how the total is proposed to be paid.
+     */
+    public function updatePaymentTerms($identifier = null)
+    {
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return redirect()->back()->with('error', 'Method not allowed');
+        }
+
+        $id = is_numeric($identifier) ? (int)$identifier : 0;
+        if (!$id) {
+            $row = \Config\Database::connect()->table('quotations')
+                ->where('public_id', $identifier)->get()->getRowArray();
+            $id = (int)($row['id'] ?? 0);
+        }
+
+        $quote = $id > 0 ? $this->quotationModel->find($id) : null;
+        if (!$quote) {
+            return redirect()->to('/documents')->with('error', 'Quotation not found');
+        }
+
+        try { $cols = \Config\Database::connect()->getFieldNames('quotations'); } catch (\Throwable $_) { $cols = []; }
+        if (!in_array('payment_term_id', $cols, true)) {
+            return redirect()->back()->with('error', 'Run the pending database migrations to use payment terms on quotations.');
+        }
+
+        $termId = (int)$this->request->getPost('payment_term_id');
+        $valid  = $termId > 0 && (new \App\Models\PaymentTermModel())->find($termId);
+        $this->quotationModel->update($id, ['payment_term_id' => $valid ? $termId : null]);
+
+        try {
+            DocumentLogger::log(
+                DocumentLogger::TYPE_QUOTATION,
+                $id,
+                DocumentLogger::ACTION_UPDATED,
+                ['payment_terms' => $valid ? $termId : null]
+            );
+        } catch (\Throwable $_) {
+        }
+
+        return redirect()->to('/quotations/view/' . ($quote['public_id'] ?? $id))->with('success', 'Payment terms updated.');
+    }
+
     public function view($identifier = null)
     {
         // Handle both numeric ID and public_id identifiers
@@ -465,14 +563,14 @@ class Quotations extends BaseController
             $tags = [];
         }
 
-        return view('quotations/view', [
+        return view('quotations/view', array_merge([
             'quote' => $quote,
             'lines' => $lines,
             'customer' => $customer,
             'customerAddress' => $address,
             'logEntries' => $logEntries,
             'tags' => $tags,
-        ]);
+        ], $this->paymentTermsPayload($quote)));
     }
 
     public function pdf($identifier = null)
@@ -539,6 +637,10 @@ class Quotations extends BaseController
                 $company = [];
             }
 
+            // Same instalment block the invoice prints, so the customer approves
+            // the payment plan together with the quote.
+            $paymentSchedule = $this->paymentTermsPayload($quote)['paymentSchedule'];
+
             $invoiceLike = [
                 'id' => $quote['id'] ?? null,
                 'invoice_number' => $quote['quote_number'] ?? ('Q' . $quoteId),
@@ -550,6 +652,7 @@ class Quotations extends BaseController
                 'shipping_amount' => (float)($quote['shipping_amount'] ?? ($quote['shipping_cost'] ?? 0)),
                 'total_amount' => (float)($quote['total'] ?? 0),
                 'notes' => $quote['notes'] ?? null,
+                'payment_terms' => $paymentSchedule['term']['name'] ?? null,
             ];
 
             $pdf = (new InvoicePdfGenerator())->generateSystemInvoice([
@@ -562,6 +665,7 @@ class Quotations extends BaseController
                 'document_number_label' => 'Quotation #',
                 'document_date_label' => 'Date:',
                 'document_prefix' => '',
+                'paymentSchedule' => $paymentSchedule,
                 'pdf_show_header_address' => (int)($company['pdf_quote_show_header'] ?? 1),
                 'pdf_show_footer' => (int)($company['pdf_quote_show_footer'] ?? 1),
             ]);
@@ -1233,6 +1337,12 @@ class Quotations extends BaseController
             if (in_array('currency', $cols)) {
                 $headerUpd['currency'] = $currency;
             }
+            if (in_array('price_list_id', $cols) && array_key_exists('price_list_id', $post)) {
+                $headerUpd['price_list_id'] = !empty($post['price_list_id']) ? (int)$post['price_list_id'] : null;
+            }
+            if (in_array('payment_term_id', $cols) && array_key_exists('payment_term_id', $post)) {
+                $headerUpd['payment_term_id'] = !empty($post['payment_term_id']) ? (int)$post['payment_term_id'] : null;
+            }
             if (in_array('document_discount_type', $cols) && isset($post['document_discount_type'])) {
                 $headerUpd['document_discount_type'] = strtolower((string)$post['document_discount_type']) === 'percent' ? 'percent' : 'fixed';
             }
@@ -1377,6 +1487,8 @@ class Quotations extends BaseController
     {
         $q = $this->request->getGet('q');
         $customerId = (int)$this->request->getGet('customer_id');
+        $priceListId = (int)$this->request->getGet('price_list_id');
+        $docCurrency = strtoupper(trim((string)$this->request->getGet('currency')));
         $results = [];
         if (empty($q)) return $this->response->setJSON($results);
 
@@ -1490,13 +1602,31 @@ class Quotations extends BaseController
                 'variant_name'  => $p['variant_name'] ?? null,
                 'variant_price' => isset($p['variant_price']) ? (float)$p['variant_price'] : null,
                 'attributes'    => $p['attributes'] ?? null,
+                'attributes_text' => $p['attributes_text'] ?? \App\Models\ProductModel::attributesSummary($p['attributes'] ?? null),
             ];
 
-            if ($customerId) {
-                $plItem = $pli->getCustomerProductPrice($customerId, $p['id'], 1);
-                if ($plItem) {
-                    $item['special_price'] = (float)$plItem['special_price'];
-                    $item['price_list_id'] = $plItem['price_list_id'] ?? null;
+            // Cost is only exposed to admins (price list screens need it).
+            if (service('policy')->isAdmin()) {
+                $item['cost_price']    = isset($p['cost_price']) ? (float)$p['cost_price'] : null;
+                $item['cost_currency'] = $p['cost_currency'] ?? null;
+            }
+
+            // Price list (fixed price, margin on cost, or discount) decides the
+            // price offered for this customer; the product sale price is the floor.
+            if ($customerId || $priceListId) {
+                $resolved = (new \App\Services\PriceListService())->resolve([
+                    'party_type'    => 'customer',
+                    'party_id'      => $customerId,
+                    'price_list_id' => $priceListId,
+                    'product_id'    => $pid,
+                    'variant_id'    => (int)($p['variant_id'] ?? 0),
+                    'quantity'      => 1,
+                    'currency'      => $docCurrency ?: ($p['sale_currency'] ?? 'USD'),
+                ]);
+                if (($resolved['source'] ?? 'base') !== 'base') {
+                    $item['special_price'] = (float)$resolved['unit_price'];
+                    $item['price_list_id'] = $resolved['list_id'];
+                    $item['price_source']  = $resolved['source'];
                 }
             }
 
@@ -1564,8 +1694,7 @@ class Quotations extends BaseController
     {
         $customerId = (int)$customerId;
         if (!$customerId) return $this->response->setJSON([]);
-        $plModel = new \App\Models\PriceListModel();
-        $lists = $plModel->getCustomerPriceList($customerId);
+        $lists = (new \App\Services\PriceListService())->lists('customer', $customerId);
         return $this->response->setJSON($lists);
     }
 
@@ -1968,6 +2097,71 @@ class Quotations extends BaseController
             'success' => true,
             'message' => 'Address & contact updated from the customer profile.',
         ]);
+    }
+
+    /**
+     * Duplicate a quotation: an exact copy (lines, discounts, shipping, totals)
+     * as a fresh draft with a new number and today's date.
+     */
+    public function duplicate($identifier = null)
+    {
+        $db    = \Config\Database::connect();
+        $quote = is_numeric($identifier)
+            ? $db->table('quotations')->where('id', (int) $identifier)->get()->getRowArray()
+            : $db->table('quotations')->where('public_id', (string) $identifier)->get()->getRowArray();
+
+        if (! $quote || ! empty($quote['deleted_at'])) {
+            return $this->failDuplicate('Quotation not found.');
+        }
+
+        try {
+            // Keep the original validity window length, measured from today.
+            $validUntil = null;
+            if (! empty($quote['valid_until']) && ! empty($quote['issue_date'])) {
+                $days       = (int) ((strtotime($quote['valid_until']) - strtotime($quote['issue_date'])) / 86400);
+                $validUntil = date('Y-m-d', strtotime('+' . max(0, $days) . ' days'));
+            }
+
+            $newId = (new \App\Services\DocumentDuplicator())->duplicate('quotations', (int) $quote['id'], [
+                'quote_number'                 => $this->quotationModel->generateQuoteNumber($db),
+                'public_id'                    => null,
+                'status'                       => 'draft',
+                'issue_date'                   => date('Y-m-d'),
+                'valid_until'                  => $validUntil,
+                'converted_to_sales_order_id'  => null,
+                'created_by'                   => session()->get('user_id'),
+            ], [
+                'quotation_lines'     => 'quotation_id',
+                'quotation_discounts' => 'quotation_id',
+                'quotation_shipping'  => 'quotation_id',
+            ]);
+
+            DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $newId, DocumentLogger::ACTION_CREATED, [
+                'source'      => 'duplicate',
+                'copied_from' => (int) $quote['id'],
+                'copied_number' => (string) ($quote['quote_number'] ?? ''),
+            ]);
+
+            $url = site_url('quotations/edit/' . $newId);
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => true, 'id' => $newId, 'redirect' => $url]);
+            }
+
+            return redirect()->to($url)->with('success', 'Quotation duplicated from ' . ($quote['quote_number'] ?? ('#' . $quote['id'])) . '. Review and save.');
+        } catch (\Throwable $e) {
+            log_message('error', 'Quotation duplicate failed: ' . $e->getMessage());
+
+            return $this->failDuplicate('Could not duplicate the quotation.');
+        }
+    }
+
+    private function failDuplicate(string $message)
+    {
+        if ($this->request->isAJAX()) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $message]);
+        }
+
+        return redirect()->to(site_url('quotations'))->with('error', $message);
     }
 
     public function delete($identifier = null)

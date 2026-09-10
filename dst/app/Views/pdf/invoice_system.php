@@ -1510,7 +1510,7 @@ $termsReserve = max(170, min(400, $termsReserve));
 
             <table class="sched-totals">
                 <tr>
-                    <td>Invoice Total</td>
+                    <td><?= esc($documentTitle) ?> Total</td>
                     <td class="val"><?= esc($fmtMoney($scheduleTotal)) ?></td>
                 </tr>
                 <?php if ($scheduleHasPayment): ?>

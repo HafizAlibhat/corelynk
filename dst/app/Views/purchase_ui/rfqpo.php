@@ -53,6 +53,12 @@ RFQ / PO
           <input id="deliveryDate" name="delivery_date" class="form-control" type="date" />
         </div>
         <div class="col-md-3 form-group">
+          <label class="form-label">Price List</label>
+          <select id="price_list_id" name="price_list_id" class="form-select">
+            <option value="">Default (vendor cost)</option>
+          </select>
+        </div>
+        <div class="col-md-3 form-group">
           <label class="form-label">Currency</label>
           <select id="currency" name="currency" class="form-select">
             <?php foreach ($currencyList as $cur): ?>
@@ -942,6 +948,7 @@ RFQ / PO
       html += `<button class="pl-list-act cl-icon-action ms-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" onclick="event.stopPropagation()"><i class="bi bi-three-dots-vertical"></i></button>`;
       html += `<ul class="dropdown-menu dropdown-menu-end" style="font-size:.78rem;min-width:120px;">`;
       if (r.type === 'RFQ') {
+        html += `<li><button class="dropdown-item duplicateRfqBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-files me-1"></i>Duplicate</button></li>`;
         if (r.state === 'draft' || r.state === 'sent') html += `<li><button class="dropdown-item convertRfqBtn" data-id="${r.id}" style="color:#28a745;font-weight:500" onclick="event.stopPropagation()"><i class="bi bi-arrow-right-circle me-1"></i>RFQ to PO</button></li>`;
         if (r.state === 'draft') {
           html += `<li><button class="dropdown-item editBtn" data-id="${r.id}" onclick="event.stopPropagation()"><i class="bi bi-pencil me-1"></i>Edit</button></li>`;
@@ -1159,6 +1166,14 @@ RFQ / PO
         const ftEdit = document.getElementById('formTitle');
         if (ftEdit) ftEdit.textContent = 'Edit RFQ #' + (j.data.rfq_number || id);
         try { toggleConvertFormBtn(); } catch (e) {}
+      } catch(e){ msg(e.message, 'danger'); }
+    }));
+
+    combinedList.querySelectorAll('.duplicateRfqBtn').forEach(b => b.addEventListener('click', async ()=>{
+      if (!confirm('Create a copy of this RFQ as a new draft?')) return;
+      try {
+        const j = await fetchJson('<?= site_url("new-purchase-rfqs/") ?>'+b.dataset.id+'/duplicate', { method:'POST', headers:{'Content-Type':'application/json'} });
+        window.location.href = j.redirect;
       } catch(e){ msg(e.message, 'danger'); }
     }));
 
@@ -2003,6 +2018,86 @@ RFQ / PO
   }
   window.openRfqModal = openRfqModal;
 
+})();
+</script>
+
+<script>
+// Vendor price lists: same rules as the customer side, applied to purchase prices.
+(function () {
+  function basePath() {
+    return (window.APP_BASE && window.APP_BASE !== '')
+      ? window.APP_BASE
+      : (function () { var p = location.pathname.split('/'); return (p && p.length > 1) ? '/' + p[1] : ''; })();
+  }
+
+  function loadLists(vendorId) {
+    var sel = document.getElementById('price_list_id');
+    if (!sel) { return; }
+    fetch(basePath() + '/pricing/lists?party_type=vendor&party_id=' + encodeURIComponent(vendorId || ''))
+      .then(function (r) { return r.json(); })
+      .then(function (lists) {
+        sel.innerHTML = '<option value="">Default (vendor cost)</option>';
+        (lists || []).forEach(function (l) {
+          var o = document.createElement('option');
+          o.value = l.id;
+          o.text = l.name;
+          sel.appendChild(o);
+        });
+      })
+      .catch(function () {});
+  }
+
+  function reprice(confirmFirst) {
+    var sel = document.getElementById('price_list_id');
+    var linesContainer = document.getElementById('linesContainer') || document;
+    var rows = [];
+    linesContainer.querySelectorAll('.row').forEach(function (r, i) {
+      var pid = r.querySelector('.product-id');
+      var priceEl = r.querySelector('.line-price');
+      if (!pid || !priceEl || !parseInt(pid.value || 0, 10)) { return; }
+      var qtyEl = r.querySelector('.line-qty');
+      var vEl = r.querySelector('.product-variant-id');
+      rows.push({ key: 'r' + i, product_id: parseInt(pid.value, 10), variant_id: parseInt((vEl && vEl.value) || 0, 10) || 0, quantity: parseFloat(qtyEl && qtyEl.value ? qtyEl.value : 1) || 1, el: priceEl });
+    });
+    if (!rows.length) { return; }
+    if (confirmFirst && !window.confirm('Re-price ' + rows.length + ' line(s) using this price list?')) { return; }
+
+    var vendorEl = document.getElementById('vendorSelect');
+    var currencyEl = document.getElementById('currency');
+    fetch(basePath() + '/pricing/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({
+        party_type: 'vendor',
+        party_id: vendorEl ? vendorEl.value : '',
+        price_list_id: sel ? (sel.value || 0) : 0,
+        currency: currencyEl ? currencyEl.value : '',
+        lines: rows.map(function (r) { return { key: r.key, product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity }; })
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (!resp || !resp.success) { return; }
+        var byKey = {};
+        resp.prices.forEach(function (p) { byKey[p.key] = p; });
+        rows.forEach(function (r) {
+          var p = byKey[r.key];
+          if (!p) { return; }
+          r.el.value = (parseFloat(p.unit_price) || 0).toFixed(2);
+          r.el.title = 'Price source: ' + p.source + (p.list_name ? ' (' + p.list_name + ')' : '');
+          try { r.el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+        });
+      })
+      .catch(function () {});
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    loadLists('');
+    var sel = document.getElementById('price_list_id');
+    if (sel) { sel.addEventListener('change', function () { reprice(true); }); }
+    var vendorEl = document.getElementById('vendorSelect');
+    if (vendorEl) { vendorEl.addEventListener('change', function () { loadLists(this.value); }); }
+  });
 })();
 </script>
 

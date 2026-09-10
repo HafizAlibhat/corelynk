@@ -296,6 +296,7 @@ $routes->group('', function($routes) {
         $routes->post('(:num)/update', 'PreparationProfiles::update/$1');
         $routes->post('(:num)/delete', 'PreparationProfiles::delete/$1');
         $routes->post('(:num)/copy-to-variants', 'PreparationProfiles::copyToVariants/$1');
+        $routes->get('ajax/vendor-services/(:num)', 'PreparationProfiles::vendorServicesAjax/$1');
         $routes->post('ajax/create-service', 'PreparationProfiles::createServiceAjax');
     });
 
@@ -744,7 +745,11 @@ $routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPr
     // Update shipping amount
     $routes->post('update-shipping/(:any)', 'Quotations::updateShipping/$1');
     $routes->post('refresh-customer-address/(:any)', 'Quotations::refreshCustomerAddress/$1');
-        // Bulk update quotation (edit form)
+    // Payment terms (instalment plan agreed with the quote)
+    $routes->post('payment-terms/(:any)', 'Quotations::updatePaymentTerms/$1');
+        // Duplicate quotation (exact copy as a new draft)
+    $routes->post('duplicate/(:any)', 'Quotations::duplicate/$1');
+    // Bulk update quotation (edit form)
         $routes->post('update/(:any)', 'Quotations::update/$1');
         // View a saved quotation
         $routes->get('view/(:any)', 'Quotations::view/$1');
@@ -786,6 +791,21 @@ $routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPr
         $routes->post('acknowledge-orders-alarm', 'Documents::acknowledgeOrdersAlarm');
     });
 
+    // Price lists (customer and vendor) + price resolution used by documents
+    $routes->group('pricing', ['filter' => 'auth'], function($routes) {
+        $routes->get('lists', 'Pricing::lists');
+        $routes->post('resolve', 'Pricing::resolve');
+    });
+
+    $routes->group('price-lists', ['filter' => 'auth'], function($routes) {
+        $routes->get('/', 'PriceLists::index');
+        $routes->get('manage', 'PriceLists::manage');
+        $routes->get('manage/(:num)', 'PriceLists::manage/$1');
+        $routes->post('save', 'PriceLists::save');
+        $routes->post('save/(:num)', 'PriceLists::save/$1');
+        $routes->post('delete/(:num)', 'PriceLists::delete/$1');
+    });
+
     // Tags Management (web controllers for session-based auth)
     $routes->group('tags', ['filter' => 'auth'], function($routes) {
         $routes->get('/', 'Tags::index');
@@ -819,10 +839,15 @@ $routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPr
         $routes->post('reset-to-quotation/(:any)', 'SalesOrders::resetToQuotation/$1');
         $routes->post('refresh-customer-address/(:any)', 'SalesOrders::refreshCustomerAddress/$1');
         $routes->post('create-purchase-drafts/(:num)', 'SalesOrders::createPurchaseDrafts/$1'); // Phase-2
-        $routes->post('create-material-rfq/(:num)', 'SalesOrders::createMaterialRfq/$1');
+        $routes->post('create-material-rfq/(:num)', 'SalesOrders::createPurchaseDrafts/$1');
         $routes->post('preparation/send-to-vendor', 'PreparationExecution::sendToVendor');
         $routes->post('preparation/bulk-send-to-vendor', 'PreparationExecution::bulkSendToVendor');
+        $routes->post('preparation/create-job-pos', 'PreparationExecution::createJobPos');
         $routes->post('preparation/start-inhouse', 'PreparationExecution::startInHouse');
+        $routes->post('preparation/complete-step', 'PreparationExecution::complete');
+        $routes->post('preparation/add-vendor-location', 'PreparationExecution::addVendorLocation');
+        $routes->post('preparation/reroute-to-vendor', 'PreparationExecution::rerouteToVendor');
+        $routes->get('preparation/trail/(:num)/(:num)', 'PreparationExecution::trail/$1/$2');
     });
 
     $routes->group('vendor-receive', ['filter' => 'auth'], function($routes) {
@@ -830,6 +855,8 @@ $routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPr
         $routes->get('received-items', 'VendorReceive::receivedItems');
         $routes->get('rejection/(:num)/pdf', 'VendorReceive::rejectionPdf/$1');
         $routes->get('handover-slip/batch', 'VendorReceive::handoverSlipBatch');
+        $routes->get('(:num)/send-slip', 'VendorReceive::sendSlip/$1');
+        $routes->get('note/(:num)/slip', 'VendorReceive::receiveSlip/$1');
         $routes->get('(:num)', 'VendorReceive::receiveForm/$1');
         $routes->get('(:num)/handover-slip', 'VendorReceive::handoverSlip/$1');
         $routes->post('store', 'VendorReceive::store');
@@ -1090,7 +1117,7 @@ $routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPr
         $routes->post('saveFiscalYear', 'Settings::saveFiscalYear');
         $routes->post('saveSecurity', 'Settings::saveSecurity');
         $routes->post('addPaymentMethod', 'Settings::addPaymentMethod');
-    $routes->post('savePaymentTerm', 'Settings::savePaymentTerm');
+    $routes->post('savePaymentTerm', 'Settings::savePaymentTerm'); $routes->post('apiCreatePaymentTerm', 'Settings::apiCreatePaymentTerm');
     $routes->post('deletePaymentTerm/(:num)', 'Settings::deletePaymentTerm/$1');
         $routes->post('addExchangeRate', 'Settings::addExchangeRate');
         $routes->post('saveOdoo', 'Settings::saveOdoo');
@@ -1241,6 +1268,7 @@ $routes->post('new-purchase-rfqs/(:segment)/send', 'NewPurchaseRfqs::send/$1');
 $routes->post('new-purchase-rfqs/(:segment)/accept', 'NewPurchaseRfqs::accept/$1');
 $routes->post('new-purchase-rfqs/(:segment)/cancel', 'NewPurchaseRfqs::cancel/$1');
 $routes->post('new-purchase-rfqs/(:segment)/delete', 'NewPurchaseRfqs::delete/$1');
+$routes->post('new-purchase-rfqs/(:segment)/duplicate', 'NewPurchaseRfqs::duplicate/$1');
 
 // PO from RFQ conversion
 $routes->post('new-purchase-orders/from-rfq/(:num)', 'NewPurchaseOrders::from_rfq/$1');

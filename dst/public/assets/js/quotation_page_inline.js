@@ -282,7 +282,9 @@
       addCustomerBtn.addEventListener('click', function(){
         var errEl = document.getElementById('modal-add-customer-error');
         if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
-        ['modal-add-customer-name','modal-add-customer-phone','modal-add-customer-email'].forEach(function(id){
+        ['modal-add-customer-name','modal-add-customer-phone','modal-add-customer-email',
+         'modal-add-customer-line1','modal-add-customer-line2','modal-add-customer-city',
+         'modal-add-customer-postal','modal-add-customer-country'].forEach(function(id){
           var el = document.getElementById(id); if (el) el.value = '';
         });
         var modalEl = document.getElementById('modal-add-customer');
@@ -306,10 +308,18 @@
           nameEl.focus();
           return;
         }
+        function val(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; }
         var payload = {
           name: name,
-          phone: (document.getElementById('modal-add-customer-phone').value || '').trim(),
-          email: (document.getElementById('modal-add-customer-email').value || '').trim(),
+          phone: val('modal-add-customer-phone'),
+          email: val('modal-add-customer-email'),
+          address: {
+            line1: val('modal-add-customer-line1'),
+            line2: val('modal-add-customer-line2'),
+            country_id: val('modal-add-customer-country'),
+            city_name: val('modal-add-customer-city'),
+            postal_code: val('modal-add-customer-postal')
+          }
         };
         saveCustomerBtn.disabled = true;
         saveCustomerBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
@@ -605,4 +615,167 @@
       }
     }, 50);
   })();
+})();
+
+// Price list -> line prices. Picking (or changing) the price list re-prices
+// every line that has a product, the same way the server prices them.
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var select = document.getElementById('price_list_id');
+    if (!select) { return; }
+
+    function repriceLines(confirmFirst) {
+      var rows = [];
+      document.querySelectorAll('tr').forEach(function (tr, i) {
+        var pid = tr.querySelector('.product-id');
+        var priceEl = tr.querySelector('.line-price');
+        if (!pid || !priceEl || !parseInt(pid.value || 0, 10)) { return; }
+        var qtyEl = tr.querySelector('.line-qty');
+        var vEl = tr.querySelector('.product-variant-id');
+        rows.push({ key: 'r' + i, product_id: parseInt(pid.value, 10), variant_id: parseInt((vEl && vEl.value) || 0, 10) || 0, quantity: parseFloat(qtyEl && qtyEl.value ? qtyEl.value : 1) || 1, el: priceEl });
+      });
+      if (!rows.length) { return; }
+      if (confirmFirst && !window.confirm('Re-price ' + rows.length + ' line(s) using this price list?')) { return; }
+
+      var currencyEl = document.querySelector('select[name="currency"]');
+      var customerEl = document.getElementById('customer_id');
+      fetch((window.APP_BASE || '') + '/pricing/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          party_type: 'customer',
+          party_id: customerEl ? customerEl.value : '',
+          price_list_id: select.value || 0,
+          currency: currencyEl ? currencyEl.value : '',
+          lines: rows.map(function (r) { return { key: r.key, product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity }; })
+        })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          if (!resp || !resp.success) { return; }
+          var byKey = {};
+          resp.prices.forEach(function (p) { byKey[p.key] = p; });
+          rows.forEach(function (r) {
+            var p = byKey[r.key];
+            if (!p) { return; }
+            r.el.value = (parseFloat(p.unit_price) || 0).toFixed(2);
+            r.el.title = 'Price source: ' + p.source + (p.list_name ? ' (' + p.list_name + ')' : '');
+            r.el.dispatchEvent(new Event('input', { bubbles: true }));
+            r.el.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        })
+        .catch(function (err) { try { console.error('reprice failed', err); } catch (e) {} });
+    }
+
+    select.addEventListener('change', function () { repriceLines(true); });
+  });
+})();
+
+// Quick "Add Payment Term" popup: creates the term and selects it on the quote.
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var openBtn = document.getElementById('btn-add-payment-term');
+    var modalEl = document.getElementById('modal-add-payment-term');
+    if (!openBtn || !modalEl) { return; }
+
+    var tbody = modalEl.querySelector('#modal-pt-rows tbody');
+    var errEl = document.getElementById('modal-pt-error');
+    var saveBtn = document.getElementById('modal-pt-save');
+    var saveDefaultHtml = saveBtn.innerHTML;
+
+    function addRow() {
+      var tpl = document.getElementById('modal-pt-row-template');
+      var holder = document.createElement('tbody');
+      holder.innerHTML = '<table>' + tpl.innerHTML + '</table>';
+      tbody.appendChild(holder.querySelector('tr'));
+    }
+    document.getElementById('modal-pt-add-row').addEventListener('click', addRow);
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target.closest('.pt-del-row');
+      if (btn) { btn.closest('tr').remove(); }
+    });
+
+    // Code defaults to a slug of the name, but stays editable.
+    var nameEl = document.getElementById('modal-pt-name');
+    var codeEl = document.getElementById('modal-pt-code');
+    nameEl.addEventListener('input', function () {
+      if (codeEl.dataset.touched === '1') { return; }
+      codeEl.value = nameEl.value.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 20);
+    });
+    codeEl.addEventListener('input', function () { codeEl.dataset.touched = '1'; });
+
+    openBtn.addEventListener('click', function () {
+      errEl.classList.add('d-none');
+      errEl.textContent = '';
+      ['modal-pt-name', 'modal-pt-code', 'modal-pt-description'].forEach(function (id) { document.getElementById(id).value = ''; });
+      document.getElementById('modal-pt-net-days').value = '0';
+      codeEl.dataset.touched = '';
+      tbody.innerHTML = '';
+      if (window.bootstrap) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        modalEl.addEventListener('shown.bs.modal', function () { nameEl.focus(); }, { once: true });
+      }
+    });
+
+    saveBtn.addEventListener('click', function () {
+      errEl.classList.add('d-none');
+      errEl.textContent = '';
+
+      var milestones = [];
+      var total = 0;
+      tbody.querySelectorAll('tr').forEach(function (tr) {
+        var pct = parseFloat(tr.querySelector('.pt-pct').value);
+        if (isNaN(pct) || pct <= 0) { return; }
+        total += pct;
+        milestones.push({
+          label: (tr.querySelector('.pt-label').value || '').trim(),
+          percentage: pct,
+          basis: tr.querySelector('.pt-basis').value,
+          offset_days: parseInt(tr.querySelector('.pt-days').value || 0, 10) || 0
+        });
+      });
+      if (milestones.length && Math.abs(total - 100) > 0.01) {
+        errEl.textContent = 'Instalment percentages must add up to 100 (currently ' + total + ').';
+        errEl.classList.remove('d-none');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+      fetch((window.APP_BASE || '') + '/settings/apiCreatePaymentTerm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          name: nameEl.value.trim(),
+          code: codeEl.value.trim(),
+          description: document.getElementById('modal-pt-description').value.trim(),
+          net_days: parseInt(document.getElementById('modal-pt-net-days').value || 0, 10) || 0,
+          milestones: milestones
+        })
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveDefaultHtml;
+          if (!res.ok || !res.data.success) {
+            errEl.textContent = res.data.message || 'Failed to create payment term';
+            errEl.classList.remove('d-none');
+            return;
+          }
+          var sel = document.getElementById('payment_term_id');
+          var opt = document.createElement('option');
+          opt.value = res.data.id;
+          opt.text = res.data.name;
+          opt.selected = true;
+          sel.appendChild(opt);
+          if (window.bootstrap) { window.bootstrap.Modal.getOrCreateInstance(modalEl).hide(); }
+        })
+        .catch(function () {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveDefaultHtml;
+          errEl.textContent = 'Failed to create payment term';
+          errEl.classList.remove('d-none');
+        });
+    });
+  });
 })();

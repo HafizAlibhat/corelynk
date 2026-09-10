@@ -1,3 +1,12 @@
+
+// Weight display: 1 kg and above reads in kg, anything lighter reads in grams,
+// whatever unit the product is stored in. Mirrors WeightHelper::formatShipment().
+window.formatWeightDisplay = window.formatWeightDisplay || function (value, unit) {
+    var perKg = { G: 1000, GRAM: 1000, GRAMS: 1000, MG: 1000000, LB: 1 / 0.453592, LBS: 1 / 0.453592, OZ: 1 / 0.0283495, TON: 0.001, TONNE: 0.001 };
+    var kg = (parseFloat(value) || 0) / (perKg[String(unit || 'KG').toUpperCase()] || 1);
+    if (kg < 0) kg = 0;
+    return kg >= 1 ? (Math.round(kg * 1000) / 1000) + ' kg' : Math.round(kg * 1000) + ' g';
+};
 document.addEventListener('DOMContentLoaded', function(){
     var form = document.getElementById('quotation-form');
     var statusInput = document.getElementById('quote-status');
@@ -86,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function(){
                         var weightInput = tr.querySelector('.unit-weight'); if (weightInput) weightInput.value = weightVal;
                         var weightUnitInput = tr.querySelector('.weight-unit'); if (weightUnitInput) weightUnitInput.value = weightUnit;
                         try { tr.setAttribute('data-unit-weight', weightVal); } catch(e){}
-                        var metaWeight = tr.querySelector('.meta-weight'); if (metaWeight) metaWeight.textContent = weightVal + ' ' + weightUnit;
+                        var metaWeight = tr.querySelector('.meta-weight'); if (metaWeight) metaWeight.textContent = window.formatWeightDisplay(weightVal, weightUnit);
                         var metaStock = tr.querySelector('.meta-stock'); if (metaStock) metaStock.textContent = stockVal;
                         var thumb = tr.querySelector('.product-thumb'); if (thumb && (p.image_url || p.image)) thumb.src = p.image_url || p.image;
                         drop.style.display = 'none'; recalcClientTotals();

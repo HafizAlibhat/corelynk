@@ -549,6 +549,9 @@ class NewPurchaseGrns extends BaseController
             $poModel = new PurchaseOrderModel();
             $po = $poModel->find($poId);
             if (!$po) throw new \RuntimeException('PO not found');
+            if (($po['source_type'] ?? 'material') === 'subcontract_job') {
+                throw new \RuntimeException('This is a subcontract job PO — it is billed automatically from vendor receiving, not through GRN.');
+            }
             $poStatus = strtolower((string)($po['status'] ?? ''));
             if (!in_array($poStatus, ['confirmed', 'partial'], true)) {
                 throw new \RuntimeException('GRN allowed only for confirmed or partial PO');
@@ -1045,7 +1048,7 @@ class NewPurchaseGrns extends BaseController
               (SUM(pol.qty) - SUM(pol.qty_received)) AS pending_qty
           FROM purchase_orders po
           JOIN purchase_order_lines pol ON pol.po_id = po.id
-          WHERE po.status = 'confirmed'" . $vendorFilter . "
+          WHERE po.status = 'confirmed' AND po.source_type != 'subcontract_job'" . $vendorFilter . "
           GROUP BY po.id, po.vendor_id, po.created_at
           HAVING pending_qty > 0
           ORDER BY po.created_at DESC";
@@ -1094,13 +1097,17 @@ class NewPurchaseGrns extends BaseController
 
             // Get PO header
             $po = $db->table('purchase_orders')
-                ->select('id, po_number, vendor_id, status')
+                ->select('id, po_number, vendor_id, status, source_type')
                 ->where('id', $poId)
                 ->get()
                 ->getRowArray();
 
             if (!$po) {
                 return $this->response->setStatusCode(404)->setJSON(['error' => 'PO not found']);
+            }
+
+            if (($po['source_type'] ?? 'material') === 'subcontract_job') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'This is a subcontract job PO — it is billed automatically from vendor receiving, not through GRN.']);
             }
 
             // Get PO lines with pending quantities

@@ -1645,6 +1645,28 @@ class Customers extends BaseController
             return $this->response->setStatusCode(500)
                 ->setJSON(['success' => false, 'message' => 'Failed to create customer']);
         }
+
+        // Quick-add address: stored as the customer's default billing/shipping
+        // address so quotations and invoices can print it immediately.
+        $addr = $input['address'] ?? [];
+        if (is_array($addr) && (trim((string)($addr['line1'] ?? '')) !== '' || !empty($addr['country_id']))) {
+            try {
+                (new \App\Models\CustomerAddressModel())->insert([
+                    'customer_id' => (int)$insertId,
+                    'label'       => 'Primary',
+                    'line1'       => trim((string)($addr['line1'] ?? '')),
+                    'line2'       => trim((string)($addr['line2'] ?? '')) ?: null,
+                    'country_id'  => !empty($addr['country_id']) ? (int)$addr['country_id'] : null,
+                    'city_name'   => trim((string)($addr['city_name'] ?? '')) ?: null,
+                    'postal_code' => trim((string)($addr['postal_code'] ?? '')) ?: null,
+                    'is_billing'  => 1,
+                    'is_shipping' => 1,
+                    'is_default'  => 1,
+                ]);
+            } catch (\Throwable $e) {
+                log_message('error', 'Quick customer address save failed: ' . $e->getMessage());
+            }
+        }
         return $this->response->setJSON([
             'success' => true,
             'message' => 'Created',

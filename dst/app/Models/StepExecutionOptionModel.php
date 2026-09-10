@@ -17,6 +17,9 @@ class StepExecutionOptionModel extends Model
         'vendor_id',
         'notes',
         'is_default',
+        'service_price',
+        'service_unit',
+        'currency',
         'created_at',
     ];
 

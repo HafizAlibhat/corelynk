@@ -38,7 +38,8 @@ class SubcontractOrders extends BaseController
 
         $data = $this->setPageData([
             'page_title'  => 'Subcontract Orders',
-            'orders'      => $orders,
+            'orders'      => $this->withProgress($orders),
+            'summary'     => $this->vendorSummary(),
             'pager'       => $this->orderModel->pager,
             'vendors'     => $vendors,
             'statuses'    => SubcontractOrderModel::statusOptions(),
@@ -46,6 +47,64 @@ class SubcontractOrders extends BaseController
         ]);
 
         return view('subcontract_orders/index', $data);
+    }
+
+    /**
+     * Attach sent/received/scrap totals to a page of orders in one query,
+     * so the list can show how much is still sitting at the vendor.
+     */
+    private function withProgress(array $orders): array
+    {
+        $ids = array_filter(array_map('intval', array_column($orders, 'id')));
+        if (! $ids) {
+            return $orders;
+        }
+
+        $totals = [];
+        foreach (Database::connect()->table('subcontract_order_lines')
+            ->select('subcontract_order_id, SUM(qty_sent) AS sent, SUM(qty_received) AS received, SUM(qty_scrap) AS scrap')
+            ->whereIn('subcontract_order_id', $ids)
+            ->groupBy('subcontract_order_id')
+            ->get()->getResultArray() as $row) {
+            $totals[(int) $row['subcontract_order_id']] = $row;
+        }
+
+        foreach ($orders as &$o) {
+            $t = $totals[(int) $o['id']] ?? [];
+            $o['qty_sent']     = (float) ($t['sent'] ?? 0);
+            $o['qty_received'] = (float) ($t['received'] ?? 0);
+            $o['qty_scrap']    = (float) ($t['scrap'] ?? 0);
+            $o['qty_pending']  = max(0, $o['qty_sent'] - $o['qty_received'] - $o['qty_scrap']);
+        }
+
+        return $orders;
+    }
+
+    /**
+     * Headline numbers for what is currently out at vendors.
+     * Money is deliberately left out: orders can carry different currencies
+     * and one summed figure across them would be meaningless.
+     */
+    private function vendorSummary(): array
+    {
+        $open = ['issued', 'partial_return'];
+
+        $row = Database::connect()->table('subcontract_orders o')
+            ->select('COUNT(DISTINCT o.id) AS open_orders, COALESCE(SUM(l.qty_sent - l.qty_received - l.qty_scrap), 0) AS qty_at_vendor', false)
+            ->join('subcontract_order_lines l', 'l.subcontract_order_id = o.id', 'left')
+            ->whereIn('o.status', $open)
+            ->get()->getRowArray();
+
+        $overdue = Database::connect()->table('subcontract_orders')
+            ->whereIn('status', $open)
+            ->where('expected_return_date <', date('Y-m-d'))
+            ->countAllResults();
+
+        return [
+            'open_orders'   => (int) ($row['open_orders'] ?? 0),
+            'qty_at_vendor' => max(0, (float) ($row['qty_at_vendor'] ?? 0)),
+            'overdue'       => $overdue,
+        ];
     }
 
     // -------------------------------------------------------------------

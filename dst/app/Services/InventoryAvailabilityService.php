@@ -12,6 +12,13 @@ use Config\Database;
  */
 class InventoryAvailabilityService
 {
+    /**
+     * Sales order statuses that still represent open demand on stock.
+     * Draft/cancelled orders reserve nothing; shipped/delivered orders net
+     * themselves out through the delivered quantity anyway.
+     */
+    private const OPEN_SO_STATUSES = ['confirmed', 'processing', 'partially_shipped', 'in_progress'];
+
     private $db;
 
     public function __construct()
@@ -48,9 +55,14 @@ class InventoryAvailabilityService
     /**
      * Get inventory availability for a product (with optional variant).
      * 
+     * "reserved" is derived from open sales order demand that has not shipped
+     * yet, so the same stock can never be promised to two orders at once.
+     *
      * @param int $productId
      * @param int|null $variantId
      * @param string $productType Optional product type (simple, variable, etc.)
+     * @param array $options exclude_sales_order_line_id: ignore that line's own
+     *                       demand, so a line is never reserved against itself.
      * @return array|null
      *   {
      *     'on_hand': float,
@@ -59,7 +71,7 @@ class InventoryAvailabilityService
      *   }
      *   Returns NULL if product is not storable.
      */
-    public function getAvailability(int $productId, ?int $variantId = null, string $productType = ''): ?array
+    public function getAvailability(int $productId, ?int $variantId = null, string $productType = '', array $options = []): ?array
     {
         // Check if product is storable
         if (!$this->isStorable($productId)) {
@@ -68,6 +80,12 @@ class InventoryAvailabilityService
 
         $onHand = 0.0;
         $reserved = 0.0;
+        $demand = $this->openDemand(
+            $productId,
+            $variantId,
+            $productType,
+            isset($options['exclude_sales_order_line_id']) ? (int)$options['exclude_sales_order_line_id'] : null
+        );
 
         // Priority 1: Variant inventory (if variant_id provided)
         if ($variantId !== null && $variantId > 0) {
@@ -88,7 +106,7 @@ class InventoryAvailabilityService
                             $reserved = 0;
                         }
 
-                        return $this->buildAvailability($onHand, $reserved);
+                        return $this->buildAvailability($onHand, $reserved + $demand);
                     }
                 }
             } catch (\Throwable $e) {
@@ -119,10 +137,8 @@ class InventoryAvailabilityService
 
                 if ($row) {
                     $onHand = (float)($row['total_qty'] ?? 0);
-                    // stock_balances doesn't have reserved; reserved = 0 for simple products
-                    $reserved = 0.0;
-
-                    return $this->buildAvailability($onHand, $reserved);
+                    // stock_balances has no reserved column: open sales demand is the reservation.
+                    return $this->buildAvailability($onHand, $demand);
                 }
             }
         } catch (\Throwable $e) {
@@ -141,9 +157,8 @@ class InventoryAvailabilityService
 
                 if ($prod) {
                     $onHand = (float)($prod['current_stock'] ?? 0);
-                    $reserved = 0.0;
 
-                    return $this->buildAvailability($onHand, $reserved);
+                    return $this->buildAvailability($onHand, $demand);
                 }
             }
         } catch (\Throwable $e) {
@@ -152,6 +167,66 @@ class InventoryAvailabilityService
 
         // If all sources fail, return zeros (conservative: no stock)
         return $this->buildAvailability(0.0, 0.0);
+    }
+
+    /**
+     * Quantity already promised to open sales orders and not yet delivered.
+     *
+     * This is the reservation: there is no reserved column to trust
+     * (variant_inventory.reserved is never written), so it is derived from the
+     * orders themselves and can therefore never drift out of sync.
+     */
+    private function openDemand(int $productId, ?int $variantId, string $productType, ?int $excludeLineId): float
+    {
+        if ($productId <= 0) {
+            return 0.0;
+        }
+
+        try {
+            if (!$this->db->tableExists('sales_order_lines') || !$this->db->tableExists('sales_orders')) {
+                return 0.0;
+            }
+
+            // Match the same variant scope the on-hand lookup uses.
+            if ($variantId !== null && $variantId > 0) {
+                $variantClause = 'AND sol.product_variant_id = ' . (int)$variantId;
+            } elseif ($productType === 'variable') {
+                $variantClause = 'AND sol.product_variant_id IS NOT NULL AND sol.product_variant_id > 0';
+            } else {
+                $variantClause = 'AND (sol.product_variant_id IS NULL OR sol.product_variant_id = 0)';
+            }
+
+            $excludeClause = $excludeLineId > 0 ? 'AND sol.id <> ' . (int)$excludeLineId : '';
+            $statuses = "'" . implode("','", self::OPEN_SO_STATUSES) . "'";
+
+            $shipped = $this->db->tableExists('delivery_order_lines') && $this->db->tableExists('delivery_orders')
+                ? "LEFT JOIN (
+                        SELECT dol.sales_order_line_id AS line_id, SUM(dol.qty_to_ship) AS shipped
+                        FROM delivery_order_lines dol
+                        JOIN delivery_orders dor ON dor.id = dol.delivery_order_id
+                        WHERE dor.status IN ('confirmed','shipped','delivered')
+                        GROUP BY dol.sales_order_line_id
+                   ) d ON d.line_id = sol.id"
+                : '';
+            $shippedExpr = $shipped !== '' ? 'COALESCE(d.shipped, 0)' : '0';
+
+            $sql = "SELECT COALESCE(SUM(GREATEST(sol.quantity - {$shippedExpr}, 0)), 0) AS demand
+                    FROM sales_order_lines sol
+                    JOIN sales_orders so ON so.id = sol.sales_order_id AND so.deleted_at IS NULL
+                    {$shipped}
+                    WHERE sol.product_id = ?
+                      AND sol.deleted_at IS NULL
+                      AND so.status IN ({$statuses})
+                      {$variantClause}
+                      {$excludeClause}";
+
+            $row = $this->db->query($sql, [$productId])->getRowArray();
+
+            return max(0.0, (float)($row['demand'] ?? 0));
+        } catch (\Throwable $e) {
+            // Never block a read on this: fall back to "nothing reserved".
+            return 0.0;
+        }
     }
 
     /**

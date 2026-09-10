@@ -130,6 +130,9 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                     </a>
                 <?php endif; ?>
             <?php elseif (!empty($readyToShip)): ?>
+                <span class="badge bg-success-subtle text-success-emphasis so-ready-badge" title="All order lines are in stock and ready to ship">
+                    <i class="bi bi-check-circle-fill me-1"></i>Ready to Ship
+                </span>
                 <form method="post" action="<?= site_url('delivery-orders/create-from-sales-order/' . (int)$order['id']) ?>" class="d-inline">
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn-sm btn-success">
@@ -137,7 +140,12 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                     </button>
                 </form>
             <?php endif; ?>
-            
+
+            <a href="<?= site_url('sales-orders/warehouse-print/' . ($order['public_id'] ?? $order['id'])) ?>" target="_blank"
+               class="btn btn-sm btn-outline-secondary" title="Print warehouse pick list">
+                <i class="bi bi-printer me-1"></i>Pick List
+            </a>
+
             <!-- Invoice button: surfaced on the header, not buried in the Actions menu -->
             <?php if (!empty($invoice['id'])): ?>
                 <a href="<?= site_url('customer-invoices/view/' . $invoice['id']) ?>" class="btn btn-sm btn-success">
@@ -232,12 +240,11 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                         </li>
                         <?php if (empty($hasAutoRfq)): ?>
                             <li>
-                                <form method="post" action="<?= site_url('sales-orders/create-purchase-drafts/' . ($order['id'] ?? 0)) ?>" class="m-0">
-                                    <?= csrf_field() ?>
-                                    <button type="submit" class="dropdown-item text-warning fw-semibold" title="Create draft RFQs for shortage items">
-                                        <i class="bi bi-magic me-2"></i>Auto-Create RFQ Drafts
-                                    </button>
-                                </form>
+                                <button type="button" id="btnAutoCreateRfq" class="dropdown-item text-warning fw-semibold"
+                                        data-url="<?= site_url('sales-orders/create-purchase-drafts/' . ($order['id'] ?? 0)) ?>"
+                                        title="Create draft RFQs for shortage items">
+                                    <i class="bi bi-magic me-2"></i>Auto-Create RFQ Drafts
+                                </button>
                             </li>
                         <?php else: ?>
                             <li>
@@ -322,6 +329,8 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
             </ul>
         </div>
         <?php endif; ?>
+
+        <div id="soAutoRfqResult"></div>
 
         <div class="so-lines-heading d-flex justify-content-between align-items-center gap-3">
             <div class="so-panel-heading mb-0">
@@ -424,7 +433,9 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                                     <?php if ($shortage > 0): ?>
                                         <span>−<?= number_format($shortage, 2) ?></span>
                                     <?php else: ?>
-                                        <span class="text-muted">—</span>
+                                        <span class="badge bg-success-subtle text-success-emphasis" title="Fully in stock">
+                                            <i class="bi bi-check-circle-fill me-1"></i>In stock
+                                        </span>
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
@@ -471,6 +482,10 @@ Sales Order <?= esc($order['order_number'] ?? ('SO-' . ($order['id'] ?? ''))) ?>
                 </tbody>
             </table>
         </div>
+
+        <?php if (! empty($preparationExecution['blocks'])): ?>
+            <?= $this->include('sales_orders/partials/preparation_execution') ?>
+        <?php endif; ?>
 
         <div class="so-totals-wrap">
             <div class="table-responsive">
@@ -782,7 +797,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // endpoint refuses the request if the order is no longer a draft.
 document.getElementById('refreshCustomerAddressBtn')?.addEventListener('click', function () {
     const btn = this;
-    if (!confirm('Update this order's address & contact from the customer profile?')) return;
+    if (!confirm("Update this order's address & contact from the customer profile?")) return;
     btn.disabled = true;
     fetch(btn.dataset.url, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(r => r.json().catch(() => ({ success: false, error: 'Unexpected response' })))
@@ -792,6 +807,72 @@ document.getElementById('refreshCustomerAddressBtn')?.addEventListener('click', 
             btn.disabled = false;
         })
         .catch(() => { alert('Could not update the address.'); btn.disabled = false; });
+});
+
+// Auto-Create RFQ Drafts: runs via AJAX so success/failure (including missing
+// vendor assignments) is shown inline immediately, without relying on a
+// full-page redirect + flash message.
+function soEscapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
+document.getElementById('btnAutoCreateRfq')?.addEventListener('click', function () {
+    const btn = this;
+    const resultBox = document.getElementById('soAutoRfqResult');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating RFQ drafts…';
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': window.csrfHash || ''
+        }
+    })
+        .then(r => r.json().catch(() => ({ success: false, message: 'Unexpected server response.' })))
+        .then(resp => {
+            let html = '';
+            if (resp.success) {
+                html = '<div class="alert alert-success so-document-alert d-flex align-items-center gap-2">'
+                    + '<i class="bi bi-check-circle-fill"></i><div>' + soEscapeHtml(resp.message || 'RFQ drafts created.') + '</div></div>';
+            } else if (resp.nothing_to_purchase) {
+                html = '<div class="alert alert-info so-document-alert d-flex align-items-center gap-2">'
+                    + '<i class="bi bi-info-circle-fill"></i><div>' + soEscapeHtml(resp.message || 'Nothing to purchase.') + '</div></div>';
+            } else {
+                html = '<div class="alert alert-danger so-document-alert">'
+                    + '<div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Could not create RFQ drafts</div>'
+                    + '<div class="small mb-2">' + soEscapeHtml(resp.message || 'Something went wrong.') + '</div>';
+                if (Array.isArray(resp.missing_vendor_items) && resp.missing_vendor_items.length) {
+                    html += '<ul class="mb-0 ps-3">';
+                    resp.missing_vendor_items.forEach(function (mv) {
+                        const code = soEscapeHtml(mv.code || 'Unknown Product');
+                        html += '<li>' + code;
+                        if (mv.product_id) {
+                            html += ' - <a href="<?= site_url('products/') ?>' + mv.product_id + '/edit">Assign Vendor</a>';
+                        }
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+                html += '</div>';
+            }
+            resultBox.innerHTML = html;
+
+            if (resp.success && (resp.created_count ?? 0) > 0) {
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        })
+        .catch(() => {
+            resultBox.innerHTML = '<div class="alert alert-danger so-document-alert">Could not reach the server. Please try again.</div>';
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        });
 });
 </script>
 <?= $this->endSection() ?>

@@ -223,6 +223,25 @@ class SalesOrders extends BaseController
         // Prefer quotation lines when available (carry discount/tax/product metadata)
         $lines = $quoteWithLines['lines'] ?? $this->lineModel->where('sales_order_id', $orderId)->findAll();
 
+        // Quotation lines carry quotation_lines.id, not sales_order_lines.id. Stock
+        // reservation (exclude_sales_order_line_id) and the preparation panel both
+        // key off the real sales order line — with the wrong id, this order's own
+        // demand never gets excluded from itself and "available" collapses to 0.
+        if (!empty($quoteWithLines['lines'])) {
+            $realLines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('id', 'ASC')->findAll();
+            $realIdsByProduct = [];
+            foreach ($realLines as $rl) {
+                $key = (int) ($rl['product_id'] ?? 0) . ':' . (int) ($rl['product_variant_id'] ?? 0);
+                $realIdsByProduct[$key][] = (int) $rl['id'];
+            }
+            foreach ($lines as &$ln) {
+                $key = (int) ($ln['product_id'] ?? 0) . ':' . (int) ($ln['product_variant_id'] ?? 0);
+                $ln['quotation_line_id'] = $ln['id'] ?? null;
+                $ln['id'] = (int) (! empty($realIdsByProduct[$key]) ? array_shift($realIdsByProduct[$key]) : 0);
+            }
+            unset($ln);
+        }
+
         // Enrich lines with product metadata and calculated discount/tax similar to quotation view
         try {
             $productIds = array_values(array_unique(array_filter(array_map('intval', array_column($lines, 'product_id')))));
@@ -591,7 +610,9 @@ class SalesOrders extends BaseController
                 
                 if ($isStockable && $productId) {
                     $pType = isset($fullProduct) ? strtolower((string)($fullProduct['product_type'] ?? '')) : '';
-                    $availability = $inventoryService->getAvailability($productId, $variantId, $pType);
+                    $availability = $inventoryService->getAvailability($productId, $variantId, $pType, [
+                        'exclude_sales_order_line_id' => $lineId,
+                    ]);
                     $line['on_hand'] = $availability['on_hand'] ?? 0;
                     $line['reserved'] = $availability['reserved'] ?? 0;
                     $line['available'] = $availability['available'] ?? 0;
@@ -757,16 +778,21 @@ class SalesOrders extends BaseController
             }
             $unitWeightRaw = (float)($line['unit_weight'] ?? ($line['weight'] ?? 0));
             $weightUnit = $line['weight_unit'] ?? null;
+            $vid = (int)($line['product_variant_id'] ?? 0);
+            $pid = (int)($line['product_id'] ?? 0);
             if ($unitWeightRaw <= 0) {
-                $vid = (int)($line['product_variant_id'] ?? 0);
-                $pid = (int)($line['product_id'] ?? 0);
                 if ($vid > 0 && !empty($variantWeights[$vid]['weight'])) {
                     $unitWeightRaw = (float)$variantWeights[$vid]['weight'];
-                    $weightUnit = $variantWeights[$vid]['unit'] ?: $weightUnit;
                 } elseif ($pid > 0 && !empty($productWeights[$pid]['weight'])) {
                     $unitWeightRaw = (float)$productWeights[$pid]['weight'];
-                    $weightUnit = $productWeights[$pid]['unit'] ?: $weightUnit;
                 }
+            }
+            // The product/variant record owns the unit; a stale unit stored on the
+            // line (older documents defaulted to KG) must not inflate the weight.
+            if ($vid > 0 && !empty($variantWeights[$vid]['unit'])) {
+                $weightUnit = $variantWeights[$vid]['unit'];
+            } elseif ($pid > 0 && !empty($productWeights[$pid]['unit'])) {
+                $weightUnit = $productWeights[$pid]['unit'];
             }
             $unitWeightKg = $toKg($unitWeightRaw, $weightUnit);
             if ($unitWeightKg <= 0) {
@@ -810,7 +836,282 @@ class SalesOrders extends BaseController
 
         $data['orderId'] = $orderId;
 
+        try {
+            $data['preparationExecution'] = $this->buildPreparationExecutionData($data['lines'], $orderId);
+        } catch (\Throwable $e) {
+            log_message('error', 'buildPreparationExecutionData failed for SO ' . $orderId . ': ' . $e->getMessage());
+            $data['preparationExecution'] = [];
+        }
+
+        try {
+            $data['vendorJobPos'] = \Config\Database::connect()->table('purchase_order_lines pol')
+                ->select('po.id, po.po_number, po.status, po.total, v.name AS vendor_name, COUNT(pol.id) AS lot_count')
+                ->join('purchase_orders po', 'po.id = pol.po_id', 'inner')
+                ->join('vendors v', 'v.id = po.vendor_id', 'left')
+                ->join('vendor_send_notes vsn', 'vsn.id = pol.vendor_send_note_id', 'inner')
+                ->where('vsn.sales_order_id', $orderId)
+                ->groupBy('po.id, po.po_number, po.status, po.total, v.name')
+                ->orderBy('po.id', 'DESC')
+                ->get()->getResultArray();
+        } catch (\Throwable $_) {
+            $data['vendorJobPos'] = [];
+        }
+
         return view('sales_orders/view', $data);
+    }
+
+    /**
+     * For each distinct product on the order that has an active Preparation Profile,
+     * build the ordered list of steps with their current execution status (from
+     * processing_records). A step can only be actioned once the base material for
+     * that product is actually in stock (uses the same availability figures the
+     * order lines table already shows) — otherwise it's shown as blocked with a
+     * pointer to the existing Auto-Create RFQ action.
+     * Read-only / best-effort: any failure here must never break the SO page.
+     */
+    private function buildPreparationExecutionData(array $lines, int $orderId): array
+    {
+        $profileModel = new \App\Models\PreparationProfileModel();
+        $stepModel = new \App\Models\PreparationStepModel();
+        $recordModel = new \App\Models\ProcessingRecordModel();
+        $componentModel = new \App\Models\PreparationComponentModel();
+        $db = \Config\Database::connect();
+
+        $vendorModel = new \App\Models\VendorModel();
+        $vendorsById = [];
+        foreach ($vendorModel->where('is_active', 1)->orderBy('name', 'ASC')->findAll() as $v) {
+            $vendorsById[(int) $v['id']] = $v;
+        }
+
+        // "Send to vendor" destination points — only places that belong to a vendor
+        // (branch / office / working setup). Our own storage locations are never
+        // valid drop-off points, so they are excluded outright; the modal narrows
+        // this list further to the vendor picked on the form.
+        $destLocations = (new \App\Models\WarehouseLocationModel())->getVendorLocations();
+
+        $blocks = [];
+        $seenProducts = [];
+
+        foreach ($lines as $line) {
+            $productId = (int) ($line['product_id'] ?? 0);
+            if ($productId <= 0 || isset($seenProducts[$productId])) {
+                continue;
+            }
+            $seenProducts[$productId] = true;
+
+            $profiles = $profileModel->getByProduct($productId, true);
+            $profile = $profiles[0] ?? null;
+            if (! $profile) {
+                continue;
+            }
+
+            $steps = $stepModel->getByProfile((int) $profile['id']);
+            if (empty($steps)) {
+                continue;
+            }
+
+            $lineQty = (float) ($line['quantity'] ?? 0);
+            $components = $componentModel->getByProfileWithProduct((int) $profile['id']);
+
+            // Once a batch has entered step 1 (sent to a vendor, or done in-house),
+            // that quantity has already left the material's raw stock — it's WIP or
+            // finished, not something still waiting to be picked. Only the portion of
+            // the line that hasn't started yet can still be "short" on material.
+            $firstStepId = (int) ($steps[0]['id'] ?? 0);
+            $firstStepSummary = $firstStepId > 0
+                ? $recordModel->qtySummaryForStep($productId, $firstStepId)
+                : ['done' => 0.0, 'open' => 0.0];
+            $notYetStarted = max(0.0, $lineQty - (float) $firstStepSummary['done'] - (float) $firstStepSummary['open']);
+
+            // Readiness is about the MATERIAL the profile consumes, not the finished
+            // product sitting on the order line — a made-to-order item is always 0 on
+            // hand, so the line's own availability would block every step forever.
+            // Fall back to the line figures only when the profile lists no components.
+            // Non-stockable lines (services) never carry 'available'/'shortage'.
+            $available = array_key_exists('available', $line) ? (float) $line['available'] : null;
+            $shortage = array_key_exists('shortage', $line) ? (float) $line['shortage'] : 0.0;
+            $materialProductId = $productId;
+            $materialName = '';
+            $materialCode = '';
+            $materialNeeded = $notYetStarted;
+
+            $requiredComponents = array_values(array_filter($components, static function ($c) {
+                return empty($c['is_optional']) && (int) ($c['product_id'] ?? 0) > 0;
+            }));
+            if ($requiredComponents && $notYetStarted > 0.0001) {
+                $availabilityService = new \App\Services\InventoryAvailabilityService();
+                $shortage = 0.0;
+                $available = null;
+                foreach ($requiredComponents as $comp) {
+                    $compProductId = (int) $comp['product_id'];
+                    $compVariantId = (int) ($comp['variant_id'] ?? 0) ?: null;
+                    $needQty = (float) ($comp['qty_per_unit'] ?? 0) * $notYetStarted;
+                    $av = $availabilityService->getAvailability($compProductId, $compVariantId);
+                    if ($av === null) {
+                        continue; // service component — nothing to hold in stock
+                    }
+                    $compAvailable = (float) ($av['available'] ?? 0);
+                    $shortage += max(0.0, $needQty - $compAvailable);
+                    if ($available === null) {
+                        // ponytail: the in-house/vendor modal picks one location, so it
+                        // follows the first required component. Split per component only
+                        // if multi-material profiles start needing separate pick lists.
+                        $available = $compAvailable;
+                        $materialProductId = $compProductId;
+                        $materialName = trim(($comp['product_name'] ?? '') . ' ' . ($comp['variant_name'] ?? ''));
+                        $materialCode = $comp['product_code'] ?? '';
+                        $materialNeeded = $needQty;
+                    }
+                }
+            } elseif ($requiredComponents) {
+                // Whole line already started/finished — nothing left to source.
+                $firstComp = $requiredComponents[0];
+                $materialProductId = (int) $firstComp['product_id'];
+                $materialName = trim(($firstComp['product_name'] ?? '') . ' ' . ($firstComp['variant_name'] ?? ''));
+                $materialCode = $firstComp['product_code'] ?? '';
+            }
+            $materialReady = $shortage <= 0.0001;
+
+            // Only the locations that actually hold stock of the material —
+            // never the full location list.
+            $stockLocations = [];
+            if ($materialReady) {
+                $stockLocations = $db->table('stock_balances sb')
+                    ->select('sb.location_id, SUM(sb.quantity) as qty, wl.name as location_name, w.name as warehouse_name')
+                    ->join('warehouse_locations wl', 'wl.id = sb.location_id', 'left')
+                    ->join('warehouses w', 'w.id = wl.warehouse_id', 'left')
+                    ->where('sb.product_id', $materialProductId)
+                    ->groupBy('sb.location_id, wl.name, w.name')
+                    ->having('SUM(sb.quantity) >', 0)
+                    ->orderBy('qty', 'DESC')
+                    ->get()->getResultArray();
+            }
+
+            $stepRows = [];
+            foreach ($steps as $step) {
+                $stepId = (int) $step['id'];
+
+                $latestRecord = $recordModel
+                    ->where('product_id', $productId)
+                    ->where('step_id', $stepId)
+                    ->orderBy('id', 'DESC')
+                    ->first();
+
+                $options = $db->table('step_execution_options')
+                    ->where('step_id', $stepId)
+                    ->where('is_active !=', 0)
+                    ->get()->getResultArray();
+
+                $allowInhouse = false;
+                $vendorOptions = [];
+                foreach ($options as $opt) {
+                    if ($opt['execution_type'] === 'inhouse') {
+                        $allowInhouse = true;
+                    } elseif ($opt['execution_type'] === 'vendor') {
+                        $vid = (int) ($opt['vendor_id'] ?? 0);
+                        if ($vid > 0 && isset($vendorsById[$vid])) {
+                            $vendorOptions[$vid] = [
+                                'vendor_id' => $vid,
+                                'vendor_name' => $vendorsById[$vid]['name'],
+                                'service_price' => $opt['service_price'],
+                                'currency' => $opt['currency'] ?: 'PKR',
+                                'is_default' => ! empty($opt['is_default']),
+                            ];
+                        }
+                    }
+                }
+
+                // A step can be executed in partial batches, so "done" is measured in
+                // quantity against the line, not by the latest record's status.
+                $qtySummary = $recordModel->qtySummaryForStep($productId, $stepId);
+                $doneQty = (float) $qtySummary['done'];
+                $openQty = (float) $qtySummary['open'];
+                $remainingQty = max(0.0, $lineQty - $doneQty - $openQty);
+
+                $openRecord = $recordModel
+                    ->where('product_id', $productId)
+                    ->where('step_id', $stepId)
+                    ->whereIn('status', ['in_progress', 'ready_for_qc'])
+                    ->orderBy('id', 'DESC')
+                    ->first();
+
+                $stepRows[] = [
+                    'step' => $step,
+                    'status' => $latestRecord['status'] ?? 'not_started',
+                    'record' => $openRecord ?: ($latestRecord ?: null),
+                    'allow_inhouse' => $allowInhouse,
+                    'vendor_options' => array_values($vendorOptions),
+                    'done_qty' => $doneQty,
+                    'open_qty' => $openQty,
+                    'remaining_qty' => $remainingQty,
+                    'is_done' => $lineQty > 0 && $doneQty + 0.0001 >= $lineQty,
+                ];
+            }
+
+            // What is physically sitting with vendors right now, so the page can
+            // offer to pull it back or hand it to somebody else.
+            $openShipments = $db->table('vendor_send_notes vsn')
+                ->select('vsn.id, vsn.reference_no, vsn.vendor_id, vsn.step_id, vsn.qty, vsn.qty_rerouted, vsn.to_location_id, v.name AS vendor_name, ps.name AS step_name')
+                ->select('COALESCE((SELECT SUM(vri.qty_received) FROM vendor_receive_notes vrn
+                            INNER JOIN vendor_receive_items vri ON vri.receive_note_id = vrn.id
+                            WHERE vrn.send_note_id = vsn.id), 0) AS qty_received', false)
+                ->join('vendors v', 'v.id = vsn.vendor_id', 'left')
+                ->join('preparation_steps ps', 'ps.id = vsn.step_id', 'left')
+                ->where('vsn.product_id', $productId)
+                ->where('vsn.sales_order_id', $orderId)
+                ->whereIn('vsn.status', ['draft', 'sent'])
+                ->orderBy('vsn.id', 'ASC')
+                ->get()->getResultArray();
+
+            foreach ($openShipments as $i => $shipment) {
+                $outstanding = (float) $shipment['qty'] - (float) $shipment['qty_received'] - (float) ($shipment['qty_rerouted'] ?? 0);
+                if ($outstanding <= 0.0001) {
+                    unset($openShipments[$i]);
+                    continue;
+                }
+                $openShipments[$i]['outstanding_qty'] = $outstanding;
+
+                // Reroute may only go to a vendor this step is configured for.
+                $openShipments[$i]['vendor_options'] = [];
+                foreach ($stepRows as $stepRow) {
+                    if ((int) $stepRow['step']['id'] === (int) $shipment['step_id']) {
+                        $openShipments[$i]['vendor_options'] = array_values(array_filter(
+                            $stepRow['vendor_options'],
+                            static fn ($v) => (int) $v['vendor_id'] !== (int) $shipment['vendor_id']
+                        ));
+                        break;
+                    }
+                }
+            }
+            $openShipments = array_values($openShipments);
+
+            $product = $db->table('products')->select('id, name, code')->where('id', $productId)->get()->getRowArray();
+
+            $blocks[] = [
+                'product_id' => $productId,
+                'product_name' => $product['name'] ?? ('Product #' . $productId),
+                'product_code' => $product['code'] ?? '',
+                'sales_order_line_id' => (int) ($line['id'] ?? 0),
+                'line_qty' => $lineQty,
+                'available' => $available,
+                'shortage' => max(0.0, $shortage),
+                'material_ready' => $materialReady,
+                'material_product_id' => $materialProductId,
+                'material_name' => $materialName,
+                'material_code' => $materialCode,
+                'material_needed' => $materialNeeded,
+                'profile' => $profile,
+                'components' => $components,
+                'steps' => $stepRows,
+                'stock_locations' => $stockLocations,
+                'open_shipments' => $openShipments,
+            ];
+        }
+
+        return [
+            'blocks' => $blocks,
+            'dest_locations' => $destLocations,
+        ];
     }
 
     public function pdf($id)
@@ -2471,8 +2772,9 @@ class SalesOrders extends BaseController
 
             $errorMsg = $result['message'] ?? 'Failed to create RFQ drafts';
             if ($isAjax) {
-                return $this->response->setStatusCode(422)->setJSON([
+                return $this->response->setStatusCode(empty($result['nothing_to_purchase']) ? 422 : 200)->setJSON([
                     'success' => false,
+                    'nothing_to_purchase' => ! empty($result['nothing_to_purchase']),
                     'message' => $errorMsg,
                     'missing_vendor_items' => $result['missing_vendor_items'] ?? [],
                 ]);

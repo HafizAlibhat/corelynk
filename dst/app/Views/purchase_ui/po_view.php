@@ -646,7 +646,9 @@ Purchase Order
   }
   const docTypeEl = document.getElementById('poDocType');
   if (docTypeEl) {
-    if (isServiceDoc) {
+    if (p.document_type === 'subcontract_job') {
+      docTypeEl.innerHTML = `<span class="po-doc-type-badge service" title="Goods already moved through Vendor Receiving — this PO only tracks the vendor's job charge, billed automatically as lots are received."><i class="bi bi-scissors"></i>Vendor Job Work (Billed from Vendor Receiving — no GRN)</span>`;
+    } else if (isServiceDoc) {
       docTypeEl.innerHTML = `<span class="po-doc-type-badge service"><i class="bi bi-truck"></i>Service PO (Shipping / Non-Stock)</span>`;
     } else if (isMixedDoc) {
       docTypeEl.innerHTML = `<span class="po-doc-type-badge mixed"><i class="bi bi-layers"></i>Mixed PO (Stock + Service)</span>`;

@@ -193,16 +193,16 @@
         <?php endif; ?>
 
         <!-- Customer search -->
-        <div class="row g-3 mb-3">
-            <div class="col-md-5">
-                <div class="cl-field-head">
-                    <label class="form-label mb-0" for="customer_search">Customer</label>
-                    <?php if (!$customerLockedOnEdit): ?>
-                        <button type="button" id="btn-add-customer" class="btn btn-outline-primary cl-field-action"><i class="bi bi-plus-circle"></i>Add New Customer</button>
-                    <?php endif; ?>
-                </div>
+        <div class="row g-3 mb-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="customer_search">Customer</label>
                 <div class="position-relative">
-                    <input type="text" id="customer_search" class="form-control" placeholder="Search customer by code or name" value="<?= esc($defaultCustomerSearch) ?>" <?= $customerLockedOnEdit ? 'readonly' : '' ?>>
+                    <div class="input-group">
+                        <input type="text" id="customer_search" class="form-control" placeholder="Search customer by code or name" value="<?= esc($defaultCustomerSearch) ?>" <?= $customerLockedOnEdit ? 'readonly' : '' ?>>
+                        <?php if (!$customerLockedOnEdit): ?>
+                            <button type="button" id="btn-add-customer" class="btn btn-outline-primary" title="Add New Customer"><i class="bi bi-plus-circle me-1"></i>New</button>
+                        <?php endif; ?>
+                    </div>
                     <input type="hidden" name="customer_id" id="customer_id" value="<?= esc($defaultCustomerId) ?>">
                     <div id="customer_list" class="card autocomplete-list" style="position:absolute;z-index:1200;display:none;width:100%"></div>
                     <div class="invalid-feedback d-block" id="error-customer"><?= esc(session()->getFlashdata('form_errors')['customer_id'] ?? '') ?></div>
@@ -211,11 +211,28 @@
                     <?php endif; ?>
                 </div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Price List</label>
-                <select name="price_list_id" id="price_list_id" class="form-select">
+            <div class="col-md-2">
+                <label class="form-label" for="price_list_id">Price List</label>
+                <select name="price_list_id" id="price_list_id" class="form-select" data-selected="<?= (int)($quote['price_list_id'] ?? 0) ?>">
                     <option value="">Default</option>
+                    <?php foreach (($priceListOptions ?? []) as $plOpt): ?>
+                        <option value="<?= (int)$plOpt['id'] ?>" <?= (int)($quote['price_list_id'] ?? 0) === (int)$plOpt['id'] ? 'selected' : '' ?>><?= esc($plOpt['name']) ?></option>
+                    <?php endforeach; ?>
                 </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="payment_term_id">Payment Terms</label>
+                <div class="input-group">
+                <select name="payment_term_id" id="payment_term_id" class="form-select">
+                    <option value="">Single due date</option>
+                    <?php foreach (($paymentTermOptions ?? []) as $ptOpt): ?>
+                        <option value="<?= (int)$ptOpt['id'] ?>" <?= (int)($quote['payment_term_id'] ?? 0) === (int)$ptOpt['id'] ? 'selected' : '' ?>><?= esc($ptOpt['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if (service('policy')->isAdmin()): ?>
+                    <button type="button" class="btn btn-outline-primary" id="btn-add-payment-term" title="Add payment term"><i class="bi bi-plus-circle"></i></button>
+                <?php endif; ?>
+                </div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Date (DD-MM-YYYY)</label>
@@ -418,7 +435,7 @@
                                         <input type="hidden" name="lines[<?= (int)$idx ?>][weight_unit]" class="weight-unit" value="<?= esc($weightUnit) ?>">
                                         <input type="text" name="lines[<?= (int)$idx ?>][description]" class="form-control form-control-sm line-desc" placeholder="Description" style="padding:0.2rem 0.35rem;font-size:0.75rem;height:auto;line-height:1.2;" value="<?= esc($desc) ?>">
                                         <div class="product-meta" style="font-size:0.65rem;color:#7a8fa3;margin-top:1px;line-height:1.3;">
-                                            Stock: <span class="meta-stock">0</span> | Vendor: <span class="meta-vendor">-</span> | Weight: <span class="meta-weight"><?= esc($unitWeight) ?></span>
+                                            Stock: <span class="meta-stock">0</span> | Vendor: <span class="meta-vendor">-</span> | Weight: <span class="meta-weight"><?= esc(\App\Helpers\WeightHelper::formatShipment(\App\Helpers\WeightHelper::toKilograms((float)$unitWeight, $weightUnit))) ?></span>
                                         </div>
                                     </div>
                                     <div class="line-errors small text-danger mt-1" style="font-size:0.65rem;"></div>
@@ -473,7 +490,7 @@
                                 <input type="hidden" name="lines[0][weight_unit]" class="weight-unit" value="KG">
                                 <input type="text" name="lines[0][description]" class="form-control form-control-sm line-desc" placeholder="Description" style="padding:0.2rem 0.35rem;font-size:0.75rem;height:auto;line-height:1.2;">
                                 <div class="product-meta" style="font-size:0.65rem;color:#7a8fa3;margin-top:1px;line-height:1.3;">
-                                    Stock: <span class="meta-stock">0</span> | Vendor: <span class="meta-vendor">-</span> | Weight: <span class="meta-weight">0</span>
+                                    Stock: <span class="meta-stock">0</span> | Vendor: <span class="meta-vendor">-</span> | Weight: <span class="meta-weight">0 g</span>
                                 </div>
                             </div>
                             <div class="line-errors small text-danger mt-1" style="font-size:0.65rem;"></div>
@@ -659,9 +676,83 @@
     </div>
 </div>
 
+<!-- Quick Add Payment Term modal (admin only: payment terms are master data) -->
+<?php if (service('policy')->isAdmin()): ?>
+<div class="modal fade" id="modal-add-payment-term" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-calendar2-check me-2"></i>Add Payment Term</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger d-none" id="modal-pt-error"></div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="modal-pt-name" placeholder="e.g. 50% Advance / 50% Net 30" autocomplete="off">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Code <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="modal-pt-code" placeholder="ADV50_NET30" autocomplete="off">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Net days</label>
+                        <input type="number" min="0" class="form-control" id="modal-pt-net-days" value="0">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" id="modal-pt-description" placeholder="Shown as a short note on the quotation" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-3 mb-1">
+                    <div class="fw-semibold">Instalments</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="modal-pt-add-row"><i class="bi bi-plus-circle me-1"></i>Add Instalment</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle" id="modal-pt-rows">
+                        <thead>
+                            <tr>
+                                <th style="width:34%;">Label</th>
+                                <th style="width:16%;">%</th>
+                                <th style="width:28%;">Due from</th>
+                                <th style="width:14%;">Days</th>
+                                <th style="width:8%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="form-text">Percentages must add up to exactly 100. Leave the table empty for a single payment due in "net days".</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="modal-pt-save"><i class="bi bi-check-lg me-1"></i>Save Payment Term</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<template id="modal-pt-row-template">
+    <tr>
+        <td><input type="text" class="form-control form-control-sm pt-label" placeholder="Advance Payment"></td>
+        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm pt-pct" placeholder="50"></td>
+        <td>
+            <select class="form-select form-select-sm pt-basis">
+                <option value="invoice_date">Invoice date</option>
+                <option value="delivery_date">Delivery date</option>
+            </select>
+        </td>
+        <td><input type="number" min="0" class="form-control form-control-sm pt-days" value="0"></td>
+        <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger pt-del-row"><i class="bi bi-trash"></i></button></td>
+    </tr>
+</template>
+<?php endif; ?>
+
 <!-- Quick Add Customer modal -->
 <div class="modal fade" id="modal-add-customer" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-person-plus-fill me-2"></i>Add New Customer</h5>
@@ -683,13 +774,41 @@
                         <input type="text" class="form-control" id="modal-add-customer-phone" placeholder="Optional" autocomplete="off">
                     </div>
                 </div>
-                <div class="mb-1">
+                <div class="mb-3">
                     <label class="form-label">Email</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-envelope"></i></span>
                         <input type="email" class="form-control" id="modal-add-customer-email" placeholder="Optional" autocomplete="off">
                     </div>
                 </div>
+                <hr>
+                <div class="row g-3">
+                    <div class="col-md-12">
+                        <label class="form-label">Address</label>
+                        <input type="text" class="form-control" id="modal-add-customer-line1" placeholder="Street address" autocomplete="off">
+                    </div>
+                    <div class="col-md-12">
+                        <input type="text" class="form-control" id="modal-add-customer-line2" placeholder="Address line 2 (optional)" autocomplete="off">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Country</label>
+                        <select class="form-select" id="modal-add-customer-country">
+                            <option value="">-- Select country --</option>
+                            <?php foreach (($countries ?? []) as $ctry): ?>
+                                <option value="<?= (int)$ctry['id'] ?>"><?= esc($ctry['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">City</label>
+                        <input type="text" class="form-control" id="modal-add-customer-city" placeholder="City" autocomplete="off">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Postal Code</label>
+                        <input type="text" class="form-control" id="modal-add-customer-postal" placeholder="Optional" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-text mt-2">Saved as the customer's default billing and shipping address; it can be edited later on the customer profile.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

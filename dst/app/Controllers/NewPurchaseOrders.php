@@ -1474,13 +1474,20 @@ class NewPurchaseOrders extends BaseController
         } catch (\Throwable $_) {}
 
         $lineCount = count($lines);
+        // A subcontract job PO (vendor labor/job charges — coloring, plasma
+        // coating, etc.) is billing-only: the physical goods already moved
+        // stock through the vendor receive flow, so it must never offer a
+        // GRN "Receive" action, no matter what its lines look like.
+        $isSubcontractJobPo = (($po['source_type'] ?? 'material') === 'subcontract_job');
         $po['service_line_count'] = $serviceLineCount;
         $po['inventory_line_count'] = $inventoryLineCount;
-        $po['is_service_document'] = $lineCount > 0 && $inventoryLineCount === 0 && $serviceLineCount > 0;
-        $po['is_mixed_document'] = $lineCount > 0 && $inventoryLineCount > 0 && $serviceLineCount > 0;
-        $po['document_type'] = $po['is_service_document']
-            ? 'service'
-            : ($po['is_mixed_document'] ? 'mixed' : 'inventory');
+        $po['is_service_document'] = $isSubcontractJobPo || ($lineCount > 0 && $inventoryLineCount === 0 && $serviceLineCount > 0);
+        $po['is_mixed_document'] = !$isSubcontractJobPo && $lineCount > 0 && $inventoryLineCount > 0 && $serviceLineCount > 0;
+        $po['document_type'] = $isSubcontractJobPo
+            ? 'subcontract_job'
+            : ($po['is_service_document']
+                ? 'service'
+                : ($po['is_mixed_document'] ? 'mixed' : 'inventory'));
         $po['suppress_receiving'] = (bool)$po['is_service_document'];
 
         return $this->response->setJSON(['success' => true, 'data' => ['po' => $po, 'lines' => $lines]]);

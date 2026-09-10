@@ -15,7 +15,7 @@ class QuotationModel extends Model
     protected $returnType = 'array';
     protected $allowedFields = [
         'quote_number','company_id','customer_id','price_list_id','issue_date','expires_at','status','currency','quote_currency','base_currency',
-        'subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax','tax_total','shipping_amount','total_weight','total','notes','customer_snapshot','created_by','public_id','created_at','updated_at','deleted_at'
+        'subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax','tax_total','shipping_amount','total_weight','total','payment_term_id','notes','customer_snapshot','created_by','public_id','created_at','updated_at','deleted_at'
     ];
 
     protected $useTimestamps = true;
@@ -284,7 +284,9 @@ class QuotationModel extends Model
                 : (isset($ln['weight']) && (float)$ln['weight'] > 0
                     ? (float)$ln['weight']
                     : ($variantWeight > 0 ? $variantWeight : 0.0));
-            $weightUnit = $ln['weight_unit'] ?? ($prod['weight_unit'] ?? 'kg');
+            // The product record owns the weight unit: a stale unit stored on the
+            // line (older quotations defaulted to KG) must never inflate the total.
+            $weightUnit = $prod['weight_unit'] ?? ($ln['weight_unit'] ?? 'kg');
             $unitWeightKg = WeightHelper::toKilograms($unitWeight, $weightUnit);
             $totalWeight += $unitWeightKg * ((float)$ln['quantity']);
         }
@@ -531,6 +533,7 @@ class QuotationModel extends Model
             if (in_array('quote_number', $tableCols) && !empty($data['quote_number'])) $insertRow['quote_number'] = $data['quote_number'];
             if (in_array('status', $tableCols)) $insertRow['status'] = $data['status'] ?? 'draft';
             if (in_array('price_list_id', $tableCols) && isset($data['price_list_id'])) $insertRow['price_list_id'] = $data['price_list_id'];
+            if (in_array('payment_term_id', $tableCols) && isset($data['payment_term_id'])) $insertRow['payment_term_id'] = $data['payment_term_id'];
             if (in_array('subtotal', $tableCols)) $insertRow['subtotal'] = $data['subtotal'] ?? 0;
             if (in_array('discount', $tableCols)) $insertRow['discount'] = $data['discount'] ?? ($data['document_discount_value'] ?? 0);
             if (in_array('tax', $tableCols)) $insertRow['tax'] = $data['tax'] ?? ($data['tax_total'] ?? 0);
@@ -656,7 +659,7 @@ class QuotationModel extends Model
                 $productWeights[$pid] = isset($r['unit_weight']) && (float)$r['unit_weight'] > 0
                     ? (float)$r['unit_weight']
                     : (isset($r['weight']) ? (float)$r['weight'] : 0.0);
-                $productWeightUnits[$pid] = $r['weight_unit'] ?? 'kg';
+                $productWeightUnits[$pid] = ($r['weight_unit'] ?? '') ?: 'kg';
             }
         }
 
@@ -749,7 +752,10 @@ class QuotationModel extends Model
             $productWeight = $pid > 0 ? (float)($productWeights[$pid] ?? 0.0) : 0.0;
             $unitWeightRaw = $lineWeight > 0 ? $lineWeight : ($variantWeight > 0 ? $variantWeight : $productWeight);
 
-            $weightUnit = $line['weight_unit'] ?? ($pid > 0 ? ($productWeightUnits[$pid] ?? 'kg') : 'kg');
+            // Product-owned unit wins over whatever the form posted, so a stale
+            // 'KG' on a line cannot turn 30 g into 30 kg.
+            $weightUnit = ($pid > 0 ? ($productWeightUnits[$pid] ?? null) : null)
+                ?? ($line['weight_unit'] ?? 'kg');
             $unitWeightKg = WeightHelper::toKilograms((float)$unitWeightRaw, (string)$weightUnit);
             $totalWeight += $unitWeightKg * $qty;
 

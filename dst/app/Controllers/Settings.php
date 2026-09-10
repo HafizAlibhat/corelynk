@@ -643,6 +643,60 @@ class Settings extends BaseController
         return redirect()->to(base_url('settings') . '#payment-terms')->with('success', $message);
     }
 
+    /**
+     * JSON sibling of savePaymentTerm() for the quick-add popup on documents.
+     * Same validation and milestone normalisation, no redirect.
+     */
+    public function apiCreatePaymentTerm()
+    {
+        $input = $this->request->getJSON(true) ?? $this->request->getPost();
+
+        $name = trim((string)($input['name'] ?? ''));
+        $code = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', (string)($input['code'] ?? '')));
+        if ($name === '' || $code === '') {
+            return $this->response->setStatusCode(400)
+                ->setJSON(['success' => false, 'message' => 'Name and code are required.']);
+        }
+
+        $model = new PaymentTermModel();
+        if ($model->where('code', $code)->countAllResults() > 0) {
+            return $this->response->setStatusCode(409)
+                ->setJSON(['success' => false, 'message' => 'A payment term with that code already exists.']);
+        }
+
+        $normalized = [];
+        if (! empty($input['milestones']) && is_array($input['milestones'])) {
+            $normalized = (new InvoicePaymentScheduleService())->normalizeMilestones($input['milestones']);
+            if (empty($normalized)) {
+                return $this->response->setStatusCode(400)
+                    ->setJSON(['success' => false, 'message' => 'Instalment percentages must be above zero and add up to exactly 100%.']);
+            }
+        }
+
+        $netDays = (int)($input['net_days'] ?? 0);
+        if (! empty($normalized)) {
+            $netDays = max(array_column($normalized, 'offset_days'));
+        }
+
+        $id = $model->insert([
+            'name'                => $name,
+            'code'                => $code,
+            'description'         => trim((string)($input['description'] ?? '')) ?: null,
+            'net_days'            => max(0, $netDays),
+            'discount_days'       => 0,
+            'discount_percentage' => 0.00,
+            'milestones'          => ! empty($normalized) ? json_encode($normalized) : null,
+            'is_active'           => 1,
+        ]);
+
+        if (! $id) {
+            return $this->response->setStatusCode(500)
+                ->setJSON(['success' => false, 'message' => 'Failed to create payment term.']);
+        }
+
+        return $this->response->setJSON(['success' => true, 'id' => (int)$id, 'name' => $name]);
+    }
+
     /** Deactivate a payment term; invoices already issued on it keep their schedule. */
     public function deletePaymentTerm($id = null)
     {

@@ -749,6 +749,7 @@ class Products extends BaseController
                     'unit' => $p['unit'] ?? 'pcs',
                     'unit_weight' => (float)$unitWeight,
                     'weight' => (float)$unitWeight,
+                    'weight_unit' => $p['weight_unit'] ?? 'KG',
                     'sale_price' => isset($p['sale_price']) ? (float)$p['sale_price'] : 0.0,
                     'special_price' => isset($p['special_price']) ? (float)$p['special_price'] : null,
                     'sale_currency' => $p['sale_currency'] ?? '',
@@ -1249,6 +1250,12 @@ class Products extends BaseController
             $data['detailed_type'] = $this->request->getPost('detailed_type') ?: 'storable';
         }
 
+        // Supply route: buy (needs a vendor) / manufacture (made in-house)
+        if ($this->productsHasColumn('manufacturing_route')) {
+            $route = $this->request->getPost('manufacturing_route');
+            $data['manufacturing_route'] = $route === 'manufacture' ? 'manufacture' : 'buy';
+        }
+
         // Service policy: when a service product is invoiceable (ordered_qty or delivered_qty)
         if ($this->productsHasColumn('service_policy')) {
             $detailedType = $data['detailed_type'] ?? ($this->request->getPost('detailed_type') ?: 'storable');
@@ -1592,6 +1599,12 @@ class Products extends BaseController
         // Odoo-like product detailed_type: storable / consumable / service
         if ($this->productsHasColumn('detailed_type')) {
             $data['detailed_type'] = $this->request->getPost('detailed_type') ?: ($product['detailed_type'] ?? 'storable');
+        }
+
+        // Supply route: buy (needs a vendor) / manufacture (made in-house)
+        if ($this->productsHasColumn('manufacturing_route')) {
+            $route = $this->request->getPost('manufacturing_route') ?: ($product['manufacturing_route'] ?? 'buy');
+            $data['manufacturing_route'] = $route === 'manufacture' ? 'manufacture' : 'buy';
         }
 
         // Service policy: when a service product is invoiceable (ordered_qty or delivered_qty)

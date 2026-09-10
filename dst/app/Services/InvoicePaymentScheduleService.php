@@ -258,6 +258,68 @@ class InvoicePaymentScheduleService
     }
 
     /**
+     * Read-only instalment schedule for a document that carries no payments of
+     * its own (a quotation): same row shape as summary() so the invoice view
+     * and PDF blocks render it unchanged, with everything still payable.
+     *
+     * Nothing is stored — a quote's schedule is a proposal, it only becomes
+     * real rows once the invoice is raised.
+     */
+    public function preview(?int $termId, float $total, ?string $issueDate = null, ?string $deliveryDate = null): array
+    {
+        $empty = [
+            'has_schedule' => false, 'rows' => [], 'term' => null,
+            'total' => 0.0, 'paid' => 0.0, 'due' => 0.0,
+            'now_due' => 0.0, 'now_due_label' => '', 'now_due_percentage' => 0.0,
+        ];
+
+        $milestones = $this->milestonesForTerm($termId ?: null);
+        if (empty($milestones)) {
+            return $empty;
+        }
+
+        // No anchor date means no concrete due dates: a quotation's schedule is
+        // a proposal, so it reads relative ("30 days from invoice date").
+        $total     = round($total, 2);
+        $issueDate = trim((string)$issueDate);
+        $amounts   = $this->splitAmounts($milestones, $total);
+
+        $rows = [];
+        foreach ($milestones as $i => $m) {
+            $dueDate = $this->dueDateFor($m, $issueDate, $deliveryDate);
+            $rows[] = [
+                'seq'         => $i + 1,
+                'label'       => $m['label'],
+                'percentage'  => (float)$m['percentage'],
+                'amount'      => $amounts[$i],
+                'paid'        => 0.0,
+                'balance'     => $amounts[$i],
+                'status'      => 'pending',
+                'basis'       => $m['basis'],
+                'offset_days' => (int)$m['offset_days'],
+                'due_date'    => $dueDate,
+                'due_label'   => $this->dueLabel($m, $dueDate),
+                'is_overdue'  => false,
+                'paid_on'     => null,
+            ];
+        }
+
+        $first = $rows[0];
+
+        return [
+            'has_schedule' => true,
+            'rows'         => $rows,
+            'term'         => $termId ? $this->termModel->find($termId) : null,
+            'total'        => round(array_sum(array_column($rows, 'amount')), 2),
+            'paid'         => 0.0,
+            'due'          => round(array_sum(array_column($rows, 'amount')), 2),
+            'now_due'      => (float)$first['amount'],
+            'now_due_label' => (string)$first['label'],
+            'now_due_percentage' => (float)$first['percentage'],
+        ];
+    }
+
+    /**
      * (Re)build the stored schedule for an invoice. Safe to call repeatedly:
      * it replaces the rows wholesale, and stored rows carry no paid state.
      */

@@ -181,6 +181,74 @@ class Vendors extends BaseController
             log_message('error', 'Vendors::show summary load failed: ' . $e->getMessage());
         }
 
+        // What this vendor supplies us, and its price — products/variants where
+        // this vendor is named directly, never borrowed from a sibling variant.
+        $vendorProducts = [];
+        try {
+            $productModel = new \App\Models\ProductModel();
+            $variantModel = new \App\Models\ProductVariantModel();
+
+            $ownProducts = $productModel
+                ->select('id, name, detailed_type, vendor_price, vendor_currency')
+                ->where('vendor_id', $numericId)
+                ->where('is_active', 1)
+                ->orderBy('name', 'ASC')
+                ->findAll();
+            foreach ($ownProducts as $p) {
+                $vendorProducts[] = [
+                    'label' => $p['name'],
+                    'is_service' => ($p['detailed_type'] ?? '') === 'service',
+                    'price' => (float) ($p['vendor_price'] ?? 0),
+                    'currency' => $p['vendor_currency'] ?: 'PKR',
+                ];
+            }
+
+            $ownVariants = $variantModel
+                ->select('product_variants.name, product_variants.vendor_price, product_variants.vendor_currency, products.name as product_name, products.detailed_type')
+                ->join('products', 'products.id = product_variants.product_id')
+                ->where('product_variants.vendor_id', $numericId)
+                ->orderBy('products.name', 'ASC')
+                ->findAll();
+            foreach ($ownVariants as $v) {
+                $vendorProducts[] = [
+                    'label' => $v['product_name'] . ' - ' . $v['name'],
+                    'is_service' => ($v['detailed_type'] ?? '') === 'service',
+                    'price' => (float) ($v['vendor_price'] ?? 0),
+                    'currency' => $v['vendor_currency'] ?: 'PKR',
+                ];
+            }
+            usort($vendorProducts, static fn ($a, $b) => strcmp($a['label'], $b['label']));
+        } catch (\Throwable $e) {
+            log_message('error', 'Vendors::show products load failed: ' . $e->getMessage());
+        }
+
+        // Purchase trend: qty and value bought each month, so it can be charted over a chosen range.
+        $trendFrom = $this->request->getGet('trend_from') ?: date('Y-m-01', strtotime('-5 months'));
+        $trendTo = $this->request->getGet('trend_to') ?: date('Y-m-d');
+        $purchaseTrend = [];
+        $purchaseTotals = ['qty' => 0.0, 'value' => 0.0];
+        try {
+            if ($db->tableExists('purchase_order_lines')) {
+                $rows = $db->query(
+                    "SELECT DATE_FORMAT(po.order_date, '%Y-%m') AS ym,
+                            COALESCE(SUM(pol.qty), 0) AS qty,
+                            COALESCE(SUM(pol.line_total), 0) AS value
+                     FROM purchase_order_lines pol
+                     JOIN purchase_orders po ON po.id = pol.po_id
+                     WHERE po.vendor_id = ? AND po.order_date BETWEEN ? AND ?
+                     GROUP BY ym ORDER BY ym ASC",
+                    [$numericId, $trendFrom, $trendTo]
+                )->getResultArray();
+                foreach ($rows as $r) {
+                    $purchaseTrend[] = ['month' => $r['ym'], 'qty' => (float) $r['qty'], 'value' => (float) $r['value']];
+                    $purchaseTotals['qty'] += (float) $r['qty'];
+                    $purchaseTotals['value'] += (float) $r['value'];
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Vendors::show trend load failed: ' . $e->getMessage());
+        }
+
         $data = $this->setPageData([
             'page_title' => 'Vendor Details - ' . $vendor['name'],
             'vendor' => $vendor,
@@ -190,6 +258,11 @@ class Vendors extends BaseController
             'recent_bills' => $recentBills,
             'recent_payments' => $recentPayments,
             'recent_pos' => $recentPOs,
+            'vendor_products' => $vendorProducts,
+            'purchase_trend' => $purchaseTrend,
+            'purchase_totals' => $purchaseTotals,
+            'trend_from' => $trendFrom,
+            'trend_to' => $trendTo,
             'can_edit' => $this->hasPermission('vendors.edit'),
             'can_delete' => $this->hasPermission('vendors.delete')
         ]);

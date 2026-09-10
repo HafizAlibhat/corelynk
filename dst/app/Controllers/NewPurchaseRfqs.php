@@ -1824,6 +1824,60 @@ class NewPurchaseRfqs extends BaseController
      * Delete RFQ and its lines permanently.
      * POST required.
      */
+    /**
+     * Duplicate an RFQ: exact copy of the lines and totals as a new draft.
+     */
+    public function duplicate($id = null)
+    {
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'POST required']);
+        }
+
+        $rfq = (new \App\Models\PurchaseRfqModel())->findByPublicIdOrId($id);
+        if (! $rfq) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'RFQ not found']);
+        }
+
+        $db = \Config\Database::connect();
+        try {
+            // Keep the original lead time, measured from today.
+            $deliveryDate = null;
+            if (! empty($rfq['delivery_date']) && ! empty($rfq['rfq_date'])) {
+                $days         = (int) ((strtotime($rfq['delivery_date']) - strtotime($rfq['rfq_date'])) / 86400);
+                $deliveryDate = date('Y-m-d', strtotime('+' . max(0, $days) . ' days'));
+            }
+
+            $newId = (new \App\Services\DocumentDuplicator())->duplicate('purchase_rfqs', (int) $rfq['id'], [
+                'rfq_number'    => $this->generateNextRfqNumber($db),
+                'public_id'     => null,
+                'status'        => 'draft',
+                'rfq_date'      => date('Y-m-d'),
+                'delivery_date' => $deliveryDate,
+                'cancel_reason' => null,
+                'cancelled_at'  => null,
+                'cancelled_by'  => null,
+                'created_by'    => session()->get('user_id'),
+            ], ['purchase_rfq_lines' => 'rfq_id']);
+
+            DocumentLogger::log(DocumentLogger::TYPE_PURCHASE_RFQ, $newId, DocumentLogger::ACTION_CREATED, [
+                'source'        => 'duplicate',
+                'copied_from'   => (int) $rfq['id'],
+                'copied_number' => (string) ($rfq['rfq_number'] ?? ''),
+            ]);
+
+            return $this->response->setJSON([
+                'success'    => true,
+                'id'         => $newId,
+                'rfq_number' => $db->table('purchase_rfqs')->select('rfq_number')->where('id', $newId)->get()->getRowArray()['rfq_number'] ?? '',
+                'redirect'   => site_url('purchases/rfq/' . $newId),
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'RFQ duplicate failed: ' . $e->getMessage());
+
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => 'Failed to duplicate RFQ']);
+        }
+    }
+
     public function delete($id = null)
     {
         if (strtolower($this->request->getMethod()) !== 'post') {

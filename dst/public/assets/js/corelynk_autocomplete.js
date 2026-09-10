@@ -1,3 +1,12 @@
+
+// Weight display: 1 kg and above reads in kg, anything lighter reads in grams,
+// whatever unit the product is stored in. Mirrors WeightHelper::formatShipment().
+window.formatWeightDisplay = window.formatWeightDisplay || function (value, unit) {
+    var perKg = { G: 1000, GRAM: 1000, GRAMS: 1000, MG: 1000000, LB: 1 / 0.453592, LBS: 1 / 0.453592, OZ: 1 / 0.0283495, TON: 0.001, TONNE: 0.001 };
+    var kg = (parseFloat(value) || 0) / (perKg[String(unit || 'KG').toUpperCase()] || 1);
+    if (kg < 0) kg = 0;
+    return kg >= 1 ? (Math.round(kg * 1000) / 1000) + ' kg' : Math.round(kg * 1000) + ' g';
+};
 // CoreLynk universal autocomplete module
 // NOTE: This is a behavior-preserving extraction of the quotation product autocomplete.
 // Do NOT change selectors/UX without auditing quotation + purchases.
@@ -307,7 +316,7 @@
 
             var ms = tr.querySelector('.meta-stock'); setField(ms, nvl(product.current_stock, product.stock, product.available_stock, product.quantity, product.qty, 0));
             var mv = tr.querySelector('.meta-vendor'); setField(mv, product.vendor_name || product.vendor_id || '-');
-            var mw = tr.querySelector('.meta-weight'); setField(mw, nvl(product.unit_weight, product.weight, product.weight_net, product.weight_gross, 0) + ' ' + weightUnit);
+            var mw = tr.querySelector('.meta-weight'); setField(mw, window.formatWeightDisplay(weightVal, weightUnit));
 
             try {
                 ['.line-qty', '.line-price', '.unit-weight'].forEach(function(sel){
@@ -533,15 +542,20 @@
             if (!term) { list.style.display = 'none'; latestResults = []; closeOverlayPanel(); return; }
 
             var customerId = document.getElementById('customer_id') ? document.getElementById('customer_id').value : '';
+            // The document's price list and currency decide the price offered.
+            var priceListEl = document.getElementById('price_list_id');
+            var currencyEl = document.querySelector('select[name="currency"]');
+            var pricingQs = '&price_list_id=' + encodeURIComponent(priceListEl ? (priceListEl.value || '') : '')
+                + '&currency=' + encodeURIComponent(currencyEl ? (currencyEl.value || '') : '');
             var url;
             try {
                 if (context === 'purchase') {
                     url = base + '/products/search?q=' + encodeURIComponent(term);
                 } else {
-                    url = base + '/quotations/search-products?q=' + encodeURIComponent(term) + '&customer_id=' + encodeURIComponent(customerId);
+                    url = base + '/quotations/search-products?q=' + encodeURIComponent(term) + '&customer_id=' + encodeURIComponent(customerId) + pricingQs;
                 }
             } catch (e) {
-                url = base + '/quotations/search-products?q=' + encodeURIComponent(term) + '&customer_id=' + encodeURIComponent(customerId);
+                url = base + '/quotations/search-products?q=' + encodeURIComponent(term) + '&customer_id=' + encodeURIComponent(customerId) + pricingQs;
             }
 
             fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })

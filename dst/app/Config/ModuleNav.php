@@ -18,6 +18,7 @@ return [
             ['label' => 'Customer Invoices',   'icon' => 'bi-file-earmark-text', 'route' => '/customer-invoices',  'perm' => 'invoices.read'],
             ['label' => 'POS Register',        'icon' => 'bi-display',           'route' => '/pos',                'perm' => 'pos.read'],
             ['label' => 'Product Categories',  'icon' => 'bi-tags',              'route' => '/product-categories', 'perm' => 'products.edit'],
+            ['label' => 'Price Lists',         'icon' => 'bi-cash-coin',         'route' => '/price-lists',        'perm' => 'settings.read'],
             ['label' => 'Reports',             'icon' => 'bi-bar-chart',         'route' => '/reports',            'perm' => 'reports.read'],
         ],
     ],
@@ -40,6 +41,7 @@ return [
         'icon' => 'bi-boxes',
         'submodules' => [
             ['label' => 'Stock',            'icon' => 'bi-boxes',            'route' => '/inventory/stock',       'perm' => 'inventory.read'],
+            ['label' => 'Locations',        'icon' => 'bi-signpost-split',   'route' => '/inventory/locations',   'perm' => 'inventory.read'],
             ['label' => 'Adjustments',      'icon' => 'bi-sliders',          'route' => '/inventory/adjustments', 'perm' => 'inventory.edit'],
             ['label' => 'Stock Transfers',  'icon' => 'bi-arrow-left-right', 'route' => '/inventory/transfers',   'perm' => 'inventory.edit'],
             ['label' => 'Product Ledger',   'icon' => 'bi-journal-text',     'route' => '/product-ledger',        'perm' => 'products.read'],
@@ -66,6 +68,7 @@ return [
             ['label' => 'Ready to Ship',     'icon' => 'bi-check-circle',      'route' => '/warehouse/ready-to-ship',          'perm' => 'delivery_orders.read'],
             ['label' => 'Pending Shipments', 'icon' => 'bi-hourglass-split',   'route' => '/delivery-orders/pending-followup', 'perm' => 'delivery_orders.read'],
             ['label' => 'Shipped Orders',    'icon' => 'bi-truck-flatbed',     'route' => '/delivery-orders/shipped',          'perm' => 'delivery_orders.read'],
+            ['label' => 'Locations',         'icon' => 'bi-signpost-split',    'route' => '/inventory/locations',              'perm' => 'inventory.read'],
         ],
     ],
     'Finance' => [

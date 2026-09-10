@@ -385,6 +385,12 @@ class CustomerInvoices extends BaseController
         $currency = $order['currency'] ?? ($order['currency_code'] ?? $this->getDefaultSalesCurrency());
         $header['currency_code'] = $currency;
 
+        // The payment plan the customer approved on the quotation carries into
+        // the invoice, so the instalment schedule is not re-picked by hand.
+        if (!empty($quote['payment_term_id'])) {
+            $header['payment_term_id'] = (int)$quote['payment_term_id'];
+        }
+
         $invoiceId = $this->invoiceModel->insert($header);
         if (!$invoiceId) {
             return redirect()->back()->with('error', 'Failed to create invoice');

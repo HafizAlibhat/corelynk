@@ -343,6 +343,19 @@
                                 <div class="form-text small text-muted">Only <strong>Storable</strong> appears in Inventory.</div>
                             </div>
 
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">Supply Route</label>
+                                <?php $mroute = old('manufacturing_route', $product['manufacturing_route'] ?? 'buy'); ?>
+                                <select id="manufacturing_route" name="manufacturing_route" class="form-select form-select-sm">
+                                    <option value="buy" <?= $mroute === 'buy' ? 'selected' : '' ?>>Buy — purchased from a vendor</option>
+                                    <option value="manufacture" <?= $mroute === 'manufacture' ? 'selected' : '' ?>>Manufacture — produced in-house</option>
+                                </select>
+                                <div class="form-text small text-muted">
+                                    <strong>Buy</strong> products need a vendor before auto RFQ generation.
+                                    <strong>Manufacture</strong> products are produced through their preparation profile, so no vendor is required.
+                                </div>
+                            </div>
+
                             <!-- Service Policy (visible only for service products) -->
                             <div class="col-md-6 service-only-field" id="servicePolicyGroup" style="display:none;">
                                 <label class="form-label small mb-1">Invoicing Policy</label>

@@ -107,7 +107,10 @@ class ReadyToShipService
                 }
 
                 if ($productId > 0) {
-                    $availability = $this->inventoryService->getAvailability($productId, $variantId, $productType);
+                    // Exclude this line's own demand, otherwise a line would reserve against itself.
+                    $availability = $this->inventoryService->getAvailability($productId, $variantId, $productType, [
+                        'exclude_sales_order_line_id' => $lineId,
+                    ]);
                     if (is_array($availability)) {
                         $onHand = (float)($availability['on_hand'] ?? 0);
                         $reserved = (float)($availability['reserved'] ?? 0);

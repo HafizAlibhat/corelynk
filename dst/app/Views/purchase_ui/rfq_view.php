@@ -23,6 +23,7 @@ Request for Quotation
         <div class="btn-group">
           <button id="confirmBtn" type="button" class="btn btn-sm btn-success" style="display:none;">Confirm</button>
           <button id="editRfqBtn" type="button" class="btn btn-sm btn-outline-primary" style="display:none;"><i class="bi bi-pencil me-1"></i>Edit</button>
+          <button id="duplicateRfqBtn" type="button" class="btn btn-sm btn-outline-info"><i class="bi bi-files me-1"></i>Duplicate</button>
           <button id="manageTagsBtn" type="button" class="btn btn-sm btn-outline-secondary btn-manage-tags" data-doc-type="purchase_rfq" data-doc-id="" style="display:none;"><i class="bi bi-tags me-1"></i>Tags</button>
           <a id="downloadPdfBtn" href="#" target="_blank" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
           <a id="backLink" href="<?= site_url('newpurchaseui/rfqpo') ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
@@ -108,6 +109,27 @@ Request for Quotation
           }
         });
       }
+      // Duplicate: exact copy of this RFQ as a new draft.
+      const duplicateRfqBtn = document.getElementById('duplicateRfqBtn');
+      if (duplicateRfqBtn) {
+        duplicateRfqBtn.addEventListener('click', async function () {
+          if (!confirm('Create a copy of this RFQ as a new draft?')) return;
+          duplicateRfqBtn.disabled = true;
+          try {
+            const res = await fetch('<?= site_url("new-purchase-rfqs/") ?>' + id + '/duplicate', {
+              method: 'POST',
+              headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const resp = await res.json();
+            if (!res.ok || !resp.success) throw new Error(resp.error || 'Failed to duplicate RFQ');
+            window.location.href = resp.redirect;
+          } catch (e) {
+            alert('Error: ' + (e.message || 'Failed to duplicate RFQ'));
+            duplicateRfqBtn.disabled = false;
+          }
+        });
+      }
+
       // Show Edit button for draft/sent RFQs
       const editRfqBtn = document.getElementById('editRfqBtn');
       if (editRfqBtn && ['draft','sent'].includes((''+status).toLowerCase())) {

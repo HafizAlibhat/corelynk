@@ -99,6 +99,32 @@ class AutoPurchaseSuggestionService
     }
 
     /**
+     * Components of a product's active preparation profile — the materials that
+     * must be bought in order to manufacture it.
+     *
+     * @return array<int,array>
+     */
+    private function getPreparationComponents(int $productId): array
+    {
+        if (! $this->db->tableExists('preparation_profiles') || ! $this->db->tableExists('preparation_components')) {
+            return [];
+        }
+
+        try {
+            return $this->db->table('preparation_components pc')
+                ->select('pc.product_id, pc.variant_id, pc.qty_per_unit')
+                ->join('preparation_profiles pp', 'pp.id = pc.profile_id')
+                ->where('pp.product_id', $productId)
+                ->where('pp.is_active', 1)
+                ->get()
+                ->getResultArray();
+        } catch (\Throwable $e) {
+            log_message('error', 'Failed loading preparation components for product ' . $productId . ': ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
     * Create draft RFQs from Sales Order shortages
      * 
      * @param int $salesOrderId
@@ -189,18 +215,57 @@ class AutoPurchaseSuggestionService
         $shortageLines = [];
         $missingVendorProducts = [];
         $skippedNonStockable = 0;
+        $manufacturedExpanded = 0;
         
+        // Expand order lines into purchasable demand. A manufacture-route product
+        // is produced in-house, so it is never bought itself — the components of
+        // its preparation profile are what must be purchased instead.
+        $demands = [];
         foreach ($lines as $line) {
-            $productId = $line['product_id'] ?? null;
-            $variantId = $line['product_variant_id'] ?? null;
-            $orderedQty = (float)($line['quantity'] ?? 0);
-
-            if (!$productId || $orderedQty <= 0) {
+            $lineProductId = (int)($line['product_id'] ?? 0);
+            $lineQty = (float)($line['quantity'] ?? 0);
+            if ($lineProductId <= 0 || $lineQty <= 0) {
                 continue;
             }
 
+            $lineProduct = $this->productModel->find($lineProductId);
+            if (($lineProduct['manufacturing_route'] ?? 'buy') === 'manufacture') {
+                $manufacturedExpanded++;
+                foreach ($this->getPreparationComponents($lineProductId) as $comp) {
+                    $compProductId = (int)($comp['product_id'] ?? 0);
+                    $compQty = (float)($comp['qty_per_unit'] ?? 0) * $lineQty;
+                    if ($compProductId <= 0 || $compQty <= 0) {
+                        continue;
+                    }
+                    $demands[] = [
+                        'line' => $line,
+                        'product_id' => $compProductId,
+                        'variant_id' => !empty($comp['variant_id']) ? (int)$comp['variant_id'] : null,
+                        'qty' => $compQty,
+                    ];
+                }
+                continue;
+            }
+
+            $demands[] = [
+                'line' => $line,
+                'product_id' => $lineProductId,
+                'variant_id' => !empty($line['product_variant_id']) ? (int)$line['product_variant_id'] : null,
+                'qty' => $lineQty,
+            ];
+        }
+
+        foreach ($demands as $demand) {
+            $line = $demand['line'];
+            $productId = $demand['product_id'];
+            $variantId = $demand['variant_id'];
+            $orderedQty = $demand['qty'];
+
             // Get availability
-            $avail = $this->inventoryService->getAvailability($productId, $variantId);
+            // Stock promised to other open orders is not available to cover this line.
+            $avail = $this->inventoryService->getAvailability($productId, $variantId, '', [
+                'exclude_sales_order_line_id' => (int)($line['id'] ?? 0),
+            ]);
             
             // Skip non-stockable products
             if ($avail === null) {
@@ -208,7 +273,15 @@ class AutoPurchaseSuggestionService
                 continue;
             }
 
-            // Resolve vendor for every stockable line (strict guard before auto generation)
+            $available = (float)($avail['available'] ?? 0);
+            $shortage = max(0, $orderedQty - $available);
+
+            // Only lines that actually need purchasing require a vendor —
+            // a fully-stocked line without a vendor must not block the RFQ run.
+            if ($shortage <= 0) {
+                continue;
+            }
+
             $product = $this->productModel->find($productId);
             $vendorId = null;
             $variantData = null;
@@ -241,13 +314,11 @@ class AutoPurchaseSuggestionService
 
             if ($vendorId === null) {
                 $missingVendorProducts[] = [
+                    'product_id' => $productId,
                     'code' => $product['code'] ?? $product['name'] ?? ('Product #' . $productId),
                 ];
                 continue;
             }
-
-            $available = (float)($avail['available'] ?? 0);
-            $shortage = max(0, $orderedQty - $available);
 
             if ($shortage > 0) {
                 // Purchase cost, most specific source first. The SO unit price is a
@@ -316,7 +387,9 @@ class AutoPurchaseSuggestionService
         if (empty($shortageLines)) {
             $message = 'No purchase orders can be created. ';
             
-            if ($skippedNonStockable > 0) {
+            if ($manufacturedExpanded > 0) {
+                $message .= $manufacturedExpanded . ' item(s) are manufactured in-house, and their preparation-profile materials are already in stock.';
+            } elseif ($skippedNonStockable > 0) {
                 $message .= 'All shortage items are non-stockable (services/virtual products).';
             } else {
                 $message .= 'All items have sufficient stock.';
@@ -325,7 +398,9 @@ class AutoPurchaseSuggestionService
             return [
                 'success' => false,
                 'created_pos' => [],
-                'message' => $message
+                'message' => $message,
+                // Not a failure: there is simply nothing left to purchase.
+                'nothing_to_purchase' => true,
             ];
         }
 

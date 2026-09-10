@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Order RI-S0063 - Corelynk</title>
+    <meta name="csrf-token" content="5b3d8c1f6c6aeaa34956dab0acb34a42">
+    <base href="http://192.168.100.110/corelynk/">
+    <script>
+        window.APP_BASE = window.APP_BASE || 'http://192.168.100.110/corelynk';
+    </script>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Manrope matches the rounded, high-legibility SaaS reference typography. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Accounting Dashboard Styles -->
+        <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/accounting-dashboard.css">
+    <!-- Fallback duplicate (root-relative) in case base_url misconfigured -->
+    <link rel="stylesheet" href="/corelynk/public/assets/css/accounting-dashboard.css" onerror="this.remove()">
+        <!-- Universal List/Table Styles -->
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/style.css?v=2">
+    <!-- Select2 (searchable selects) -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/product-image-hover-preview.css?v=1">
+    <script src="http://192.168.100.110/corelynk/assets/js/theme-engine.js?v=9" defer></script>
+    <!-- Speed: avoid blocking on third-party CDNs. Chart.js is now loaded lazily only on pages that need it. -->
+    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <!-- jQuery (required by Select2) and Select2 will be initialized at the end of the page -->
+
+    <script>
+        // Early theme application to avoid FOUC and ensure correct mode before paint
+        (function() {
+            try {
+                var designTheme = localStorage.getItem('corelynk_design_theme_v1');
+                var pref = localStorage.getItem('global_theme_pref') || 'light';
+                var dark = designTheme
+                    ? designTheme === 'graphite-dark'
+                    : pref === 'dark' || (pref === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                document.documentElement.setAttribute('data-cl-theme', designTheme || (dark ? 'graphite-dark' : 'corelynk-enterprise'));
+                if (dark) {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    document.addEventListener('DOMContentLoaded', function(){ document.body.classList.add('theme-dark'); });
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                    document.addEventListener('DOMContentLoaded', function(){ document.body.classList.remove('theme-dark'); });
+                }
+            } catch(e) { /* ignore */ }
+        })();
+    </script>
+
+    <!-- Select2 dark-theme fixes: ensure searchable selects fit the app dark theme -->
+    <style>
+        body.theme-dark .select2-container--default .select2-selection--single,
+        body.theme-dark .select2-container--default .select2-selection--multiple {
+            background: var(--gray-50) !important;
+            border-color: var(--gray-300) !important;
+            color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-container--default .select2-selection__rendered {
+            color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-container--default .select2-selection__arrow b {
+            border-top-color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-dropdown {
+            background: var(--white) !important;
+            color: var(--gray-600) !important;
+            border-color: var(--gray-300) !important;
+        }
+
+        body.theme-dark .select2-results__option--highlighted,
+        body.theme-dark .select2-results__option[aria-selected="true"] {
+            background: var(--gray-100) !important;
+            color: var(--gray-700) !important;
+        }
+
+        body.theme-dark .select2-search--dropdown .select2-search__field,
+        body.theme-dark .select2-search--inline .select2-search__field {
+            background: transparent !important;
+            color: var(--gray-600) !important;
+        }
+
+        body.theme-dark .select2-container--default .select2-selection__placeholder {
+            color: var(--gray-500) !important;
+        }
+
+        .select2-container .select2-selection--single { height: calc(1.5em + 0.75rem); }
+        .select2-container .select2-selection__rendered { line-height: calc(1.5em + 0.75rem); }
+    </style>
+        <!-- Shared shell assets load last so page styles cannot create a second navigation design. -->
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/design-system.css?v=36">
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/components/list-view.css?v=2">
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/components/detail-view.css?v=2">
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/shell-navigation.css?v=1">
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/sidebar-navigation.css?v=3">
+    <!-- Loaded last: single owner of the top bar and the shell grid geometry. -->
+    <link rel="stylesheet" href="http://192.168.100.110/corelynk/assets/css/top-navigation.css?v=3">
+    <script src="http://192.168.100.110/corelynk/assets/js/list-view.js?v=1" defer></script>
+</head>
+<body>
+    <a class="cl-skip-link" href="#mainContent">Skip to page content</a>
+        <header class="cl-topbar" id="clTopBar">
+  <div class="cl-topbar-inner">
+    <a class="cl-topbar-brand" href="http://192.168.100.110/corelynk/">
+      <span class="cl-brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+      <span class="cl-topbar-brand-name">CoreLynk</span>
+    </a>
+
+    <nav class="cl-topbar-nav" aria-label="Module navigation">
+      <a class="cl-topbar-link" href="http://192.168.100.110/corelynk/">
+        <i class="bi bi-grid-1x2" aria-hidden="true"></i><span>Dashboard</span>
+      </a>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link active" type="button" id="topnav-sales" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-bag" aria-hidden="true"></i><span>Sales</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-sales">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/products">
+                  <i class="bi bi-box-seam" aria-hidden="true"></i><span>Products</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/customers">
+                  <i class="bi bi-people" aria-hidden="true"></i><span>Customers</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/documents">
+                  <i class="bi bi-files" aria-hidden="true"></i><span>Quote / Sale Orders</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/document-studio">
+                  <i class="bi bi-easel" aria-hidden="true"></i><span>Document Studio</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item active" href="http://192.168.100.110/corelynk/sales-orders" aria-current="page">
+                  <i class="bi bi-receipt" aria-hidden="true"></i><span>Sales Orders</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/customer-invoices">
+                  <i class="bi bi-file-earmark-text" aria-hidden="true"></i><span>Customer Invoices</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/pos">
+                  <i class="bi bi-display" aria-hidden="true"></i><span>POS Register</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/product-categories">
+                  <i class="bi bi-tags" aria-hidden="true"></i><span>Product Categories</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/price-lists">
+                  <i class="bi bi-cash-coin" aria-hidden="true"></i><span>Price Lists</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/reports">
+                  <i class="bi bi-bar-chart" aria-hidden="true"></i><span>Reports</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-purchases" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-cart-check" aria-hidden="true"></i><span>Purchases</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-purchases">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/newpurchaseui/rfqpo">
+                  <i class="bi bi-arrow-left-right" aria-hidden="true"></i><span>RFQ / PO</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/purchase-orders">
+                  <i class="bi bi-cart4" aria-hidden="true"></i><span>Purchase Orders</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/newpurchaseui/grn">
+                  <i class="bi bi-box-seam" aria-hidden="true"></i><span>Goods Receipt Notes</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/new-purchase-grns/list">
+                  <i class="bi bi-journal-text" aria-hidden="true"></i><span>GRN List</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/vendor-bills">
+                  <i class="bi bi-receipt" aria-hidden="true"></i><span>Vendor Bills</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/vendor-payments/pay">
+                  <i class="bi bi-wallet2" aria-hidden="true"></i><span>Pay Vendor Bills</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/cheques">
+                  <i class="bi bi-cash-stack" aria-hidden="true"></i><span>Vendor Payments</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/vendors">
+                  <i class="bi bi-truck" aria-hidden="true"></i><span>Vendors</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/subcontract-orders">
+                  <i class="bi bi-building-gear" aria-hidden="true"></i><span>Subcontracting</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/gate_passes">
+                  <i class="bi bi-door-open" aria-hidden="true"></i><span>Gate Passes</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-inventory" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-boxes" aria-hidden="true"></i><span>Inventory</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-inventory">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/inventory/stock">
+                  <i class="bi bi-boxes" aria-hidden="true"></i><span>Stock</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/inventory/locations">
+                  <i class="bi bi-signpost-split" aria-hidden="true"></i><span>Locations</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/inventory/adjustments">
+                  <i class="bi bi-sliders" aria-hidden="true"></i><span>Adjustments</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/inventory/transfers">
+                  <i class="bi bi-arrow-left-right" aria-hidden="true"></i><span>Stock Transfers</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/product-ledger">
+                  <i class="bi bi-journal-text" aria-hidden="true"></i><span>Product Ledger</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/products">
+                  <i class="bi bi-box-seam" aria-hidden="true"></i><span>Products</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/product-categories">
+                  <i class="bi bi-tags" aria-hidden="true"></i><span>Categories</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/product-attributes">
+                  <i class="bi bi-list-ul" aria-hidden="true"></i><span>Attributes</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-production" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-gear" aria-hidden="true"></i><span>Production</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-production">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/work-orders">
+                  <i class="bi bi-list-check" aria-hidden="true"></i><span>Work Orders</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/batches">
+                  <i class="bi bi-diagram-3" aria-hidden="true"></i><span>Batches</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/subcontract-orders">
+                  <i class="bi bi-building-gear" aria-hidden="true"></i><span>Subcontracting</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/gate_passes">
+                  <i class="bi bi-door-open" aria-hidden="true"></i><span>Gate Passes</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/logs">
+                  <i class="bi bi-clipboard-data" aria-hidden="true"></i><span>Production Logs</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/processes">
+                  <i class="bi bi-gear" aria-hidden="true"></i><span>Processes</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-warehouse" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-truck" aria-hidden="true"></i><span>Warehouse</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-warehouse">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/warehouse/incoming-shipments">
+                  <i class="bi bi-box-arrow-in-down" aria-hidden="true"></i><span>Incoming Stock</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/warehouse/ready-to-ship">
+                  <i class="bi bi-check-circle" aria-hidden="true"></i><span>Ready to Ship</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/delivery-orders/pending-followup">
+                  <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Pending Shipments</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/delivery-orders/shipped">
+                  <i class="bi bi-truck-flatbed" aria-hidden="true"></i><span>Shipped Orders</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/inventory/locations">
+                  <i class="bi bi-signpost-split" aria-hidden="true"></i><span>Locations</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-finance" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-currency-dollar" aria-hidden="true"></i><span>Finance</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-finance">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/customer-invoices">
+                  <i class="bi bi-file-earmark-text" aria-hidden="true"></i><span>Customer Invoices</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/vendor-payments/pay">
+                  <i class="bi bi-wallet2" aria-hidden="true"></i><span>Vendor Bill Payment</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/cheques">
+                  <i class="bi bi-receipt" aria-hidden="true"></i><span>Cheques &amp; Payments</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/journals">
+                  <i class="bi bi-journal-text" aria-hidden="true"></i><span>Journals</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/accounts">
+                  <i class="bi bi-list-ul" aria-hidden="true"></i><span>Accounts</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/cheques/balances">
+                  <i class="bi bi-cash-stack" aria-hidden="true"></i><span>Balances</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/accounting/trial-balance">
+                  <i class="bi bi-gem" aria-hidden="true"></i><span>Trial Balance</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/settings">
+                  <i class="bi bi-gear" aria-hidden="true"></i><span>Settings</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+                      <div class="dropdown cl-topbar-item">
+          <button class="cl-topbar-link" type="button" id="topnav-hr" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-person-badge" aria-hidden="true"></i><span>HR</span>
+            <i class="bi bi-chevron-down cl-topbar-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu cl-topbar-menu" aria-labelledby="topnav-hr">
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/employees">
+                  <i class="bi bi-person-badge" aria-hidden="true"></i><span>Employees</span>
+                </a>
+              </li>
+                                        <li>
+                <a class="dropdown-item" href="http://192.168.100.110/corelynk/employees/payroll">
+                  <i class="bi bi-cash-stack" aria-hidden="true"></i><span>Salaries</span>
+                </a>
+              </li>
+                      </ul>
+        </div>
+          </nav>
+
+    <!-- Global actions (moved out of the sidebar so one bar owns them) -->
+    <div class="d-flex align-items-center gap-1 nav-actions flex-shrink-0" role="group" aria-label="Global tools">
+      <button id="clMobileGlobalSearch" class="cl-icon-btn cl-mobile-search d-lg-none" type="button" data-cl-search-open title="Search CoreLynk" aria-label="Search CoreLynk">
+        <i class="bi bi-search" aria-hidden="true"></i>
+      </button>
+      <!-- Global Search -->
+      <form class="cl-topbar-search d-none d-lg-flex" action="http://192.168.100.110/corelynk/search" method="get" role="search">
+        <label class="visually-hidden" for="clTopbarSearchInput">Search CoreLynk</label>
+        <i class="bi bi-search cl-topbar-search-icon" aria-hidden="true"></i>
+        <input
+          id="clTopbarSearchInput"
+          name="q"
+          type="search"
+          placeholder="Search resources, SKUs..."
+          autocomplete="off"
+        >
+        <button id="clOpenGlobalSearch" class="cl-topbar-search-advanced" type="button" data-cl-search-open title="Advanced search (Ctrl+K)" aria-label="Open advanced search">
+          <i class="bi bi-command" aria-hidden="true"></i>
+        </button>
+      </form>
+
+      <!-- Quick Create Button (Primary Action) -->
+      <div class="dropdown">
+        <button class="cl-quick-create" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Quick Create Document" id="quickCreateBtn">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end cl-quick-menu" aria-labelledby="quickCreateBtn">
+          <li><h6 class="dropdown-header"><i class="bi bi-plus-circle me-1"></i>Quick Create</h6></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/document-studio"><i class="bi bi-receipt me-2"></i>Quotation</a></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/newpurchaseui/rfqpo"><i class="bi bi-cart-plus me-2"></i>Purchase</a></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/work-orders/create"><i class="bi bi-clipboard-plus me-2"></i>Work Order</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/vendors/create"><i class="bi bi-shop me-2"></i>Vendor</a></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/customers/create"><i class="bi bi-people me-2"></i>Customer</a></li>
+          <li><a class="dropdown-item" href="http://192.168.100.110/corelynk/products/create"><i class="bi bi-box-seam me-2"></i>Product</a></li>
+        </ul>
+      </div>
+
+      <a class="cl-icon-btn" href="http://192.168.100.110/corelynk/#activityCenterCard" title="Activity Center" aria-label="Open activity center">
+        <i class="bi bi-bell" aria-hidden="true"></i>
+      </a>
+
+      <!-- Settings & Theme Dropdown -->
+      <div class="dropdown">
+        <button class="cl-icon-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Settings & Theme" id="settingsBtn">
+          <i class="bi bi-gear-fill"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="settingsBtn">
+          <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/settings"><i class="bi bi-gear me-2"></i>Settings</a></li>
+
+          <!-- Admin-only -->
+                      <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/admin/users"><i class="bi bi-people-fill me-2"></i>Users</a></li>
+            <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/admin/roles"><i class="bi bi-shield-lock me-2"></i>Roles</a></li>
+            <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/admin/audit-log"><i class="bi bi-clock-history me-2"></i>Audit</a></li>
+            <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/admin/mobile-app"><i class="bi bi-phone me-2"></i>Mobile App</a></li>
+          
+          <!-- Theme -->
+          <li><hr class="dropdown-divider my-1"></li>
+          <li><span class="dropdown-item-text small text-muted">Theme</span></li>
+          <li><a class="dropdown-item py-1" href="#" data-theme="auto"><i class="bi bi-laptop me-2"></i>Auto</a></li>
+          <li><a class="dropdown-item py-1" href="#" data-theme="light"><i class="bi bi-brightness-high me-2"></i>Light</a></li>
+          <li><a class="dropdown-item py-1" href="#" data-theme="dark"><i class="bi bi-moon-stars me-2"></i>Dark</a></li>
+        </ul>
+      </div>
+
+      <!-- User Profile -->
+      <div class="dropdown">
+        <button class="cl-icon-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="User Profile & Logout" id="userBtn">
+          <span class="cl-user-avatar" aria-hidden="true">U</span>
+          <span class="cl-user-name">User</span>
+          <i class="bi bi-chevron-down cl-user-chevron" aria-hidden="true"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userBtn">
+          <li><h6 class="dropdown-header small">User</h6></li>
+          <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/auth/mfa-setup"><i class="bi bi-shield-lock me-2"></i>2FA Setup</a></li>
+          <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/auth/change-password"><i class="bi bi-lock me-2"></i>Password</a></li>
+          <li><a class="dropdown-item py-2" href="http://192.168.100.110/corelynk/auth/settings"><i class="bi bi-gear me-2"></i>My Settings</a></li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <li><a class="dropdown-item py-2 text-danger" href="http://192.168.100.110/corelynk/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</header>
+    <div class="app-layout">
+                
+<!-- Global Search Palette -->
+<div id="clGlobalSearchPalette" class="cl-global-palette d-none" aria-hidden="true" data-search-endpoint="http://192.168.100.110/corelynk/search">
+  <div class="cl-global-palette-backdrop" data-close="1"></div>
+  <div class="cl-global-palette-panel" role="dialog" aria-label="Global Search" aria-modal="true">
+    <div class="cl-global-palette-inputwrap">
+      <i class="bi bi-search"></i>
+      <input
+        id="clGlobalSearchInput"
+        type="search"
+        class="form-control"
+        placeholder="Search PO, RFQ, SO, quotation, customer, product..."
+        autocomplete="off"
+      >
+      <button id="clCloseGlobalSearch" type="button" class="cl-global-palette-close" aria-label="Close search">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div id="clGlobalSearchDropdown" class="cl-global-search-dropdown d-none" role="listbox" aria-label="Global search results"></div>
+  </div>
+</div>
+
+<!-- Breadcrumb Bar -->
+
+        <main class="content-wrapper main-content" id="mainContent" tabindex="-1">
+            <!-- Flash Messages -->
+            
+            
+            
+            
+            <!-- Page Content -->
+            
+<div class="card cl-detail-page cl-sales-order-detail">
+    <div class="card-header section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <div class="so-detail-eyebrow">Sales / Order Detail</div>
+            <h3 class="section-title mb-0">Sales Order RI-S0063</h3>
+                        <div class="section-sub so-detail-meta">
+                <span><i class="bi bi-calendar3"></i>09-09-2026</span>
+                <span><i class="bi bi-person"></i>Chef Middle East LLC</span>
+                <span class="so-currency-chip">USD</span>
+            </div>
+                                    <!-- Header shows tags only; everything else lives in the manage-tags modal. -->
+            <div class="so-detail-tags" id="document-tags-sales_order-83"
+                 data-document-type="sales_order" data-document-id="83">
+                <div class="so-tag-chips" id="tag_list_sales_order_83">
+                                    </div>
+            </div>
+
+                    </div>
+        <div class="so-header-actions d-flex align-items-center gap-2 ms-auto">
+            <div class="btn-group btn-group-sm record-nav" role="group" aria-label="Record navigation">
+            <a class="btn btn-outline-secondary" href="http://192.168.100.110/corelynk/sales-orders" title="Back to list" aria-label="Back to list">
+            <i class="bi bi-list-ul"></i>
+        </a>
+                <span class="btn btn-outline-secondary disabled" aria-disabled="true"><i class="bi bi-chevron-left"></i></span>
+        <span class="btn btn-outline-secondary disabled record-nav-count" aria-live="polite">
+        1 / 41    </span>
+            <a class="btn btn-outline-secondary" href="http://192.168.100.110/corelynk/sales-orders/view/0a1a1795-ded6-48e7-b644-3bfd63138421" title="Older record" aria-label="Older record">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary so-tag-btn" data-bs-toggle="modal"
+                        data-bs-target="#tagModal_sales_order_83" title="Manage tags" aria-label="Manage tags">
+                    <i class="bi bi-tag"></i>
+                    <span class="so-tag-count" data-role="count" hidden>0</span>
+                </button>
+                                        <span class="so-status-badge so-status-confirmed">Status: confirmed</span>
+            
+            <!-- Order Progress button (always visible on confirmed orders) -->
+                            <button type="button" class="btn btn-sm btn-outline-info" id="btnOrderProgress"
+                    data-so-id="83"
+                    title="View Order Progress">
+                    <i class="bi bi-diagram-3 me-1"></i>Order Progress
+                </button>
+            
+            <!-- DO button: smart — show View/Draft/Create based on existingDo -->
+                        
+            <!-- Invoice button: surfaced on the header, not buried in the Actions menu -->
+                            <a href="http://192.168.100.110/corelynk/sales-orders/invoice/83" class="btn btn-sm btn-primary">
+                    <i class="bi bi-receipt-cutoff me-1"></i>Create Invoice
+                </a>
+            
+            <!-- Phase-3: Fulfillment Status Badge (derived from PO mappings + GRN receipts) -->
+                        
+            <!-- Professional Actions Dropdown Menu -->
+            <div class="dropdown">
+                <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="actionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-lightning-charge-fill me-1"></i>Actions
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end so-actions-menu" aria-labelledby="actionsDropdown">
+                    <!-- Navigation -->
+                    <li>
+                        <a class="dropdown-item" href="http://192.168.100.110/corelynk/sales-orders">
+                            <i class="bi bi-arrow-left text-secondary me-2"></i>Back to Orders List
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <!-- Invoice Actions (create/view live on the header button) -->
+                    
+                    <li>
+                        <a class="dropdown-item" href="http://192.168.100.110/corelynk/sales-orders/pdf/492ca2ce-fa89-4770-aab8-76b836ba59dc" target="_blank">
+                            <i class="bi bi-file-pdf text-danger me-2"></i>Download Sales Order PDF
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="http://192.168.100.110/corelynk/sales-orders/print/492ca2ce-fa89-4770-aab8-76b836ba59dc" target="_blank" rel="noopener">
+                            <i class="bi bi-printer me-2"></i>Print Sales Order
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="http://192.168.100.110/corelynk/sales-orders/warehouse-document/492ca2ce-fa89-4770-aab8-76b836ba59dc" target="_blank">
+                            <i class="bi bi-box-seam text-warning me-2"></i>Download Warehouse PDF
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item" href="http://192.168.100.110/corelynk/sales-orders/warehouse-print/492ca2ce-fa89-4770-aab8-76b836ba59dc" target="_blank" rel="noopener">
+                            <i class="bi bi-printer text-warning me-2"></i>Print Warehouse Pick List
+                        </a>
+                    </li>
+                    
+                    <!-- Auto-PO Creation (only if shortage exists) -->
+                                            <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <h6 class="dropdown-header text-warning">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>Stock Actions
+                            </h6>
+                        </li>
+                                                    <li>
+                                <button type="button" class="dropdown-item text-secondary" disabled title="RFQ drafts already created for this order">
+                                    <i class="bi bi-check2-circle me-2"></i>RFQ Drafts Created
+                                </button>
+                            </li>
+                                            
+                    <!-- Undo conversion: only while unconfirmed and nothing downstream has happened -->
+                                            <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <form method="post" action="http://192.168.100.110/corelynk/sales-orders/reset-to-quotation/492ca2ce-fa89-4770-aab8-76b836ba59dc" class="m-0 so-reset-to-quote-form">
+                                <input type="hidden" name="csrf_test_name" value="5b3d8c1f6c6aeaa34956dab0acb34a42">                                <button type="submit" class="dropdown-item text-danger" title="Delete this sales order and revert its quotation back to draft">
+                                    <i class="bi bi-arrow-counterclockwise me-2"></i>Reset to Quote
+                                </button>
+                            </form>
+                        </li>
+                                    </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body so-document-body">
+        <div class="so-address-card">
+            <div class="so-panel-heading">
+                <span class="so-panel-icon"><i class="bi bi-geo-alt"></i></span>
+                <div><h5>Address &amp; Contact</h5><p>Customer delivery details</p></div>
+                                    <a href="http://192.168.100.110/corelynk/customers/fb024137-759e-4f0d-8739-068894eb86e8" class="cl-action-icon ms-auto"
+                       title="Open customer profile" aria-label="Open customer profile">
+                        <i class="bi bi-person-lines-fill"></i>
+                    </a>
+                                            </div>
+            <address class="so-address-content">Chef Middle East LLC<br />
+PO Box 26747 Plot 5974875<br />
+ST.73, Opposite LULU Logistics | United Arab Emirates<br />
+Phone: +97148159888<br />
+Mobile: +971 508226811</address>
+        </div>
+
+        <!-- Phase-1: Stock Readiness Alert -->
+                <div class="alert alert-info alert-dismissible fade show d-flex align-items-center gap-2 so-document-alert">
+            <i class="bi bi-info-circle-fill"></i>
+            <div class="flex-grow-1">
+                                    <strong>1</strong> items pending stock. RFQ drafts already created for this order.
+                            </div>
+            <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+        
+        <div id="soAutoRfqResult"></div>
+
+        <div class="so-lines-heading d-flex justify-content-between align-items-center gap-3">
+            <div class="so-panel-heading mb-0">
+                <span class="so-panel-icon"><i class="bi bi-list-check"></i></span>
+                <div><h5>Order Lines</h5><p>1 item on this order</p></div>
+            </div>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="toggle-discount-tax">
+                <label class="form-check-label" for="toggle-discount-tax">Show Discount &amp; Tax</label>
+            </div>
+        </div>
+        <div class="table-responsive so-lines-scroll">
+            <table class="table table-sm align-middle so-lines-table">
+                <thead>
+                    <tr>
+                        <th class="so-col-code">Code</th>
+                        <th class="so-col-image">Image</th>
+                        <th class="so-col-product">Product / Description</th>
+                        <th class="so-col-unit">Unit</th>
+                        <th class="text-end so-col-quantity">Qty</th>
+                        <th class="text-end so-col-money">Unit Price</th>
+                        <th class="text-end col-disc so-col-metric">Disc %</th>
+                        <th class="text-end col-disc so-col-metric">Disc Amt</th>
+                        <th class="text-end col-tax so-col-metric">Tax %</th>
+                        <th class="text-end col-tax so-col-metric">Tax Amt</th>
+                        <th class="text-end so-col-metric">Available</th>
+                        <th class="text-end so-col-metric">Shortage</th>
+                        <th class="text-end so-col-metric">Incoming</th>
+                        <th class="text-end so-col-metric">Received</th>
+                        <th class="text-end so-col-metric">Pending</th>
+                        <th class="text-end so-col-metric">Ready Now</th>
+                        <th class="text-end so-col-money">Line Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                                                                                    <tr>
+                            <td>
+                                                                    <a href="http://192.168.100.110/corelynk/products/8c6bdc68-c818-4869-9266-0f261154f687" class="text-decoration-none">RI-KS-11792</a>
+                                                            </td>
+                            <td><img src="http://192.168.100.110/corelynk/assets/images/no-image.png" alt="" class="js-product-hover-thumb so-product-thumb" data-preview-src="http://192.168.100.110/corelynk/assets/images/no-image.png" onerror="this.onerror=null;this.src='http://192.168.100.110/corelynk/assets/images/no-image.png';this.setAttribute('data-preview-src','http://192.168.100.110/corelynk/assets/images/no-image.png');"></td>
+                            <td>
+                                <div class="fw-semibold so-product-name">
+                                                                            <a href="http://192.168.100.110/corelynk/products/8c6bdc68-c818-4869-9266-0f261154f687" class="text-decoration-none">test color gold product</a>
+                                                                    </div>
+                                                                    <div class="text-muted so-product-description">
+                                        RI-KS-11792                                    </div>
+                                                            </td>
+                            <td>PCS</td>
+                            <td class="text-end">100.00</td>
+                            <td class="text-end">$100.00</td>
+                            <td class="text-end col-disc">0%</td>
+                            <td class="text-end col-disc">0.00</td>
+                            <td class="text-end col-tax">0</td>
+                            <td class="text-end col-tax">0.00</td>
+                            
+                            <!-- Phase-1: Available and Shortage Columns -->
+                                                        <td class="text-end">
+                                                                    0.00                                                            </td>
+                            <td class="text-end text-danger fw-semibold" title="Remaining: 100.00, Shipped: 0.00, Available: 0.00, Shortage: 100.00">
+                                                                                                            <span>−100.00</span>
+                                                                                                </td>
+                            
+                            <!-- Phase-3: Fulfillment Columns (Incoming, Received, Pending) -->
+                                                        <td class="text-end" title="">
+                                —                            </td>
+                            <td class="text-end">
+                                —                            </td>
+                            <td class="text-end">
+                                —                            </td>
+
+                                                        <td class="text-end">
+                                —                            </td>
+                            
+                            <td class="text-end fw-semibold">$10,000.00</td>
+                        </tr>
+                                                    </tbody>
+            </table>
+        </div>
+
+                    <div class="so-panel-heading mb-2">
+    <span class="so-panel-icon"><i class="bi bi-gear-wide-connected"></i></span>
+    <div><h5>Production / Preparation</h5><p>One row per product — actions only unlock once the material is in stock.</p></div>
+</div>
+
+<style>
+.pe-mini-stepper { display: flex; align-items: center; }
+.pe-mini-stepper-dot {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.4rem; height: 1.4rem; border-radius: 50%; font-size: .7rem; font-weight: 600;
+    background: #e9ecef; color: #6c757d; flex-shrink: 0;
+}
+.pe-mini-stepper-dot.is-done { background: #d1e7dd; color: #0f5132; }
+.pe-mini-stepper-dot.is-current { background: #cfe2ff; color: #084298; }
+.pe-mini-stepper-dot.is-blocked { background: #f8d7da; color: #842029; }
+.pe-mini-stepper-arrow { color: #adb5bd; margin: 0 .2rem; font-size: .8rem; }
+
+.pe-req-section-label {
+    font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: #6c757d; display: flex; align-items: center; gap: .4rem; margin-bottom: .5rem;
+}
+.pe-req-list { display: flex; flex-direction: column; gap: .4rem; }
+.pe-req-empty { font-size: .82rem; color: #adb5bd; font-style: italic; padding: .25rem 0; }
+.pe-req-item {
+    display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+    padding: .5rem .65rem; border: 1px solid #eef0f2; border-radius: .5rem; background: #f8f9fa;
+}
+.pe-req-item-main { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.pe-req-item-icon {
+    width: 1.6rem; height: 1.6rem; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #e7f1ff; color: #0d6efd; font-size: .8rem;
+}
+.pe-req-item-name { font-size: .83rem; font-weight: 600; color: #212529; }
+.pe-req-item-meta { font-size: .74rem; color: #868e96; }
+.pe-req-chips { display: flex; gap: .3rem; flex-wrap: wrap; justify-content: flex-end; }
+.pe-req-chip {
+    font-size: .68rem; font-weight: 600; padding: .18rem .5rem; border-radius: 999px;
+    background: #e9ecef; color: #495057; white-space: nowrap;
+}
+.pe-req-chip.is-inhouse { background: #d1e7dd; color: #0f5132; }
+.pe-req-chip.is-vendor { background: #cfe2ff; color: #084298; }
+.pe-req-chip.is-optional { background: #fff3cd; color: #664d03; }
+.pe-req-chip.is-missing { background: #f8d7da; color: #842029; }
+</style>
+<div class="table-responsive mb-4">
+    <table class="table table-sm align-middle so-prep-exec-table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Current step</th>
+                <th>Material</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+                                <tr>
+                <td>
+                    <div class="fw-semibold">
+                        test color gold product                                                <button type="button" class="cl-action-icon pe-open-profile" title="View required materials &amp; services"
+                                data-payload='&#x7B;&quot;product_name&quot;&#x3A;&quot;test&#x20;color&#x20;gold&#x20;product&quot;,&quot;profile_name&quot;&#x3A;&quot;test&#x20;color&#x20;gold&#x20;product&quot;,&quot;components&quot;&#x3A;&#x5B;&#x7B;&quot;name&quot;&#x3A;&quot;Test&#x20;Base&#x20;Product&#x20;for&#x20;Outsource&#x20;&quot;,&quot;variant&quot;&#x3A;&quot;&quot;,&quot;qty_per_unit&quot;&#x3A;&quot;1.0000&quot;,&quot;is_optional&quot;&#x3A;false&#x7D;&#x5D;,&quot;steps&quot;&#x3A;&#x5B;&#x7B;&quot;name&quot;&#x3A;&quot;Plasma&#x20;Coating&#x20;of&#x20;Gold&#x20;Polished&quot;,&quot;allow_inhouse&quot;&#x3A;false,&quot;vendor_options&quot;&#x3A;&#x5B;&#x7B;&quot;vendor_id&quot;&#x3A;8,&quot;vendor_name&quot;&#x3A;&quot;Waqar&#x20;Plasma&#x20;Coating&quot;,&quot;service_price&quot;&#x3A;&quot;100.0000&quot;,&quot;currency&quot;&#x3A;&quot;PKR&quot;,&quot;is_default&quot;&#x3A;true&#x7D;&#x5D;&#x7D;&#x5D;&#x7D;'>
+                            <i class="bi bi-info-circle"></i>
+                        </button>
+                        <button type="button" class="cl-action-icon pe-open-trail" title="Movement trail — where every piece went"
+                                data-url="http://192.168.100.110/corelynk/sales-orders/preparation/trail/83/111"
+                                data-product-name="test&#x20;color&#x20;gold&#x20;product">
+                            <i class="bi bi-signpost-split"></i>
+                        </button>
+                    </div>
+                    <div class="text-muted small">RI-KS-11792</div>                </td>
+                <td>
+                    <div class="pe-mini-stepper" title="Material short: 100.00">
+                        <span class="pe-mini-stepper-dot is-blocked">
+                            <i class="bi bi-x"></i>
+                        </span>
+                                                    <span class="pe-mini-stepper-arrow">&rarr;</span>
+                                                        <span class="pe-mini-stepper-dot is-done" title="Plasma Coating of Gold Polished">
+                                <i class="bi bi-check"></i>                            </span>
+                                            </div>
+                    <div class="text-muted small mt-1">
+                        All 1 step(s) complete                                            </div>
+                </td>
+                <td>
+                                            <span class="badge bg-danger-subtle text-danger border">Short 100.00</span>
+                                                                <div class="text-muted small mt-1">
+                            Test Base Product for Outsource                            (RI-TK-11791)                            &middot; need 0.00                        </div>
+                                    </td>
+                <td>
+                                            <span class="badge bg-success-subtle text-success border">Done</span>
+                                    </td>
+                <td class="text-end">
+                                            <span class="text-muted small">—</span>
+                                    </td>
+            </tr>
+                            </tbody>
+    </table>
+</div>
+
+<!-- Shared modal: start in-house (populated by JS per row, so markup isn't repeated per product) -->
+<div class="modal fade" id="peInhouseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="http://192.168.100.110/corelynk/sales-orders/preparation/start-inhouse" class="modal-content">
+            <input type="hidden" name="csrf_test_name" value="5b3d8c1f6c6aeaa34956dab0acb34a42">            <input type="hidden" name="sales_order_id" value="83">
+            <input type="hidden" name="sales_order_line_id" id="pe_ih_line_id">
+            <input type="hidden" name="product_id" id="pe_ih_product_id">
+            <input type="hidden" name="step_id" id="pe_ih_step_id">
+            <div class="modal-header">
+                <h6 class="modal-title">Start in-house: <span id="pe_ih_title"></span></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Quantity</label>
+                    <input type="number" step="0.0001" min="0.0001" name="qty" id="pe_ih_qty" class="form-control form-control-sm" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Location (has stock)</label>
+                    <select name="location_id" id="pe_ih_location" class="form-select form-select-sm" required></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-sm btn-primary">Start</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Shared modal: send to vendor -->
+<div class="modal fade" id="peVendorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="http://192.168.100.110/corelynk/sales-orders/preparation/send-to-vendor" class="modal-content">
+            <input type="hidden" name="csrf_test_name" value="5b3d8c1f6c6aeaa34956dab0acb34a42">            <input type="hidden" name="sales_order_id" value="83">
+            <input type="hidden" name="sales_order_line_id" id="pe_v_line_id">
+            <input type="hidden" name="product_id" id="pe_v_product_id">
+            <input type="hidden" name="material_product_id" id="pe_v_material_product_id">
+            <input type="hidden" name="step_id" id="pe_v_step_id">
+            <input type="hidden" name="unit_price" id="pe_v_unit_price">
+            <div class="modal-header">
+                <h6 class="modal-title">Send to vendor: <span id="pe_v_title"></span></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Vendor</label>
+                    <select name="vendor_id" id="pe_v_vendor" class="form-select form-select-sm" required></select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Quantity</label>
+                    <input type="number" step="0.0001" min="0.0001" name="qty" id="pe_v_qty" class="form-control form-control-sm" required>
+                </div>
+                <div class="text-muted small mb-2" id="pe_v_material_hint"></div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">From location (has stock)</label>
+                    <select name="from_location_id" id="pe_v_from" class="form-select form-select-sm" required></select>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-end">
+                        <label class="form-label small mb-0">Vendor drop-off location</label>
+                        <button type="button" class="btn btn-link btn-sm p-0" id="pe_v_add_loc_toggle">+ Add location</button>
+                    </div>
+                    <select name="to_location_id" id="pe_v_to" class="form-select form-select-sm" required></select>
+                    <div class="input-group input-group-sm mt-2 d-none" id="pe_v_add_loc_box">
+                        <input type="text" class="form-control" id="pe_v_new_loc_name" placeholder="Branch / office / setup name">
+                        <button type="button" class="btn btn-outline-primary" id="pe_v_add_loc_save">Save</button>
+                    </div>
+                    <div class="small text-danger mt-1 d-none" id="pe_v_add_loc_error"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-sm btn-primary">Send</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Shared modal: preparation profile requirements (materials + steps/services) -->
+<div class="modal fade" id="peProfileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pe-profile-modal">
+            <div class="modal-header border-0 pb-0">
+                <div>
+                    <h6 class="modal-title mb-0" id="pe_p_title"></h6>
+                    <div class="text-muted small" id="pe_p_subtitle"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <div class="pe-req-section-label"><i class="bi bi-box-seam"></i> Required materials</div>
+                <div id="pe_p_materials" class="pe-req-list mb-3"></div>
+
+                <div class="pe-req-section-label"><i class="bi bi-diagram-3"></i> Steps &amp; services</div>
+                <div id="pe_p_steps" class="pe-req-list"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Shared modal: collect from one vendor and hand to another (no QC, work never happened) -->
+<div class="modal fade" id="peRerouteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="http://192.168.100.110/corelynk/sales-orders/preparation/reroute-to-vendor" class="modal-content">
+            <input type="hidden" name="csrf_test_name" value="5b3d8c1f6c6aeaa34956dab0acb34a42">            <input type="hidden" name="send_note_id" id="pe_rr_send_note_id">
+            <div class="modal-header">
+                <h6 class="modal-title">Reroute to another vendor</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted small mb-2" id="pe_rr_hint"></div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">New vendor</label>
+                    <select name="vendor_id" id="pe_rr_vendor" class="form-select form-select-sm" required></select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Quantity to move</label>
+                    <input type="number" step="0.0001" min="0.0001" name="qty" id="pe_rr_qty" class="form-control form-control-sm" required>
+                    <div class="form-text">Partial is fine — the rest stays with the current vendor.</div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-end">
+                        <label class="form-label small mb-0">New vendor drop-off location</label>
+                        <button type="button" class="btn btn-link btn-sm p-0" id="pe_rr_add_loc_toggle">+ Add location</button>
+                    </div>
+                    <select name="to_location_id" id="pe_rr_to" class="form-select form-select-sm" required></select>
+                    <div class="input-group input-group-sm mt-2 d-none" id="pe_rr_add_loc_box">
+                        <input type="text" class="form-control" id="pe_rr_new_loc_name" placeholder="Branch / office / setup name">
+                        <button type="button" class="btn btn-outline-primary" id="pe_rr_add_loc_save">Save</button>
+                    </div>
+                    <div class="small text-danger mt-1 d-none" id="pe_rr_add_loc_error"></div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-0">Reason (optional)</label>
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="e.g. vendor out of capacity">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-sm btn-warning">Move to new vendor</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Shared modal: full movement trail for one product -->
+<div class="modal fade" id="peTrailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Movement trail: <span id="pe_t_title"></span></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="pe_t_body"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // Only places that belong to a vendor; the picker narrows this to the vendor
+    // selected on the form, and new ones are appended after being saved.
+    var peVendorLocations = [{"id":60,"name":"Factory Area - Setup","vendor_id":8,"warehouse_name":"Vendor Processing"},{"id":57,"name":"Iftikhaar Plasma Coating - Iftekhar Temper Setup - ShahbPura","vendor_id":6,"warehouse_name":"Vendor Processing"}];
+    var peAddLocationUrl = 'http://192.168.100.110/corelynk/sales-orders/preparation/add-vendor-location';
+    var peCsrfName = 'csrf_test_name';
+    var peCsrfHash = '5b3d8c1f6c6aeaa34956dab0acb34a42';
+
+    function fillLocationsFor(vendorId, selectId) {
+        var select = document.getElementById(selectId);
+        var matches = peVendorLocations.filter(function (l) { return l.vendor_id === parseInt(vendorId, 10); });
+        select.innerHTML = matches.length
+            ? '<option value="">Select…</option>'
+            : '<option value="">No location saved for this vendor — add one</option>';
+        matches.forEach(function (l) {
+            var opt = document.createElement('option');
+            opt.value = l.id;
+            opt.textContent = l.warehouse_name ? l.warehouse_name + ' · ' + l.name : l.name;
+            select.appendChild(opt);
+        });
+    }
+
+    function fillVendorLocationSelect(vendorId) { fillLocationsFor(vendorId, 'pe_v_to'); }
+
+    function fillLocationSelect(select, locations, emptyLabel) {
+        select.innerHTML = '<option value="">' + emptyLabel + '</option>';
+        locations.forEach(function (loc) {
+            var opt = document.createElement('option');
+            opt.value = loc.location_id;
+            opt.textContent = (loc.warehouse_name || '') + ' · ' + loc.location_name + ' (' + parseFloat(loc.qty).toFixed(2) + ' available)';
+            select.appendChild(opt);
+        });
+    }
+
+    document.querySelectorAll('.pe-open-inhouse').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var data = JSON.parse(btn.getAttribute('data-payload'));
+            document.getElementById('pe_ih_title').textContent = data.product_name + ' — ' + data.step_name;
+            document.getElementById('pe_ih_line_id').value = data.sales_order_line_id;
+            document.getElementById('pe_ih_product_id').value = data.product_id;
+            document.getElementById('pe_ih_step_id').value = data.step_id;
+            var ihRemaining = data.remaining_qty != null ? data.remaining_qty : data.line_qty;
+            document.getElementById('pe_ih_qty').value = ihRemaining;
+            document.getElementById('pe_ih_qty').max = ihRemaining;
+            fillLocationSelect(document.getElementById('pe_ih_location'), data.stock_locations, 'Select…');
+            new bootstrap.Modal(document.getElementById('peInhouseModal')).show();
+        });
+    });
+
+    document.querySelectorAll('.pe-open-vendor').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var data = JSON.parse(btn.getAttribute('data-payload'));
+            document.getElementById('pe_v_title').textContent = data.product_name + ' — ' + data.step_name;
+            document.getElementById('pe_v_line_id').value = data.sales_order_line_id;
+            document.getElementById('pe_v_product_id').value = data.product_id;
+            document.getElementById('pe_v_material_product_id').value = data.material_product_id || data.product_id;
+            document.getElementById('pe_v_step_id').value = data.step_id;
+            document.getElementById('pe_v_material_hint').textContent = data.material_name
+                ? 'Shipping material: ' + data.material_name
+                : '';
+            var vRemaining = data.remaining_qty != null ? data.remaining_qty : data.line_qty;
+            document.getElementById('pe_v_qty').value = vRemaining;
+            document.getElementById('pe_v_qty').max = vRemaining;
+            fillLocationSelect(document.getElementById('pe_v_from'), data.stock_locations, 'Select…');
+
+            var vendorSelect = document.getElementById('pe_v_vendor');
+            var priceInput = document.getElementById('pe_v_unit_price');
+            vendorSelect.innerHTML = '';
+            data.vendor_options.forEach(function (v) {
+                var opt = document.createElement('option');
+                opt.value = v.vendor_id;
+                opt.textContent = v.vendor_name + (v.service_price ? ' (' + v.currency + ' ' + parseFloat(v.service_price).toFixed(2) + '/unit)' : '');
+                opt.dataset.price = v.service_price || 0;
+                if (v.is_default) opt.selected = true;
+                vendorSelect.appendChild(opt);
+            });
+            priceInput.value = vendorSelect.selectedOptions[0] ? vendorSelect.selectedOptions[0].dataset.price : 0;
+            fillVendorLocationSelect(vendorSelect.value);
+            vendorSelect.onchange = function () {
+                priceInput.value = vendorSelect.selectedOptions[0] ? vendorSelect.selectedOptions[0].dataset.price : 0;
+                fillVendorLocationSelect(vendorSelect.value);
+            };
+
+            new bootstrap.Modal(document.getElementById('peVendorModal')).show();
+        });
+    });
+
+    // Inline "add a location for this vendor" — one vendor can have several
+    // branches/offices/setups, so the list grows from wherever it is needed.
+    function wireAddLocation(toggleId, boxId, nameId, saveId, errorId, vendorSelectId, targetSelectId) {
+        var toggle = document.getElementById(toggleId);
+        if (! toggle) { return; }
+        var box = document.getElementById(boxId);
+        var error = document.getElementById(errorId);
+        var nameInput = document.getElementById(nameId);
+
+        toggle.addEventListener('click', function () {
+            box.classList.toggle('d-none');
+            if (! box.classList.contains('d-none')) { nameInput.focus(); }
+        });
+
+        document.getElementById(saveId).addEventListener('click', function () {
+            var vendorId = document.getElementById(vendorSelectId).value;
+            var name = nameInput.value.trim();
+            error.classList.add('d-none');
+            if (! vendorId || ! name) {
+                error.textContent = 'Pick a vendor and type a location name.';
+                error.classList.remove('d-none');
+                return;
+            }
+
+            var body = new FormData();
+            body.append('vendor_id', vendorId);
+            body.append('name', name);
+            body.append(peCsrfName, peCsrfHash);
+
+            fetch(peAddLocationUrl, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (! res.ok) {
+                        error.textContent = res.message || 'Could not save the location.';
+                        error.classList.remove('d-none');
+                        return;
+                    }
+                    peVendorLocations.push(res.location);
+                    fillLocationsFor(vendorId, targetSelectId);
+                    document.getElementById(targetSelectId).value = res.location.id;
+                    nameInput.value = '';
+                    box.classList.add('d-none');
+                })
+                .catch(function () {
+                    error.textContent = 'Could not save the location.';
+                    error.classList.remove('d-none');
+                });
+        });
+    }
+
+    wireAddLocation('pe_v_add_loc_toggle', 'pe_v_add_loc_box', 'pe_v_new_loc_name', 'pe_v_add_loc_save', 'pe_v_add_loc_error', 'pe_v_vendor', 'pe_v_to');
+
+
+    function peEscapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    function peReqItem(iconClass, name, meta, chipsHtml) {
+        name = peEscapeHtml(name);
+        meta = peEscapeHtml(meta);
+        var div = document.createElement('div');
+        div.className = 'pe-req-item';
+        div.innerHTML =
+            '<div class="pe-req-item-main">' +
+                '<span class="pe-req-item-icon"><i class="bi ' + iconClass + '"></i></span>' +
+                '<div class="min-w-0">' +
+                    '<div class="pe-req-item-name">' + name + '</div>' +
+                    (meta ? '<div class="pe-req-item-meta">' + meta + '</div>' : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="pe-req-chips">' + chipsHtml + '</div>';
+        return div;
+    }
+
+    document.querySelectorAll('.pe-open-profile').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var data = JSON.parse(btn.getAttribute('data-payload'));
+            document.getElementById('pe_p_title').textContent = data.product_name;
+            document.getElementById('pe_p_subtitle').textContent = data.profile_name ? 'Profile: ' + data.profile_name : '';
+
+            var materialsEl = document.getElementById('pe_p_materials');
+            materialsEl.innerHTML = '';
+            if (data.components.length === 0) {
+                materialsEl.innerHTML = '<div class="pe-req-empty">No materials configured for this profile</div>';
+            } else {
+                data.components.forEach(function (c) {
+                    var meta = parseFloat(c.qty_per_unit).toFixed(4) + ' per unit' + (c.variant ? ' · ' + c.variant : '');
+                    var chips = c.is_optional ? '<span class="pe-req-chip is-optional">Optional</span>' : '';
+                    materialsEl.appendChild(peReqItem('bi-box-seam', c.name, meta, chips));
+                });
+            }
+
+            var stepsEl = document.getElementById('pe_p_steps');
+            stepsEl.innerHTML = '';
+            if (data.steps.length === 0) {
+                stepsEl.innerHTML = '<div class="pe-req-empty">No steps configured for this profile</div>';
+            } else {
+                data.steps.forEach(function (s) {
+                    var chips = '';
+                    if (s.allow_inhouse) chips += '<span class="pe-req-chip is-inhouse">In-house</span>';
+                    s.vendor_options.forEach(function (v) {
+                        chips += '<span class="pe-req-chip is-vendor">' + peEscapeHtml(v.vendor_name) + '</span>';
+                    });
+                    if (!chips) chips = '<span class="pe-req-chip is-missing">No route configured</span>';
+                    stepsEl.appendChild(peReqItem('bi-gear-wide-connected', s.name, '', chips));
+                });
+            }
+
+            new bootstrap.Modal(document.getElementById('peProfileModal')).show();
+        });
+    });
+
+    // --- Reroute: vendor ran out of time, goods go straight to another vendor ---
+    document.querySelectorAll('.pe-open-reroute').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var data = JSON.parse(btn.getAttribute('data-payload'));
+            document.getElementById('pe_rr_send_note_id').value = data.send_note_id;
+            document.getElementById('pe_rr_hint').textContent =
+                data.outstanding_qty.toFixed(2) + ' pcs are with ' + data.vendor_name + ' on ' + data.reference_no + '.';
+            var qty = document.getElementById('pe_rr_qty');
+            qty.value = data.outstanding_qty;
+            qty.max = data.outstanding_qty;
+
+            var vendorSelect = document.getElementById('pe_rr_vendor');
+            vendorSelect.innerHTML = '<option value="">Select…</option>';
+            data.vendor_options.forEach(function (v) {
+                var opt = document.createElement('option');
+                opt.value = v.vendor_id;
+                opt.textContent = v.vendor_name;
+                vendorSelect.appendChild(opt);
+            });
+            fillLocationsFor(vendorSelect.value, 'pe_rr_to');
+            vendorSelect.onchange = function () { fillLocationsFor(vendorSelect.value, 'pe_rr_to'); };
+
+            new bootstrap.Modal(document.getElementById('peRerouteModal')).show();
+        });
+    });
+
+    wireAddLocation('pe_rr_add_loc_toggle', 'pe_rr_add_loc_box', 'pe_rr_new_loc_name', 'pe_rr_add_loc_save', 'pe_rr_add_loc_error', 'pe_rr_vendor', 'pe_rr_to');
+
+    // --- Movement trail ---
+    document.querySelectorAll('.pe-open-trail').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var body = document.getElementById('pe_t_body');
+            document.getElementById('pe_t_title').textContent = btn.dataset.productName || '';
+            body.innerHTML = '<div class="text-muted small">Loading…</div>';
+            new bootstrap.Modal(document.getElementById('peTrailModal')).show();
+            fetch(btn.dataset.url)
+                .then(function (r) { return r.text(); })
+                .then(function (html) { body.innerHTML = html; })
+                .catch(function () { body.innerHTML = '<p class="text-danger mb-0">Failed to load the trail.</p>'; });
+        });
+    });
+
+})();
+</script>
+        
+        <div class="so-totals-wrap">
+            <div class="table-responsive">
+                <table class="table table-sm table-borderless mb-0 so-totals-box">
+                    <tbody>
+                        <tr>
+                            <td class="text-muted">Subtotal</td>
+                            <td class="text-end">$10,000.00</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Discount</td>
+                            <td class="text-end text-danger">-$0.00</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Tax</td>
+                            <td class="text-end">$0.00</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Shipping</td>
+                            <td class="text-end">$0.00</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Est. Shipment Weight</td>
+                            <td class="text-end" title="Calculated from product unit weight x remaining quantity to ship">
+                                                                    100 kg                                                            </td>
+                        </tr>
+                                                <tr>
+                            <td class="fw-bold">Total</td>
+                            <td class="text-end fw-bold fs-5">$10,000.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Toggle discount and tax columns visibility
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('toggle-discount-tax');
+    const cardBody = document.querySelector('.so-document-body');
+    
+    if (toggle && cardBody) {
+        // Load saved preference from localStorage
+        const savedState = localStorage.getItem('show-so-discount-tax');
+        if (savedState === 'true') {
+            toggle.checked = true;
+            cardBody.classList.add('show-discount-tax');
+        }
+        
+        // Listen for changes
+        toggle.addEventListener('change', function() {
+            if (this.checked) {
+                cardBody.classList.add('show-discount-tax');
+                localStorage.setItem('show-so-discount-tax', 'true');
+            } else {
+                cardBody.classList.remove('show-discount-tax');
+                localStorage.setItem('show-so-discount-tax', 'false');
+            }
+        });
+    }
+
+    const resetForm = document.querySelector('.so-reset-to-quote-form');
+    if (resetForm) {
+        resetForm.addEventListener('submit', function(e) {
+            if (!confirm('Reset to Quote will permanently delete this sales order and revert it back to a draft quotation. This cannot be undone. Continue?')) {
+                e.preventDefault();
+            }
+        });
+    }
+});
+</script>
+
+
+<div class="document-log-panel mt-5" id="documentActivityLog">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <i class="bi bi-clock-history text-muted fs-5"></i>
+        <h6 class="mb-0 fw-semibold text-muted text-uppercase tracking-wide" style="letter-spacing:.05em;font-size:.8rem;">
+            Activity Log
+        </h6>
+        <span class="badge bg-secondary rounded-pill ms-1 fw-normal" style="font-size:.7rem;">
+            0        </span>
+        <span class="ms-auto small text-muted fst-italic" style="font-size:.72rem;">
+            All changes are recorded permanently. Nobody can edit or delete these logs.
+        </span>
+    </div>
+
+        <div class="text-center text-muted py-4" style="font-size:.85rem;">
+        <i class="bi bi-journal-x fs-4 d-block mb-2 opacity-50"></i>
+        No activity recorded yet for this document.
+    </div>
+    </div>
+
+<style>
+.document-log-panel { border-top: 1px solid var(--bs-border-color, #dee2e6); padding-top: 1.25rem; }
+.document-log-timeline .log-entry:last-child .log-content { border-bottom: none; }
+</style>
+
+<!-- Order Progress Modal -->
+<div class="modal fade" id="soProgressModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content so-progress-modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title text-light mb-0"><i class="bi bi-diagram-3 me-2"></i>Order Progress</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="soProgressBody">
+                <div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function(){
+    const btn = document.getElementById('btnOrderProgress');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        const soId = this.dataset.soId;
+        const body = document.getElementById('soProgressBody');
+        body.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading\u2026</div>';
+        new bootstrap.Modal(document.getElementById('soProgressModal')).show();
+        fetch('http://192.168.100.110/corelynk/delivery-orders/progress/so/' + soId)
+            .then(r => r.text())
+            .then(html => { body.innerHTML = html; })
+            .catch(() => { body.innerHTML = '<p class="text-danger">Failed to load progress.</p>'; });
+    });
+})();
+</script>
+
+            <div class="modal fade so-tag-modal" id="tagModal_sales_order_83" tabindex="-1" aria-labelledby="tagModal_sales_order_83_label" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="tagModal_sales_order_83_label"><i class="bi bi-tag me-2"></i>Tags</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="so-tag-applied-wrap">
+                                <div class="so-tag-section-label">Applied</div>
+                                <div class="so-tag-applied" data-role="applied"></div>
+                            </div>
+                            <label class="visually-hidden" for="tagModal_sales_order_83_search">Search or create a tag</label>
+                            <input type="text" class="form-control form-control-sm mt-3" id="tagModal_sales_order_83_search"
+                                   data-role="search" placeholder="Search tags, or type a new one" autocomplete="off">
+                            <button type="button" class="btn btn-sm btn-primary w-100 mt-2" data-role="create" hidden></button>
+                            <div class="so-tag-section-label mt-3">Available</div>
+                            <div class="so-tag-available" data-role="available"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Done</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+            (function(){
+                const root = document.getElementById('document-tags-sales_order-83');
+                const modal = document.getElementById('tagModal_sales_order_83');
+                if (!root || !modal) return;
+
+                const docType = root.dataset.documentType;
+                const docId = root.dataset.documentId;
+                const chips = root.querySelector('.so-tag-chips');
+                const countBadge = document.querySelector('.so-tag-btn [data-role="count"]');
+                const applied = modal.querySelector('[data-role="applied"]');
+                const available = modal.querySelector('[data-role="available"]');
+                const search = modal.querySelector('[data-role="search"]');
+                const createBtn = modal.querySelector('[data-role="create"]');
+                const DOC_URL = 'http://192.168.100.110/corelynk/document-tags';
+                const TAGS_URL = 'http://192.168.100.110/corelynk/tags';
+
+                let current = [];   // tags on this document
+                let all = [];       // tags that exist in the system
+
+                const norm = (s) => String(s || '').trim().toLowerCase();
+
+                function chip(tag, removable){
+                    const el = document.createElement('span');
+                    el.className = 'tag-badge';
+                    el.dataset.tagId = tag.id;
+                    el.dataset.tagName = tag.name;
+                    el.textContent = tag.name;
+                    if (removable) {
+                        const x = document.createElement('button');
+                        x.type = 'button';
+                        x.className = 'tag-remove-btn';
+                        x.setAttribute('aria-label', 'Remove ' + tag.name);
+                        x.innerHTML = '&times;';
+                        x.addEventListener('click', () => removeTag(tag.id));
+                        el.appendChild(x);
+                    }
+                    return el;
+                }
+
+                function renderHeader(){
+                    chips.innerHTML = '';
+                    current.forEach(t => chips.appendChild(chip(t, false)));
+                    if (countBadge) {
+                        countBadge.textContent = current.length;
+                        countBadge.hidden = current.length === 0;
+                    }
+                }
+
+                function renderModal(){
+                    applied.innerHTML = '';
+                    if (!current.length) {
+                        applied.innerHTML = '<span class="so-tag-hint">No tags on this order yet</span>';
+                    } else {
+                        current.forEach(t => applied.appendChild(chip(t, true)));
+                    }
+
+                    const q = norm(search.value);
+                    const used = new Set(current.map(t => norm(t.name)));
+                    const options = all.filter(t => !used.has(norm(t.name)) && (q === '' || norm(t.name).indexOf(q) !== -1));
+
+                    available.innerHTML = '';
+                    if (!options.length) {
+                        available.innerHTML = '<span class="so-tag-hint">' + (q ? 'No matching tag' : 'No other tags yet') + '</span>';
+                    } else {
+                        options.forEach(t => {
+                            const row = document.createElement('button');
+                            row.type = 'button';
+                            row.className = 'so-tag-option';
+                            row.innerHTML = '<span>' + t.name.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</span>';
+                            if (t.usage_count) {
+                                const n = document.createElement('small');
+                                n.textContent = t.usage_count;
+                                row.appendChild(n);
+                            }
+                            row.addEventListener('click', () => addTag(t.name));
+                            available.appendChild(row);
+                        });
+                    }
+
+                    // "create on the fly" only when the typed name does not exist yet
+                    const exact = q !== '' && all.some(t => norm(t.name) === q);
+                    if (q !== '' && !exact && !used.has(q)) {
+                        createBtn.hidden = false;
+                        createBtn.textContent = 'Create "' + search.value.trim() + '"';
+                    } else {
+                        createBtn.hidden = true;
+                    }
+                }
+
+                function loadCurrent(){
+                    return fetch(DOC_URL + '?document_type=' + docType + '&document_id=' + docId)
+                        .then(r => r.json())
+                        .then(d => { current = (d && d.success && Array.isArray(d.data)) ? d.data : []; })
+                        .catch(() => { current = []; });
+                }
+
+                function loadAll(){
+                    return fetch(TAGS_URL + '?q=&limit=100')
+                        .then(r => r.json())
+                        .then(d => { all = (d && d.success && Array.isArray(d.data)) ? d.data : []; })
+                        .catch(() => { all = []; });
+                }
+
+                function refresh(){
+                    return Promise.all([loadCurrent(), loadAll()]).then(() => { renderHeader(); renderModal(); });
+                }
+
+                function addTag(name){
+                    name = String(name || '').trim();
+                    if (!name) return;
+                    fetch(DOC_URL, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            document_type: docType,
+                            document_id: docId,
+                            tags: current.map(t => t.name).concat([name]),
+                        }),
+                    })
+                        .then(r => r.json())
+                        .then(d => {
+                            if (!d || !d.success) { alert('Failed to add tag: ' + ((d && d.message) || 'Unknown error')); return; }
+                            search.value = '';
+                            return refresh();
+                        })
+                        .catch(() => alert('Error adding tag'));
+                }
+
+                function removeTag(tagId){
+                    fetch(DOC_URL, {
+                        method: 'DELETE',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ document_type: docType, document_id: docId, tag_id: tagId }),
+                    })
+                        .then(r => r.json())
+                        .then(d => {
+                            if (!d || !d.success) { alert('Failed to remove tag: ' + ((d && d.message) || 'Unknown error')); return; }
+                            return refresh();
+                        })
+                        .catch(() => alert('Error removing tag'));
+                }
+
+                search.addEventListener('input', renderModal);
+                search.addEventListener('keydown', function(e){
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    const q = norm(search.value);
+                    if (!q) return;
+                    const match = all.find(t => norm(t.name) === q);
+                    addTag(match ? match.name : search.value.trim());
+                });
+                createBtn.addEventListener('click', () => addTag(search.value));
+
+                modal.addEventListener('shown.bs.modal', function(){ refresh().then(() => search.focus()); });
+
+                refresh();
+            })();
+            </script>
+
+
+<script>
+// Pull the customer's current primary address/contact onto this order. The
+// endpoint refuses the request if the order is no longer a draft.
+document.getElementById('refreshCustomerAddressBtn')?.addEventListener('click', function () {
+    const btn = this;
+    if (!confirm("Update this order's address & contact from the customer profile?")) return;
+    btn.disabled = true;
+    fetch(btn.dataset.url, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.json().catch(() => ({ success: false, error: 'Unexpected response' })))
+        .then(resp => {
+            if (resp.success) { location.reload(); return; }
+            alert(resp.error || 'Could not update the address.');
+            btn.disabled = false;
+        })
+        .catch(() => { alert('Could not update the address.'); btn.disabled = false; });
+});
+
+// Auto-Create RFQ Drafts: runs via AJAX so success/failure (including missing
+// vendor assignments) is shown inline immediately, without relying on a
+// full-page redirect + flash message.
+function soEscapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
+document.getElementById('btnAutoCreateRfq')?.addEventListener('click', function () {
+    const btn = this;
+    const resultBox = document.getElementById('soAutoRfqResult');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating RFQ drafts…';
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': window.csrfHash || ''
+        }
+    })
+        .then(r => r.json().catch(() => ({ success: false, message: 'Unexpected server response.' })))
+        .then(resp => {
+            let html = '';
+            if (resp.success) {
+                html = '<div class="alert alert-success so-document-alert d-flex align-items-center gap-2">'
+                    + '<i class="bi bi-check-circle-fill"></i><div>' + soEscapeHtml(resp.message || 'RFQ drafts created.') + '</div></div>';
+            } else if (resp.nothing_to_purchase) {
+                html = '<div class="alert alert-info so-document-alert d-flex align-items-center gap-2">'
+                    + '<i class="bi bi-info-circle-fill"></i><div>' + soEscapeHtml(resp.message || 'Nothing to purchase.') + '</div></div>';
+            } else {
+                html = '<div class="alert alert-danger so-document-alert">'
+                    + '<div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Could not create RFQ drafts</div>'
+                    + '<div class="small mb-2">' + soEscapeHtml(resp.message || 'Something went wrong.') + '</div>';
+                if (Array.isArray(resp.missing_vendor_items) && resp.missing_vendor_items.length) {
+                    html += '<ul class="mb-0 ps-3">';
+                    resp.missing_vendor_items.forEach(function (mv) {
+                        const code = soEscapeHtml(mv.code || 'Unknown Product');
+                        html += '<li>' + code;
+                        if (mv.product_id) {
+                            html += ' - <a href="http://192.168.100.110/corelynk/products/' + mv.product_id + '/edit">Assign Vendor</a>';
+                        }
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+                html += '</div>';
+            }
+            resultBox.innerHTML = html;
+
+            if (resp.success && (resp.created_count ?? 0) > 0) {
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        })
+        .catch(() => {
+            resultBox.innerHTML = '<div class="alert alert-danger so-document-alert">Could not reach the server. Please try again.</div>';
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        });
+});
+</script>
+        </main>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery and Select2 for searchable dropdowns -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="http://192.168.100.110/corelynk/assets/js/product-image-hover-preview.js?v=1"></script>
+
+    <script>
+        // Initialize Select2 on elements with .searchable once DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+                    window.jQuery('.searchable').each(function() {
+                        try {
+                            if (window.jQuery(this).data('select2')) {
+                                window.jQuery(this).select2('destroy');
+                            }
+                            window.jQuery(this).select2({ width: '100%', placeholder: 'Search...', allowClear: true });
+                        } catch (e) {
+                            console.warn('Select2 init failed', e);
+                        }
+                    });
+                }
+            } catch (e) { /* ignore */ }
+        });
+    </script>
+
+
+    <script>
+        // Auto-hide alerts after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    try {
+                        if (alert.classList.contains('show')) {
+                            if (window.bootstrap && window.bootstrap.Alert) {
+                                const bsAlert = new window.bootstrap.Alert(alert);
+                                bsAlert.close();
+                            } else {
+                                alert.parentNode && alert.parentNode.removeChild(alert);
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }, 5000);
+            });
+        });
+
+        // CSRF Token for AJAX requests
+        window.csrfToken = 'csrf_test_name';
+        window.csrfHash = '5b3d8c1f6c6aeaa34956dab0acb34a42';
+    </script>
+
+    <!-- Remote modal (loads pages via AJAX into a modal so users don't leave the current page) -->
+    <div class="modal fade" id="remoteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="remoteModalLabel">Loading...</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center py-4" id="remoteModalSpinner">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="remoteModalContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Delegated handler for opening links/buttons in the remote modal
+        document.addEventListener('click', function(e) {
+            var trigger = e.target.closest && e.target.closest('.open-remote-modal');
+            if (!trigger) return;
+            e.preventDefault();
+            var url = trigger.getAttribute('data-url') || trigger.getAttribute('href');
+            if (!url) return;
+            var title = trigger.getAttribute('data-title') || trigger.getAttribute('title') || 'Manage';
+
+            var modalEl = document.getElementById('remoteModal');
+            var modal = new bootstrap.Modal(modalEl);
+            document.getElementById('remoteModalLabel').textContent = title;
+            document.getElementById('remoteModalContent').innerHTML = '';
+            document.getElementById('remoteModalSpinner').style.display = 'block';
+            modal.show();
+
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(res){ return res.text(); })
+                .then(function(html){
+                    document.getElementById('remoteModalSpinner').style.display = 'none';
+                    var modalContent = document.getElementById('remoteModalContent');
+                    modalContent.innerHTML = html;
+
+                    // Execute any inline <script> tags included in the fetched HTML so that
+                    // page-specific initializers (like the Add Value handlers) run. When
+                    // HTML is injected via innerHTML the browser doesn't execute scripts,
+                    // so we manually recreate them.
+                    try {
+                        Array.from(modalContent.querySelectorAll('script')).forEach(function(s){
+                            var ns = document.createElement('script');
+                            if (s.src) {
+                                ns.src = s.src; // external script will load and execute
+                                // preserve async/defer if present
+                                if (s.async) ns.async = true;
+                                if (s.defer) ns.defer = true;
+                            } else {
+                                ns.text = s.innerHTML;
+                            }
+                            s.parentNode.replaceChild(ns, s);
+                        });
+                    } catch(e) { console.error('Error executing modal scripts', e); }
+
+                    // Initialize Select2 inside loaded content if available
+                    try {
+                        if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+                            window.jQuery('#remoteModalContent').find('.searchable').each(function(){
+                                try { if (window.jQuery(this).data('select2')) window.jQuery(this).select2('destroy'); } catch(e){}
+                                try { window.jQuery(this).select2({ width: '100%', placeholder: 'Search...', allowClear: true }); } catch(e){}
+                            });
+                        }
+                    } catch(e) { /* ignore */ }
+                })
+                .catch(function(err){
+                    document.getElementById('remoteModalSpinner').style.display = 'none';
+                    document.getElementById('remoteModalContent').innerHTML = '<div class="alert alert-danger">Failed to load content. <a href="'+url+'" target="_blank">Open in new tab</a></div>';
+                });
+        });
+    </script>
+
+    <!-- Page-specific JavaScript -->
+    
+    <!-- Bootstrap JS (removed duplicate include) -->
+
+
+</body>
+</html>

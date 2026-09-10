@@ -57,26 +57,20 @@ class WeightHelper
     }
 
     /**
-     * Display a shipment weight. When every line of the document shares one
-     * weight unit we show that unit (the one the user picked on the product),
-     * with the kg equivalent alongside so shipping still has a common base.
-     * Mixed units (or none given) fall back to kg, or grams under 1 kg.
+     * Display a weight in kg-or-grams form: 1 kg and above reads in kg,
+     * anything lighter reads in grams. The unit the user picked on the
+     * product only decides how the value is stored/converted, never how it
+     * is displayed, so documents never show huge gram figures.
+     *
+     * @param float       $kg   Weight already converted to kilograms
+     * @param string|null $unit Ignored, kept for existing callers
      */
     public static function formatShipment(float $kg, ?string $unit = null): string
     {
         $kg = max(0.0, $kg);
-        $unit = strtolower(trim((string) $unit));
-        $isKg = $unit === '' || in_array($unit, ['kg', 'kgs', 'kilogram', 'kilograms'], true);
-
-        if (! $isKg) {
-            $value = self::fromKilograms($kg, $unit);
-            $decimals = $value >= 100 ? 0 : 2;
-
-            return number_format($value, $decimals) . ' ' . $unit . ' (' . number_format($kg, 3) . ' kg)';
-        }
 
         if ($kg >= 1) {
-            return number_format($kg, 3) . ' kg';
+            return rtrim(rtrim(number_format($kg, 3, '.', ','), '0'), '.') . ' kg';
         }
 
         return number_format($kg * 1000, 0) . ' g';

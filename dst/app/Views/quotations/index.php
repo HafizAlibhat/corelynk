@@ -52,6 +52,12 @@ Quotations
                                     <a href="<?= site_url('document-studio?edit=quotation&id='.$q['id']) ?>" class="btn btn-sm btn-outline-info" title="Edit in Document Studio" aria-label="Edit quotation in Document Studio">
                                         <i class="bi bi-easel" aria-hidden="true"></i>
                                     </a>
+                                    <form method="post" action="<?= site_url('quotations/duplicate/'.$q['id']) ?>" class="d-inline" onsubmit="return confirm('Create a copy of this quotation?');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Duplicate" aria-label="Duplicate quotation">
+                                            <i class="bi bi-files" aria-hidden="true"></i>
+                                        </button>
+                                    </form>
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-manage-tags" data-doc-type="quotation" data-doc-id="<?= (int)$q['id'] ?>" title="Manage Tags" aria-label="Manage quotation tags">
                                         <i class="bi bi-tags" aria-hidden="true"></i>
                                     </button>
