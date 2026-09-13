@@ -325,10 +325,11 @@ class SystemBackupService
 
         $env = null;
         if (($config['password'] ?? '') !== '') {
-            $env = getenv();
-            if (!is_array($env)) {
-                $env = [];
-            }
+            // Under php-fpm, getenv() also returns non-string entries
+            // (argv, argc, REQUEST_TIME...) that make proc_open() fail
+            // with "Array to string conversion" when building the child
+            // process environment.
+            $env = array_filter(getenv() ?: [], static fn ($value) => is_string($value));
             $env['MYSQL_PWD'] = (string) $config['password'];
         }
 
@@ -587,10 +588,11 @@ class SystemBackupService
 
         $env = null;
         if (($config['password'] ?? '') !== '') {
-            $env = getenv();
-            if (!is_array($env)) {
-                $env = [];
-            }
+            // Under php-fpm, getenv() also returns non-string entries
+            // (argv, argc, REQUEST_TIME...) that make proc_open() fail
+            // with "Array to string conversion" when building the child
+            // process environment.
+            $env = array_filter(getenv() ?: [], static fn ($value) => is_string($value));
             $env['MYSQL_PWD'] = (string) $config['password'];
         }
 
