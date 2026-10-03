@@ -13,8 +13,11 @@ use App\Models\QuotationModel;
 use App\Services\AccountingPostingService;
 use App\Models\CompanySettingsModel;
 use App\Services\DualInvoiceService;
+use App\Services\InvoicePaymentScheduleService;
+use App\Models\PaymentTermModel;
 use App\Libraries\DocumentLogger;
 use App\Libraries\InvoicePdfGenerator;
+use App\Helpers\WeightHelper;
 
 class CustomerInvoices extends BaseController
 {
@@ -28,6 +31,8 @@ class CustomerInvoices extends BaseController
     protected $customerModel;
     protected $customerAddressModel;
     protected $companySettingsModel;
+    protected $paymentTermModel;
+    protected $scheduleService;
     
     public function __construct()
     {
@@ -41,6 +46,8 @@ class CustomerInvoices extends BaseController
     $this->customerModel = new CustomerModel();
     $this->customerAddressModel = new CustomerAddressModel();
     $this->companySettingsModel = new CompanySettingsModel();
+    $this->paymentTermModel = new PaymentTermModel();
+    $this->scheduleService = new InvoicePaymentScheduleService();
         
         helper(['form', 'url', 'number']);
     }
@@ -378,6 +385,12 @@ class CustomerInvoices extends BaseController
         $currency = $order['currency'] ?? ($order['currency_code'] ?? $this->getDefaultSalesCurrency());
         $header['currency_code'] = $currency;
 
+        // The payment plan the customer approved on the quotation carries into
+        // the invoice, so the instalment schedule is not re-picked by hand.
+        if (!empty($quote['payment_term_id'])) {
+            $header['payment_term_id'] = (int)$quote['payment_term_id'];
+        }
+
         $invoiceId = $this->invoiceModel->insert($header);
         if (!$invoiceId) {
             return redirect()->back()->with('error', 'Failed to create invoice');
@@ -464,11 +477,47 @@ class CustomerInvoices extends BaseController
             'invoice' => $invoice,
             'lines' => $this->invoiceLineModel->where('invoice_id', $invoiceId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll(),
             'customer' => $this->customerModel->find((int)($invoice['customer_id'] ?? 0)) ?? [],
-            'customerAddress' => $this->getCustomerAddress((int)($invoice['customer_id'] ?? 0)),
+            'customerAddress' => $this->getCustomerAddress((int)($invoice['customer_id'] ?? 0), $invoice),
             'company' => $this->getCompanySettings(),
             'mode' => 'edit',
         ];
+        $this->attachPaymentTermsData($data, $invoice);
         return view('invoices/simple_invoice', $data);
+    }
+
+    /**
+     * Payment term options, the instalment schedule with its paid/pending
+     * split, and the bank/T&C blocks — shared by the view and edit screens.
+     */
+    private function attachPaymentTermsData(array &$data, array $invoice): void
+    {
+        try {
+            $data['paymentTermOptions'] = $this->paymentTermModel->active();
+        } catch (\Throwable $e) {
+            log_message('error', 'CustomerInvoices: payment term load failed: ' . $e->getMessage());
+            $data['paymentTermOptions'] = [];
+        }
+
+        try {
+            $snapshot = $this->buildInvoicePaymentSnapshot($invoice);
+            $data['paymentSchedule'] = $this->scheduleService->summary($invoice, (float)($snapshot['paid_total'] ?? 0), (array)($snapshot['payments'] ?? []));
+        } catch (\Throwable $e) {
+            log_message('error', 'CustomerInvoices: payment schedule build failed: ' . $e->getMessage());
+            $data['paymentSchedule'] = ['has_schedule' => false, 'rows' => [], 'term' => null, 'total' => 0.0, 'paid' => 0.0, 'due' => 0.0];
+        }
+
+        $company = $data['company'] ?? $this->getCompanySettings();
+        $data['bankDetailsText'] = $this->resolveInvoiceText($invoice, $company, 'bank_details', 'bank_details');
+        $data['invoiceTermsText'] = $this->resolveInvoiceText($invoice, $company, 'terms_conditions', 'invoice_terms');
+    }
+
+    /** Per-invoice text wins; blank falls back to the company-wide default. */
+    private function resolveInvoiceText(array $invoice, $company, string $invoiceField, string $companyField): string
+    {
+        $value = trim((string)($invoice[$invoiceField] ?? ''));
+        if ($value !== '') return $value;
+
+        return is_array($company) ? trim((string)($company[$companyField] ?? '')) : '';
     }
 
     /**
@@ -486,9 +535,116 @@ class CustomerInvoices extends BaseController
             'due_date' => $payload['due_date'] ?? $invoice['due_date'],
             'notes' => $payload['notes'] ?? $invoice['notes'] ?? null,
         ];
+
+        // Payment terms / bank details / T&C are only persisted when their
+        // columns exist, so an un-migrated install keeps working.
+        try {
+            $cols = \Config\Database::connect()->getFieldNames('customer_invoices');
+        } catch (\Throwable $_) {
+            $cols = [];
+        }
+
+        if (in_array('payment_term_id', $cols, true) && array_key_exists('payment_term_id', $payload)) {
+            $termId = (int)$payload['payment_term_id'];
+            // Only accept a term that actually exists; anything else clears it.
+            $update['payment_term_id'] = ($termId > 0 && $this->paymentTermModel->find($termId)) ? $termId : null;
+        }
+        foreach (['bank_details', 'terms_conditions', 'customer_po_number'] as $field) {
+            if (in_array($field, $cols, true) && array_key_exists($field, $payload)) {
+                $value = trim((string)$payload[$field]);
+                $update[$field] = $value === '' ? null : $value;
+            }
+        }
+
         $this->invoiceModel->update($invoiceId, $update);
+
+        // Rebuild the instalment schedule against the saved header, and keep
+        // the header due date on the last instalment so existing overdue
+        // reporting still lines up with the terms.
+        try {
+            $saved = $this->invoiceModel->find($invoiceId);
+            if ($saved) {
+                $rows = $this->scheduleService->generate($saved);
+                $dueDates = array_filter(array_column($rows, 'due_date'));
+                if (!empty($dueDates)) {
+                    $lastDue = max($dueDates);
+                    if ($lastDue !== ($saved['due_date'] ?? null)) {
+                        $this->invoiceModel->update($invoiceId, ['due_date' => $lastDue]);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Invoice payment schedule rebuild failed for invoice ' . $invoiceId . ': ' . $e->getMessage());
+        }
+
         DocumentLogger::log(DocumentLogger::TYPE_INVOICE, (int)$invoiceId, DocumentLogger::ACTION_UPDATED);
         return redirect()->to('/customer-invoices/edit/' . $invoiceId)->with('success', 'Invoice updated');
+    }
+
+    /**
+     * Set payment terms / bank details / T&C on any invoice, including posted
+     * ones. These fields carry no accounting value — amounts, lines and the
+     * posted journal entry are untouched — so agreed terms can still be applied
+     * to an invoice that has already been issued.
+     */
+    public function savePaymentTerms($invoiceId)
+    {
+        $invoice = $this->invoiceModel->findByPublicIdOrId($invoiceId);
+        if (!$invoice) return redirect()->back()->with('error', 'Invoice not found');
+        $invoiceId = (int)$invoice['id'];
+
+        if (strtolower(trim((string)($invoice['status'] ?? ''))) === 'cancelled') {
+            return redirect()->back()->with('error', 'Payment terms cannot be changed on a cancelled invoice.');
+        }
+
+        try {
+            $cols = \Config\Database::connect()->getFieldNames('customer_invoices');
+        } catch (\Throwable $_) {
+            $cols = [];
+        }
+
+        $update = [];
+        if (in_array('payment_term_id', $cols, true)) {
+            $termId = (int)$this->request->getPost('payment_term_id');
+            $update['payment_term_id'] = ($termId > 0 && $this->paymentTermModel->find($termId)) ? $termId : null;
+        }
+        foreach (['bank_details', 'terms_conditions', 'customer_po_number'] as $field) {
+            if (in_array($field, $cols, true) && $this->request->getPost($field) !== null) {
+                $value = trim((string)$this->request->getPost($field));
+                $update[$field] = $value === '' ? null : $value;
+            }
+        }
+
+        if (empty($update)) {
+            return redirect()->to('/customer-invoices/view/' . $invoiceId)->with('info', 'Nothing to update.');
+        }
+
+        $this->invoiceModel->update($invoiceId, $update);
+
+        try {
+            $saved = $this->invoiceModel->find($invoiceId);
+            if ($saved) {
+                $rows = $this->scheduleService->generate($saved);
+                $dueDates = array_filter(array_column($rows, 'due_date'));
+                if (!empty($dueDates)) {
+                    $lastDue = max($dueDates);
+                    if ($lastDue !== ($saved['due_date'] ?? null)) {
+                        $this->invoiceModel->update($invoiceId, ['due_date' => $lastDue]);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Invoice payment schedule rebuild failed for invoice ' . $invoiceId . ': ' . $e->getMessage());
+        }
+
+        DocumentLogger::log(
+            DocumentLogger::TYPE_INVOICE,
+            (int)$invoiceId,
+            DocumentLogger::ACTION_UPDATED,
+            ['payment_terms' => $update['payment_term_id'] ?? null]
+        );
+
+        return redirect()->to('/customer-invoices/view/' . $invoiceId)->with('success', 'Payment terms updated.');
     }
 
     /**
@@ -836,10 +992,12 @@ class CustomerInvoices extends BaseController
         }
 
         $orderedWeightKg = 0.0;
+        $orderedWeightUnit = null;
         if (!empty($linkedSalesOrder['id'])) {
             try {
                 $soLines = $this->salesOrderLineModel->where('sales_order_id', (int)$linkedSalesOrder['id'])->findAll();
                 $productIds = array_values(array_unique(array_filter(array_map('intval', array_column($soLines, 'product_id')))));
+                $variantIds = array_values(array_unique(array_filter(array_map('intval', array_column($soLines, 'product_variant_id')))));
                 $productWeights = [];
                 $productWeightUnits = [];
                 if (!empty($productIds)) {
@@ -856,28 +1014,50 @@ class CustomerInvoices extends BaseController
                     }
                 }
 
-                $toKg = static function (float $weightValue, ?string $weightUnit): float {
-                    $unit = strtolower(trim((string)$weightUnit));
-                    if ($weightValue <= 0) return 0.0;
-                    if ($unit === '' || in_array($unit, ['kg', 'kgs', 'kilogram', 'kilograms'], true)) return $weightValue;
-                    if (in_array($unit, ['g', 'gm', 'gram', 'grams'], true)) return $weightValue / 1000;
-                    if (in_array($unit, ['mg', 'milligram', 'milligrams'], true)) return $weightValue / 1000000;
-                    if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds'], true)) return $weightValue * 0.45359237;
-                    if (in_array($unit, ['oz', 'ounce', 'ounces'], true)) return $weightValue * 0.0283495231;
-                    return $weightValue;
-                };
+                // A variant carries its own weight; the parent product row is only
+                // a fallback, otherwise every variant bills at the parent's weight.
+                $variantWeights = [];
+                if (!empty($variantIds)) {
+                    foreach (db_connect()->table('product_variants')
+                        ->select('id, product_id, weight')
+                        ->whereIn('id', $variantIds)
+                        ->get()->getResultArray() as $variant) {
+                        $variantWeights[(int)$variant['id']] = [
+                            'weight' => (float)($variant['weight'] ?? 0),
+                            'unit'   => $productWeightUnits[(int)($variant['product_id'] ?? 0)] ?? null,
+                        ];
+                    }
+                }
 
+                $usedUnits = [];
                 foreach ($soLines as $soLine) {
                     $pid = (int)($soLine['product_id'] ?? 0);
+                    $vid = (int)($soLine['product_variant_id'] ?? 0);
                     $qty = (float)($soLine['quantity'] ?? 0);
-                    $unitWeight = isset($soLine['unit_weight']) && (float)$soLine['unit_weight'] > 0
-                        ? (float)$soLine['unit_weight']
-                        : (float)($productWeights[$pid] ?? 0);
-                    $weightUnit = $soLine['weight_unit'] ?? ($productWeightUnits[$pid] ?? 'kg');
-                    $orderedWeightKg += ($qty * $toKg($unitWeight, $weightUnit));
+
+                    // Precedence: variant weight > product weight.
+                    $unitWeight = 0.0;
+                    $weightUnit = null;
+                    if ($vid > 0 && !empty($variantWeights[$vid]['weight'])) {
+                        $unitWeight = (float)$variantWeights[$vid]['weight'];
+                        $weightUnit = $variantWeights[$vid]['unit'];
+                    } elseif ($pid > 0) {
+                        $unitWeight = (float)($productWeights[$pid] ?? 0);
+                        $weightUnit = $productWeightUnits[$pid] ?? null;
+                    }
+                    $weightUnit = $weightUnit ?: ($soLine['weight_unit'] ?? 'kg');
+
+                    $lineWeightKg = $qty * WeightHelper::toKilograms($unitWeight, (string)$weightUnit);
+                    if ($lineWeightKg <= 0) {
+                        continue;
+                    }
+                    $orderedWeightKg += $lineWeightKg;
+                    $usedUnits[strtolower(trim((string)$weightUnit))] = true;
                 }
+                $orderedWeightUnit = count($usedUnits) === 1 ? (string)array_key_first($usedUnits) : null;
             } catch (\Throwable $_) {
                 $orderedWeightKg = 0.0;
+                $orderedWeightUnit = null;
             }
         }
 
@@ -895,7 +1075,7 @@ class CustomerInvoices extends BaseController
             'invoice' => $invoice,
             'lines' => $lines,
             'customer' => $this->customerModel->find((int)($invoice['customer_id'] ?? 0)) ?? [],
-            'customerAddress' => $this->getCustomerAddress((int)($invoice['customer_id'] ?? 0)),
+            'customerAddress' => $this->getCustomerAddress((int)($invoice['customer_id'] ?? 0), $invoice),
             'company' => $this->getCompanySettings(),
             'mode' => 'view',
             'displayLineDiscount' => round($lineDiscountTotal, 2),
@@ -904,6 +1084,7 @@ class CustomerInvoices extends BaseController
             'displayDocumentDiscountValue' => round($documentDiscountValue, 2),
             'displayDiscountExcludeShipping' => $discountExcludeShipping ? 1 : 0,
             'orderedWeightKg' => round($orderedWeightKg, 3),
+            'orderedWeightUnit' => $orderedWeightUnit,
             'linkedSalesOrder' => $linkedSalesOrder,
             'sourceLineDiscountByInvoiceLineId' => $sourceLineDiscountByInvoiceLineId,
             'forceDocumentDiscountDisplay' => $forceDocumentDiscountDisplay,
@@ -934,6 +1115,8 @@ class CustomerInvoices extends BaseController
                 }
                 $allocExpr = 'COALESCE(cpa.' . $allocAmtCol . ', 0)';
 
+                $invoiceCreatedAt = (string)($invoice['created_at'] ?? '1970-01-01 00:00:00');
+
                 $invoicePayments = $db->query(
                     'SELECT cp.id, cp.payment_date, cp.amount, ' . $statusExpr . ', ' . $methodExpr . ' AS payment_method, '
                     . $memoExpr . ', ' . $notesExpr . ', ' . $postedExpr . ', '
@@ -941,8 +1124,10 @@ class CustomerInvoices extends BaseController
                     . 'FROM customer_payment_allocations cpa '
                     . 'INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
                     . 'WHERE cpa.invoice_id = ? '
+                    . 'AND cp.customer_id = ? '
+                    . 'AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= ? '
                     . 'ORDER BY cp.payment_date DESC, cp.id DESC',
-                    [(int)$invoiceId]
+                    [(int)$invoiceId, (int)($invoice['customer_id'] ?? 0), $invoiceCreatedAt]
                 )->getResultArray();
             }
         } catch (\Throwable $e) {
@@ -951,6 +1136,7 @@ class CustomerInvoices extends BaseController
         }
 
         $data['invoicePayments'] = $invoicePayments;
+        $this->attachPaymentTermsData($data, $invoice);
         try { $data['logEntries'] = \App\Libraries\DocumentLogger::getForDocument(\App\Libraries\DocumentLogger::TYPE_INVOICE, (int)$invoiceId); } catch (\Throwable $_) { $data['logEntries'] = []; }
         return view('invoices/simple_invoice', $data);
     }
@@ -969,7 +1155,7 @@ class CustomerInvoices extends BaseController
 
         $customerId = (int)($invoice['customer_id'] ?? 0);
         $customer = $this->customerModel->find($customerId) ?? [];
-        $customerAddress = $this->getCustomerAddress($customerId);
+        $customerAddress = $this->getCustomerAddress($customerId, $invoice);
         $paymentSnapshot = $this->buildInvoicePaymentSnapshot($invoice);
 
         // Enrich lines with product metadata (especially image paths) so the PDF can render images reliably.
@@ -1261,9 +1447,19 @@ class CustomerInvoices extends BaseController
             'customer' => $customer,
             'customerAddress' => $customerAddress,
             'paymentSnapshot' => $paymentSnapshot,
+            'hide_company_logo' => (int)($company['pdf_inv_hide_logo'] ?? 0),
             'pdf_show_header_address' => (int)($company['pdf_inv_show_header'] ?? 1),
             'pdf_show_footer' => (int)($company['pdf_inv_show_footer'] ?? 1),
         ];
+
+        try {
+            $payload['paymentSchedule'] = $this->scheduleService->summary($invoice, (float)($paymentSnapshot['paid_total'] ?? 0), (array)($paymentSnapshot['payments'] ?? []));
+        } catch (\Throwable $e) {
+            log_message('error', 'CustomerInvoices::pdf payment schedule build failed: ' . $e->getMessage());
+            $payload['paymentSchedule'] = ['has_schedule' => false, 'rows' => []];
+        }
+        $payload['bankDetailsText'] = $this->resolveInvoiceText($invoice, $company, 'bank_details', 'bank_details');
+        $payload['invoiceTermsText'] = $this->resolveInvoiceText($invoice, $company, 'terms_conditions', 'invoice_terms');
 
         $pdf = $this->pdfGenerator->generateSystemInvoice($payload);
         if (is_array($pdf) && !empty($pdf['path'])) {
@@ -1276,16 +1472,38 @@ class CustomerInvoices extends BaseController
         return redirect()->back()->with('error', 'Failed to generate PDF');
     }
 
-    private function getCustomerAddress(int $customerId)
+    /**
+     * Address for an invoice. An issued invoice must keep the address it was
+     * issued with, so the document's own snapshot wins; the invoice's sales
+     * order snapshot is next, and only documents predating snapshots fall back
+     * to the live primary address.
+     */
+    private function getCustomerAddress(int $customerId, ?array $invoice = null)
     {
         if (!$customerId) return null;
+
+        helper('customer_snapshot');
+
+        if (is_array($invoice)) {
+            $snapshotDoc = $invoice;
+            if (empty($snapshotDoc['customer_snapshot']) && !empty($invoice['sales_order_id'])) {
+                try {
+                    $snapshotDoc = \Config\Database::connect()->table('sales_orders')
+                        ->select('customer_snapshot')
+                        ->where('id', (int)$invoice['sales_order_id'])
+                        ->get(1)->getRowArray() ?: $snapshotDoc;
+                } catch (\Throwable $_) {
+                    // fall through to the live address
+                }
+            }
+            $snapshot = customer_snapshot_decode($snapshotDoc);
+            if ($snapshot !== []) {
+                return customer_snapshot_address($snapshotDoc, $customerId);
+            }
+        }
+
         try {
-            $addr = $this->customerAddressModel
-                ->where('customer_id', $customerId)
-                ->orderBy('is_billing', 'DESC')
-                ->orderBy('is_shipping', 'DESC')
-                ->orderBy('id', 'ASC')
-                ->first();
+            $addr = $this->customerAddressModel->primaryFor($customerId);
 
             // If there is no address row, fall back to customer master fields when available.
             // This prevents PDFs showing only the generic "Customer" label.
@@ -1379,6 +1597,7 @@ class CustomerInvoices extends BaseController
                     $statusWhere = ' AND (cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0)';
                 }
 
+                $invoiceCreatedAt = (string)($invoice['created_at'] ?? '1970-01-01 00:00:00');
                 $payments = $db->query(
                     'SELECT cp.id AS payment_id, cp.payment_date, '
                     . 'COALESCE(cpa.' . $allocAmtCol . ', 0) AS allocated_amount, '
@@ -1386,9 +1605,12 @@ class CustomerInvoices extends BaseController
                     . $postedExpr . ' '
                     . 'FROM customer_payment_allocations cpa '
                     . 'INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
-                    . 'WHERE cpa.invoice_id = ?' . $statusWhere . ' '
+                    . 'WHERE cpa.invoice_id = ? '
+                    . 'AND cp.customer_id = ? '
+                    . 'AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= ? '
+                    . $statusWhere . ' '
                     . 'ORDER BY cp.payment_date ASC, cp.id ASC',
-                    [$invoiceId]
+                    [$invoiceId, (int)($invoice['customer_id'] ?? 0), $invoiceCreatedAt]
                 )->getResultArray();
             }
         } catch (\Throwable $e) {
@@ -1615,6 +1837,18 @@ class CustomerInvoices extends BaseController
             $customerName = esc($customer['name'] ?? 'Customer');
             $companyName = esc($company['name'] ?? '');
 
+            // Instalment schedule / bank details / T&C, same source as the PDF.
+            $printSchedule = ['has_schedule' => false, 'rows' => [], 'term' => null, 'total' => 0.0, 'paid' => 0.0, 'due' => 0.0];
+            try {
+                $snapshot = $this->buildInvoicePaymentSnapshot($invoice);
+                $printSchedule = $this->scheduleService->summary($invoice, (float)($snapshot['paid_total'] ?? 0), (array)($snapshot['payments'] ?? []));
+            } catch (\Throwable $e) {
+                log_message('error', 'CustomerInvoices::printView schedule build failed: ' . $e->getMessage());
+            }
+            $printBankDetails = $this->resolveInvoiceText($invoice, $company, 'bank_details', 'bank_details');
+            $printTerms = $this->resolveInvoiceText($invoice, $company, 'terms_conditions', 'invoice_terms');
+            helper('invoice_terms');
+
             ob_start();
             ?>
     <!DOCTYPE html>
@@ -1669,6 +1903,9 @@ class CustomerInvoices extends BaseController
       <div class="grn-facts">
         <div class="grn-fact"><div class="grn-fact-lbl">Customer</div><div class="grn-fact-val"><?= $customerName ?></div></div>
         <div class="grn-fact"><div class="grn-fact-lbl">Invoice Date</div><div class="grn-fact-val"><?= esc($invoiceDate ?: '-') ?></div></div>
+        <?php if (!empty($invoice['customer_po_number'])): ?>
+        <div class="grn-fact"><div class="grn-fact-lbl">Customer PO #</div><div class="grn-fact-val"><?= esc($invoice['customer_po_number']) ?></div></div>
+        <?php endif; ?>
         <div class="grn-fact"><div class="grn-fact-lbl">Currency</div><div class="grn-fact-val"><?= esc($currency) ?></div></div>
         <div class="grn-fact"><div class="grn-fact-lbl">Lines</div><div class="grn-fact-val"><?= number_format(count($printLines), 0) ?></div></div>
       </div>
@@ -1711,6 +1948,117 @@ class CustomerInvoices extends BaseController
           <tr class="grand"><td class="lbl">Total</td><td class="val"><?= esc($fmt($total)) ?></td></tr>
         </table>
       </div>
+
+      <?php if (!empty($printSchedule['has_schedule'])): ?>
+      <?php
+        // Paid/Balance columns stay hidden until a payment exists; a wall of
+        // zeros reads as an error to the customer.
+        $psHasPayment = $printSchedule['paid'] > 0.005;
+        $psCell = 'padding:4px 6px;border-bottom:1px dashed #e2e8f0;';
+        $psHead = 'padding:4px 6px;border-bottom:1px solid #cbd5e1;';
+        $psTot  = 'padding:2px 0;color:#475569;';
+        $psVal  = 'padding:2px 0;text-align:right;font-weight:700;color:#0f172a;';
+        $psNowDue   = (float)($printSchedule['now_due'] ?? 0);
+        $psNowLabel = trim((string)($printSchedule['now_due_label'] ?? ''));
+        $psNowPct   = (float)($printSchedule['now_due_percentage'] ?? 0);
+        $psNote = invoice_short_note((string)($printSchedule['term']['description'] ?? ''));
+        if ($psNowPct > 0) {
+            $psNowLabel = trim($psNowLabel . ' (' . rtrim(rtrim(number_format($psNowPct, 2), '0'), '.') . '%)');
+        }
+      ?>
+      <div style="margin:0 2rem 1.2rem;">
+        <h3 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;margin-bottom:.4rem;">
+          Payment Schedule<?= !empty($printSchedule['term']['name']) ? ' - ' . esc($printSchedule['term']['name']) : '' ?><?= $psNote !== '' ? ' <span style="text-transform:none;letter-spacing:0;color:#64748b;font-weight:400;">(' . esc($psNote) . ')</span>' : '' ?>
+        </h3>
+        <table style="width:100%;border-collapse:collapse;font-size:.75rem;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="text-align:left;<?= $psHead ?>">#</th>
+              <th style="text-align:left;<?= $psHead ?>">Instalment</th>
+              <th style="text-align:right;<?= $psHead ?>">%</th>
+              <th style="text-align:left;<?= $psHead ?>">Due</th>
+              <th style="text-align:right;<?= $psHead ?>">Amount</th>
+              <?php if ($psHasPayment): ?>
+                <th style="text-align:right;<?= $psHead ?>">Received</th>
+                <th style="text-align:right;<?= $psHead ?>">Balance</th>
+              <?php endif; ?>
+              <th style="text-align:right;<?= $psHead ?>">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($printSchedule['rows'] as $psr): ?>
+            <?php
+              $psOverdue = !empty($psr['is_overdue']) && $psr['status'] !== 'paid';
+              if ($psr['status'] === 'paid') { $psLabel = 'Paid'; $psColor = '#15803d'; }
+              elseif ($psOverdue) { $psLabel = 'Overdue'; $psColor = '#b91c1c'; }
+              elseif ($psr['paid'] > 0.005) { $psLabel = 'Part paid'; $psColor = '#b45309'; }
+              else { $psLabel = 'Payable'; $psColor = '#475569'; }
+            ?>
+            <tr style="<?= $psOverdue ? 'color:#b91c1c;' : '' ?>">
+              <td style="<?= $psCell ?>"><?= (int)$psr['seq'] ?></td>
+              <td style="<?= $psCell ?>"><?= esc($psr['label']) ?></td>
+              <td style="<?= $psCell ?>text-align:right;"><?= esc(rtrim(rtrim(number_format((float)$psr['percentage'], 2), '0'), '.')) ?>%</td>
+              <td style="<?= $psCell ?>"><?= esc($psr['due_label']) ?></td>
+              <td style="<?= $psCell ?>text-align:right;"><?= esc($fmt($psr['amount'])) ?></td>
+              <?php if ($psHasPayment): ?>
+                <td style="<?= $psCell ?>text-align:right;">
+                  <?php if ($psr['paid'] > 0.005): ?>
+                    <?= esc($fmt($psr['paid'])) ?>
+                    <?php if (!empty($psr['paid_on'])): ?>
+                      <div style="font-size:.65rem;color:#64748b;">paid <?= esc(date('d M Y', strtotime((string)$psr['paid_on']))) ?></div>
+                    <?php endif; ?>
+                  <?php else: ?>-<?php endif; ?>
+                </td>
+                <td style="<?= $psCell ?>text-align:right;font-weight:600;"><?= esc($fmt($psr['balance'])) ?></td>
+              <?php endif; ?>
+              <td style="<?= $psCell ?>text-align:right;font-weight:700;color:<?= $psColor ?>;"><?= $psLabel ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        <table style="width:46%;margin-left:auto;border-collapse:collapse;margin-top:.4rem;font-size:.75rem;">
+          <tr>
+            <td style="<?= $psTot ?>">Invoice Total</td>
+            <td style="<?= $psVal ?>"><?= esc($fmt($printSchedule['total'])) ?></td>
+          </tr>
+          <?php if ($psHasPayment): ?>
+          <tr>
+            <td style="<?= $psTot ?>">Amount Received</td>
+            <td style="<?= $psVal ?>"><?= esc($fmt($printSchedule['paid'])) ?></td>
+          </tr>
+          <?php endif; ?>
+          <tr>
+            <td style="<?= $psTot ?>border-top:1px solid #cbd5e1;padding-top:4px;color:#0f172a;font-weight:700;font-size:.85rem;">
+              <?= $psNowDue > 0.005 ? 'Now Payable' . ($psNowLabel !== '' ? ' - ' . esc($psNowLabel) : '') : 'Paid in Full' ?>
+            </td>
+            <td style="<?= $psVal ?>border-top:1px solid #cbd5e1;padding-top:4px;font-size:.85rem;"><?= esc($fmt($psNowDue > 0.005 ? $psNowDue : 0)) ?></td>
+          </tr>
+          <?php if ($printSchedule['due'] - $psNowDue > 0.005): ?>
+          <tr>
+            <td style="<?= $psTot ?>">Payable Later</td>
+            <td style="<?= $psVal ?>"><?= esc($fmt($printSchedule['due'] - $psNowDue)) ?></td>
+          </tr>
+          <?php endif; ?>
+        </table>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($printBankDetails !== '' || $printTerms !== ''): ?>
+      <div style="margin:0 2rem 1.5rem;display:flex;gap:1rem;flex-wrap:wrap;">
+        <?php if ($printBankDetails !== ''): ?>
+          <div style="flex:1 1 260px;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;">
+            <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;margin:0;padding:.35rem .7rem;background:#f1f5f9;border-bottom:1px solid #cbd5e1;">Bank Details</h3>
+            <div style="font-size:.75rem;line-height:1.5;color:#334155;padding:.5rem .7rem;"><?= invoice_bank_details_html($printBankDetails) ?></div>
+          </div>
+        <?php endif; ?>
+        <?php if ($printTerms !== ''): ?>
+          <div style="flex:1 1 260px;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;">
+            <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;margin:0;padding:.35rem .7rem;background:#f1f5f9;border-bottom:1px solid #cbd5e1;">Terms &amp; Conditions</h3>
+            <div style="font-size:.75rem;line-height:1.5;color:#334155;padding:.5rem .7rem;"><?= invoice_terms_html($printTerms) ?></div>
+          </div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
     </div>
     </body>
     </html>

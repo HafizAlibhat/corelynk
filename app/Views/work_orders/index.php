@@ -113,7 +113,7 @@
             <div class="card-body p-0">
                 <?php if (!empty($work_orders) && count($work_orders) > 0): ?>
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0">
+                        <table class="cl-table table table-hover table-sm mb-0">
                             <thead class="table-light">
                                 <tr style="font-size: 0.85rem;">
                                     <th width="30" class="text-center">

@@ -69,7 +69,7 @@ class InvoicePdfGenerator
             $data['customerAddress'] = $payload['customerAddress'];
         }
 
-        foreach (['document_title', 'document_number_label', 'document_date_label', 'document_prefix', 'party_label', 'hide_company_logo', 'hide_company_website', 'pdf_show_header_address', 'pdf_show_footer', 'warehouse_customer_number'] as $metaKey) {
+        foreach (['document_title', 'document_number_label', 'document_date_label', 'document_prefix', 'party_label', 'hide_company_logo', 'hide_company_website', 'pdf_show_header_address', 'pdf_show_footer', 'warehouse_customer_number', 'paymentSchedule', 'bankDetailsText', 'invoiceTermsText'] as $metaKey) {
             if (array_key_exists($metaKey, $payload)) {
                 $data[$metaKey] = $payload[$metaKey];
             }
@@ -167,6 +167,8 @@ class InvoicePdfGenerator
             'professional_gray' => 'pdf/templates/professional_gray',
             'bold_red' => 'pdf/templates/bold_red',
             'elegant_purple' => 'pdf/templates/elegant_purple',
+            'odoo_style' => 'pdf/templates/odoo_style',
+            'odoo_boxed' => 'pdf/templates/odoo_boxed',
             // Warehouse pick-list is always forced to its own template regardless of company settings
             'warehouse_picklist' => 'pdf/invoice_warehouse_picklist',
         ];
@@ -191,6 +193,10 @@ class InvoicePdfGenerator
         $this->dompdf->setPaper('A4', 'portrait');
         $this->dompdf->render();
 
+        if ($type === 'system') {
+            $this->stampPageNumbers();
+        }
+
         // Save to file
         $filename = 'invoice_' . ($invoice['invoice_number'] ?? $invoice['id'] ?? uniqid()) . '_' . $type . '_' . time() . '.pdf';
     $filepath = $writePath . 'uploads/invoices/' . $filename;
@@ -208,6 +214,40 @@ class InvoicePdfGenerator
             'path' => $filepath,
             'name' => $filename,
         ];
+    }
+
+    /**
+     * Draw "Page: n / total" into the blank line the footer reserves for it.
+     *
+     * Dompdf ignores CSS page counters, and the total is only known once every
+     * page exists, so this runs after render() and uses the canvas placeholders
+     * that Dompdf substitutes while writing the file out.
+     */
+    private function stampPageNumbers(): void
+    {
+        try {
+            $canvas  = $this->dompdf->getCanvas();
+            $metrics = $this->dompdf->getFontMetrics();
+            $font    = $metrics->getFont('DejaVu Sans') ?: $metrics->getFont('Helvetica');
+            if (!$font) {
+                return;
+            }
+
+            $size  = 7.5;
+            $width = $metrics->getTextWidth('Page: 00 / 00', $font, $size);
+
+            $canvas->page_text(
+                ($canvas->get_width() - $width) / 2,
+                $canvas->get_height() - 34,
+                'Page: {PAGE_NUM} / {PAGE_COUNT}',
+                $font,
+                $size,
+                [0.42, 0.45, 0.50]
+            );
+        } catch (\Throwable $e) {
+            // A missing page number must never cost the user their invoice.
+            log_message('error', 'InvoicePdfGenerator::stampPageNumbers failed: ' . $e->getMessage());
+        }
     }
 
     public function generateSystemInvoice($payload)

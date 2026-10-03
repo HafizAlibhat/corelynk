@@ -567,6 +567,16 @@ class DocumentStudio extends BaseController
                 }
             }
 
+            // Mirrors Quotations::update()'s pre-transaction guard — a missing/empty lines
+            // payload must never be allowed to fall through to the delete-removed-lines sync,
+            // which would otherwise wipe every existing quotation_lines row.
+            if (empty($lines) || !is_array($lines)) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'At least one line item is required.',
+                ]);
+            }
+
             $currentCustomerId = (int) ($quote['customer_id'] ?? 0);
             $requestedCustomerId = $customerId;
             $hasExistingLines = (int) $lineModel->where('quotation_id', $id)->countAllResults() > 0;
@@ -637,9 +647,11 @@ class DocumentStudio extends BaseController
             if (in_array('total', $cols))       $upd['total'] = $totals['total'];
             if (!empty($upd)) $model->update($id, $upd);
 
-            $db->transComplete();
+            $committed = $db->transComplete();
 
-            if ($db->transStatus() === false) throw new \RuntimeException('Transaction failed');
+            if ($committed === false || $db->transStatus() === false) {
+                throw new \RuntimeException('Transaction failed');
+            }
 
             // Log lines removed
             $removedLines = array_diff_key($existingIds, $seenIds);

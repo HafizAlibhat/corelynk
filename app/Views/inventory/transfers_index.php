@@ -47,7 +47,7 @@
                 </div>
             <?php else: ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" style="font-size:.88rem;">
+                <table class="cl-table table table-hover align-middle mb-0" style="font-size:.88rem;">
                     <thead class="table-light text-secondary" style="font-size:.8rem; text-transform:uppercase; letter-spacing:.04em;">
                         <tr>
                             <th class="ps-3">Transfer #</th>

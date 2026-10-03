@@ -5,7 +5,7 @@ Purchase Orders
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card">
+<div class="card cl-document-form">
   <div class="card-header section-header d-flex justify-content-between align-items-center">
     <div>
       <h3 class="section-title">Purchase Orders</h3>
@@ -15,7 +15,7 @@ Purchase Orders
   <div class="card-body">
     <div id="messages"></div>
 
-    <form id="poForm" class="mb-4">
+    <form id="poForm" class="mb-4 cl-form-card">
       <div class="row g-2">
         <div class="col-md-3 form-group">
           <label class="form-label">PO Number</label>
@@ -46,7 +46,7 @@ Purchase Orders
     </form>
 
     <h5>Your POs (server)</h5>
-    <div id="poList"><em>Loading...</em></div>
+    <div id="poList" class="data-table"><em>Loading...</em></div>
   </div>
 </div>
 
@@ -59,13 +59,13 @@ Purchase Orders
 
   function renderPos(rows){
     if(!rows || rows.length===0){ poList.innerHTML='<em>No POs found.</em>'; return; }
-    let html = '<table><tr><th>ID</th><th>PO#</th><th>Vendor</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
+    let html = '<div class="table-responsive"><table class="cl-table table data-table-table"><thead><tr><th>ID</th><th>PO#</th><th>Vendor</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
     rows.forEach(p=>{
       html += `<tr data-id="${p.id}"><td>${p.id}</td><td>${p.po_number||''}</td><td>${p.vendor_id||''}</td><td>${p.status}</td><td>${p.created_at}</td><td>`;
-      if(p.status === 'draft') html += `<button data-poid="${p.id}" class="confirmBtn">Confirm</button>`;
+      if(p.status === 'draft') html += `<button data-poid="${p.id}" class="confirmBtn btn btn-sm btn-primary">Confirm</button>`;
       html += `</td></tr>`;
     });
-    html += '</table>';
+    html += '</tbody></table></div>';
     poList.innerHTML = html;
     attachPoHandlers();
   }

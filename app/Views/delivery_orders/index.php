@@ -32,14 +32,6 @@ Delivery Orders
     .pl-btn:hover { border-color: var(--cl-primary); color: var(--cl-primary); background: var(--cl-primary-50); }
     .pl-btn.pl-btn-primary { background: var(--cl-primary); border-color: var(--cl-primary); color: #fff; }
     .pl-btn.pl-btn-primary:hover { opacity: .88; color: #fff; }
-    .pl-table { margin-bottom: 0; font-size: .76rem; }
-    .pl-card .pl-table thead th { font-size: .62rem !important; text-transform: uppercase; letter-spacing: .05em; color: var(--cl-text-muted); background: var(--cl-surface-alt); border-bottom: 1px solid var(--cl-border); padding: .26rem .45rem !important; white-space: nowrap; font-weight: 700 !important; }
-    body.theme-dark .pl-card .pl-table thead th { color: #94a3b8 !important; background: #162033 !important; border-bottom-color: #334155 !important; }
-    .pl-card .pl-table tbody td { padding: .22rem .45rem !important; border-bottom: 1px solid var(--cl-border-light); vertical-align: middle; font-size: .76rem !important; }
-    .pl-table tbody tr:last-child td { border-bottom: none; }
-    body.theme-dark .pl-table tbody tr:nth-child(even) td { background: #0f1a2b !important; }
-    body.theme-dark .pl-table tbody tr:nth-child(odd)  td { background: #1a2740 !important; }
-    body.theme-dark .pl-table tbody tr:hover td { background: rgba(37,99,235,.1) !important; cursor: pointer; }
     .do-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 12px; font-size: .63rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     .do-chip-draft     { background: rgba(250,204,21,.12); color: #fbbf24; border: 1px solid rgba(250,204,21,.22); }
     .do-chip-confirmed { background: rgba(52,211,153,.1);  color: #34d399; border: 1px solid rgba(52,211,153,.2); }
@@ -57,11 +49,11 @@ Delivery Orders
     tr.do-row-hidden { display: none; }
 </style>
 
-<div class="pl-wrap container-fluid">
-<div class="pl-card">
+<div class="pl-wrap container-fluid cl-list-page">
+<div class="pl-card cl-list-table-card">
 
     <!-- Card Header -->
-    <div class="pl-card-header">
+    <div class="pl-card-header cl-list-header">
         <div>
             <div class="pl-card-header-title"><i class="bi bi-truck me-1"></i>Delivery Orders</div>
             <div class="pl-card-header-sub">
@@ -81,7 +73,7 @@ Delivery Orders
     </div>
 
     <!-- Filter Bar -->
-    <div class="pl-filter-bar">
+    <div class="pl-filter-bar cl-list-filters">
         <div class="pl-search-wrap">
             <i class="bi bi-search"></i>
             <input type="text" class="form-control" id="doSearch" placeholder="DO number, customer…" oninput="filterDOs()">
@@ -92,19 +84,20 @@ Delivery Orders
             <option value="confirmed">Confirmed</option>
             <option value="delivered">Delivered</option>
         </select>
-        <button type="button" class="pl-btn ms-auto" onclick="document.getElementById('doSearch').value='';document.getElementById('doStatusFilter').value='';filterDOs()" title="Reset filters">
+        <button type="button" class="pl-btn ms-auto" onclick="document.getElementById('doSearch').value='';document.getElementById('doStatusFilter').value='';filterDOs()" title="Reset filters" aria-label="Reset delivery order filters">
             <i class="bi bi-arrow-clockwise"></i>
         </button>
     </div>
 
     <!-- Table -->
     <div class="table-responsive">
-        <table class="table table-hover pl-table mb-0" id="doTable">
+        <table class="cl-table table table-hover pl-table mb-0" id="doTable">
             <thead>
                 <tr>
                     <th style="width:130px">DO Number</th>
                     <th style="width:95px">Status</th>
                     <th>Customer / SO</th>
+                    <th style="width:150px">Shipping</th>
                     <th class="text-center" style="width:60px">Items</th>
                     <th style="width:110px">Created</th>
                     <th style="width:110px">Updated</th>
@@ -114,8 +107,9 @@ Delivery Orders
             <tbody id="doTbody">
             <?php if (!empty($allDOs)): ?>
             <?php foreach ($allDOs as $do): ?>
+                <?php $dsLabel = !empty($do['delivery_status']) ? ucfirst(str_replace('_', ' ', $do['delivery_status'])) : ''; ?>
                 <tr class="do-row"
-                    data-search="<?= strtolower(esc($do['do_number']) . ' ' . esc($do['sales_order']['customer_code'] ?? '') . ' ' . esc($do['sales_order']['customer_name'] ?? '') . ' ' . esc($do['sales_order']['order_number'] ?? '')) ?>"
+                    data-search="<?= strtolower(esc($do['do_number']) . ' ' . esc($do['sales_order']['customer_code'] ?? '') . ' ' . esc($do['sales_order']['customer_name'] ?? '') . ' ' . esc($do['sales_order']['order_number'] ?? '') . ' ' . esc($do['destination_country'] ?? '') . ' ' . esc($do['tracking_number'] ?? '')) ?>"
                     data-status="<?= esc($do['status']) ?>"
                     onclick="window.location.href='<?= site_url('delivery-orders/view/'.(int)$do['do_id']) ?>'">
                     <td><span class="do-num"><?= esc($do['do_number']) ?></span></td>
@@ -124,6 +118,24 @@ Delivery Orders
                             <i class="bi bi-<?= $do['status']==='draft' ? 'pencil-square' : ($do['status']==='delivered' ? 'check-all' : 'check-circle') ?>"></i>
                             <?= esc(ucfirst($do['status'])) ?>
                         </span>
+                        <?php if ($dsLabel !== ''): ?>
+                            <div class="do-so-ref mt-1"><i class="bi bi-truck me-1"></i><?= esc($dsLabel) ?></div>
+                        <?php endif; ?>
+                        <?php
+                            $iShippedAt = $do['shipped_at'] ?? null;
+                            $iEstDays = (int)($do['estimated_delivery_days'] ?? 0);
+                            if ($iShippedAt && $iEstDays > 0) {
+                                $iDaysPassed = (int)floor((time() - strtotime($iShippedAt)) / 86400);
+                                $iIsDelivered = ($do['status'] === 'delivered' || ($do['delivery_status'] ?? '') === 'delivered');
+                                if (!$iIsDelivered) {
+                                    if ($iDaysPassed > $iEstDays) {
+                                        echo '<div class="mt-1"><span class="badge bg-danger" style="font-size:.62rem">Late +' . ($iDaysPassed - $iEstDays) . 'd</span></div>';
+                                    } else {
+                                        echo '<div class="mt-1"><span class="badge bg-success" style="font-size:.62rem">On Track (' . $iDaysPassed . '/' . $iEstDays . 'd)</span></div>';
+                                    }
+                                }
+                            }
+                        ?>
                     </td>
                     <td>
                         <?php if (!empty($do['sales_order'])): ?>
@@ -131,6 +143,16 @@ Delivery Orders
                             <div class="do-so-ref"><?= esc($do['sales_order']['order_number'] ?? '') ?></div>
                         <?php else: ?>
                             <span style="color:var(--cl-text-muted)">--</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="font-size:.72rem">
+                        <?php if (!empty($do['destination_country'])): ?>
+                            <div><i class="bi bi-geo-alt me-1" style="color:var(--cl-text-muted)"></i><?= esc($do['destination_country']) ?></div>
+                        <?php else: ?>
+                            <div style="color:var(--cl-text-muted)">--</div>
+                        <?php endif; ?>
+                        <?php if (!empty($do['tracking_number'])): ?>
+                            <div class="do-so-ref"><i class="bi bi-upc-scan me-1"></i><?= esc($do['tracking_number']) ?></div>
                         <?php endif; ?>
                     </td>
                     <td class="text-center" style="color:var(--cl-text-muted)"><?= (int)$do['line_count'] ?></td>

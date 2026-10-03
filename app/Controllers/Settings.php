@@ -7,6 +7,8 @@ use App\Models\CompanySettingsModel;
 use App\Models\FiscalYearModel;
 use App\Models\SecuritySettingsModel;
 use App\Models\PaymentMethodModel;
+use App\Models\PaymentTermModel;
+use App\Services\InvoicePaymentScheduleService;
 use App\Models\ExchangeRateModel;
 use App\Models\OdooSettingsModel;
 use App\Models\FeatureFlagModel;
@@ -17,6 +19,10 @@ use App\Models\SystemSyncScanModel;
 use App\Models\Accounting\CurrencyModel;
 use App\Services\SystemBackupService;
 use App\Services\SystemSyncService;
+use App\Models\DataPortabilityJobModel;
+use App\Services\DataPortabilityService;
+use Config\DataPortability;
+use App\Services\TagService;
 
 class Settings extends BaseController
 {
@@ -36,7 +42,14 @@ class Settings extends BaseController
         $security = (new SecuritySettingsModel())->first();
         $featureFlags = (new FeatureFlagModel())->getAllFlags();
         $methods = (new PaymentMethodModel())->orderBy('method_name', 'ASC')->findAll();
-        $rates = (new ExchangeRateModel())->where(['base_code' => 'USD', 'quote_code' => 'PKR'])
+        try {
+            $paymentTerms = (new PaymentTermModel())->orderBy('is_active', 'DESC')->orderBy('name', 'ASC')->findAll();
+        } catch (\Throwable $e) {
+            log_message('error', 'Settings: payment terms load failed: ' . $e->getMessage());
+            $paymentTerms = [];
+        }
+        // Load all exchange rates ordered by most recent
+        $rates = (new ExchangeRateModel())
             ->orderBy('as_of', 'DESC')->orderBy('id', 'DESC')->findAll();
         $activeRate = get_active_rate('USD', 'PKR');
     $odoo = (new OdooSettingsModel())->first();
@@ -44,6 +57,7 @@ class Settings extends BaseController
         try {
             $cm = new CurrencyModel();
             $currencies = $cm->orderBy('code','ASC')->findAll();
+            $activeCurrencies = $cm->where('is_active', 1)->orderBy('code','ASC')->findAll();
         } catch (\Throwable $e) {
             $currencies = [];
         }
@@ -135,7 +149,12 @@ class Settings extends BaseController
         $backupSchedules = [];
         $syncEnvironments = [];
         $syncScans = [];
+        $tags = [];
+        $dataJobs = [];
         try {
+            $dataJobs = (new DataPortabilityJobModel())
+                ->orderBy('id', 'DESC')
+                ->findAll(15);
             $backupJobs = (new SystemBackupJobModel())
                 ->orderBy('id', 'DESC')
                 ->findAll(15);
@@ -149,6 +168,7 @@ class Settings extends BaseController
             $syncScans = (new SystemSyncScanModel())
                 ->orderBy('id', 'DESC')
                 ->findAll(15);
+            $tags = (new TagService())->getAllTags('', 500);
         } catch (\Throwable $e) {
             log_message('error', 'Settings backup load error: ' . $e->getMessage());
         }
@@ -160,10 +180,12 @@ class Settings extends BaseController
             'security' => $security,
             'feature_flags' => $featureFlags,
             'methods' => $methods,
+            'payment_terms' => $paymentTerms,
             'rates' => $rates,
             'activeRate' => $activeRate,
             'odoo' => $odoo,
             'currencies' => $currencies,
+            'active_currencies' => $activeCurrencies ?? [],
             'art_counter' => $artCounter,
             'customer_code_prefix' => $customerPrefix,
             'customer_counter' => $customerCounter,
@@ -177,8 +199,11 @@ class Settings extends BaseController
             'product_assets_channel_max_mb' => $productAssetsChannelMaxMb,
             'backup_jobs' => $backupJobs,
             'backup_schedules' => $backupSchedules,
+            'data_jobs' => $dataJobs,
+            'data_modules' => DataPortability::$modules,
             'sync_environments' => $syncEnvironments,
             'sync_scans' => $syncScans,
+            'tags' => $tags,
             'validation' => \Config\Services::validation(),
             'csrf' => csrf_hash()
         ]);
@@ -190,16 +215,32 @@ class Settings extends BaseController
         $code = strtoupper(trim($this->request->getPost('code')));
         $name = trim($this->request->getPost('name')) ?: $code;
         $symbol = $this->request->getPost('symbol') ?: null;
+        $decimals = (int)($this->request->getPost('decimals')) ?: 2;
+        
         if ($code === '') {
             return redirect()->back()->with('error','Invalid currency code');
         }
+        
+        if ($decimals < 0 || $decimals > 8) {
+            return redirect()->back()->with('error','Decimal places must be between 0 and 8');
+        }
+        
         $cm = new CurrencyModel();
         // Prevent duplicate
         if ($cm->find($code)) {
             return redirect()->back()->with('error','Currency code already exists');
         }
-        $cm->insert(['code' => $code, 'name' => $name, 'symbol' => $symbol, 'is_base' => 0, 'decimals' => 2, 'is_active' => 1]);
-        return redirect()->to(site_url('settings'))->with('success', 'Currency added');
+        
+        $cm->insert([
+            'code' => $code, 
+            'name' => $name, 
+            'symbol' => $symbol, 
+            'is_base' => 0, 
+            'decimals' => $decimals, 
+            'is_active' => 1
+        ]);
+        
+        return redirect()->to(site_url('settings') . '#section-currencies')->with('success', 'Currency added');
     }
 
     public function toggleCurrency($code = null)
@@ -210,6 +251,72 @@ class Settings extends BaseController
         if (!$cur) return $this->response->setJSON(['success'=>false,'message'=>'Currency not found']);
         $cm->update($code, ['is_active' => $cur['is_active'] ? 0 : 1]);
         return $this->response->setJSON(['success'=>true,'new_status' => $cur['is_active'] ? 0 : 1]);
+    }
+
+    public function saveTag()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->back();
+        }
+
+        $name = trim((string) $this->request->getPost('name'));
+        $description = trim((string) $this->request->getPost('description'));
+        if ($name === '') {
+            return redirect()->back()->withInput()->with('error', 'Tag name is required.');
+        }
+
+        try {
+            $service = new TagService();
+            $service->createTag($name, (int) ($this->session->get('user_id') ?? 0), $description);
+            return redirect()->to(site_url('settings#tags'))->with('success', 'Tag created.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->to(site_url('settings#tags'))->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    public function updateTag($id)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->back();
+        }
+
+        $name = trim((string) $this->request->getPost('name'));
+        $description = trim((string) $this->request->getPost('description'));
+        if ($name === '') {
+            return redirect()->back()->withInput()->with('error', 'Tag name is required.');
+        }
+
+        try {
+            $service = new TagService();
+            $service->updateTag((int) $id, $name, (int) ($this->session->get('user_id') ?? 0), $description);
+            return redirect()->to(site_url('settings#tags'))->with('success', 'Tag updated.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->to(site_url('settings#tags'))->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    public function deleteTag($id)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->back();
+        }
+
+        try {
+            $service = new TagService();
+            $tag = $service->getTagById((int) $id);
+            if (! $tag) {
+                return redirect()->to(site_url('settings#tags'))->with('error', 'Tag not found.');
+            }
+            if ($service->hasTagAssignments((int) $id)) {
+                return redirect()->to(site_url('settings#tags'))->with('error', 'Cannot delete a tag that is attached to documents.');
+            }
+            if (! $service->deleteTag((int) $id)) {
+                return redirect()->to(site_url('settings#tags'))->with('error', 'Failed to delete tag.');
+            }
+            return redirect()->to(site_url('settings#tags'))->with('success', 'Tag deleted.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->to(site_url('settings#tags'))->with('error', $e->getMessage());
+        }
     }
 
     public function saveOdoo()
@@ -261,7 +368,7 @@ class Settings extends BaseController
             'website' => 'permit_empty|max_length[255]',
             'timezone' => 'permit_empty|max_length[64]',
             'invoice_footer' => 'permit_empty|max_length[500]',
-            'pdf_template' => 'permit_empty|in_list[default,modern_blue,classic_green,professional_gray,bold_red,elegant_purple]',
+            'pdf_template' => 'permit_empty|in_list[default,modern_blue,classic_green,professional_gray,bold_red,elegant_purple,odoo_style]',
             'use_demo_data' => 'permit_empty|in_list[0,1]',
             'logo' => 'permit_empty|uploaded[logo]|max_size[logo,2048]|ext_in[logo,png,jpg,jpeg,webp]'
         ])) {
@@ -303,11 +410,22 @@ class Settings extends BaseController
             'pdf_po_show_footer' => $this->request->getPost('pdf_po_show_footer') !== null ? 1 : 0,
             'pdf_rfq_show_header' => $this->request->getPost('pdf_rfq_show_header') !== null ? 1 : 0,
             'pdf_rfq_show_footer' => $this->request->getPost('pdf_rfq_show_footer') !== null ? 1 : 0,
+            'pdf_inv_hide_logo' => $this->request->getPost('pdf_inv_hide_logo') !== null ? 1 : 0,
+            'pdf_quote_hide_logo' => $this->request->getPost('pdf_quote_hide_logo') !== null ? 1 : 0,
+            'pdf_so_hide_logo' => $this->request->getPost('pdf_so_hide_logo') !== null ? 1 : 0,
+            'pdf_po_hide_logo' => $this->request->getPost('pdf_po_hide_logo') !== null ? 1 : 0,
+            'pdf_rfq_hide_logo' => $this->request->getPost('pdf_rfq_hide_logo') !== null ? 1 : 0,
         ];
 
-        // Document number prefixes (schema-safe)
+        // Document number prefixes / invoice text blocks (schema-safe)
         try {
             $cols = $this->db->getFieldNames('company_settings');
+            foreach (['bank_details' => 'bank_details', 'invoice_terms' => 'invoice_terms'] as $col => $field) {
+                if (in_array($col, $cols)) {
+                    $val = trim((string)$this->request->getPost($field));
+                    $payload[$col] = $val === '' ? null : $val;
+                }
+            }
             if (in_array('quotation_prefix', $cols)) {
                 $payload['quotation_prefix'] = trim((string)$this->request->getPost('quotation_prefix')) ?: null;
             }
@@ -474,22 +592,195 @@ class Settings extends BaseController
         return redirect()->to(base_url('settings'))->with('success', 'Payment method added.');
     }
 
+    /**
+     * Create or update a payment term, including its instalment milestones
+     * (e.g. 80% on invoice date + 20% thirty days after delivery).
+     */
+    public function savePaymentTerm()
+    {
+        if (!$this->validate([
+            'name' => 'required|min_length[2]|max_length[100]',
+            'code' => 'required|min_length[2]|max_length[20]',
+        ])) {
+            return redirect()->back()->withInput()->with('error', 'Payment term name and code are required.');
+        }
+
+        $model = new PaymentTermModel();
+        $id    = (int)$this->request->getPost('id');
+        $code  = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', (string)$this->request->getPost('code')));
+        if ($code === '') {
+            return redirect()->back()->withInput()->with('error', 'Payment term code must contain letters or numbers.');
+        }
+
+        $duplicate = $model->where('code', $code);
+        if ($id > 0) $duplicate->where('id !=', $id);
+        if ($duplicate->countAllResults() > 0) {
+            return redirect()->back()->withInput()->with('error', 'A payment term with that code already exists.');
+        }
+
+        // Build milestones from the repeater rows; blank rows are ignored.
+        $labels  = (array)($this->request->getPost('milestone_label') ?? []);
+        $pcts    = (array)($this->request->getPost('milestone_percentage') ?? []);
+        $bases   = (array)($this->request->getPost('milestone_basis') ?? []);
+        $offsets = (array)($this->request->getPost('milestone_offset_days') ?? []);
+
+        $milestones = [];
+        foreach ($pcts as $i => $pct) {
+            if (trim((string)$pct) === '') continue;
+            $milestones[] = [
+                'label'       => (string)($labels[$i] ?? ''),
+                'percentage'  => (float)$pct,
+                'basis'       => (string)($bases[$i] ?? 'invoice_date'),
+                'offset_days' => (int)($offsets[$i] ?? 0),
+            ];
+        }
+
+        $normalized = [];
+        if (!empty($milestones)) {
+            $normalized = (new InvoicePaymentScheduleService())->normalizeMilestones($milestones);
+            if (empty($normalized)) {
+                return redirect()->back()->withInput()
+                    ->with('error', 'Milestone percentages must be greater than zero and add up to exactly 100%.');
+            }
+        }
+
+        // net_days keeps the flat term contract intact for anything that still
+        // reads it; with milestones it mirrors the last instalment's offset.
+        $netDays = (int)$this->request->getPost('net_days');
+        if (!empty($normalized)) {
+            $netDays = max(array_column($normalized, 'offset_days'));
+        }
+
+        $data = [
+            'name'                => trim((string)$this->request->getPost('name')),
+            'code'                => $code,
+            'description'         => trim((string)$this->request->getPost('description')) ?: null,
+            'net_days'            => max(0, $netDays),
+            'discount_days'       => 0,
+            'discount_percentage' => 0.00,
+            'milestones'          => !empty($normalized) ? json_encode($normalized) : null,
+            'is_active'           => $this->request->getPost('is_active') !== null ? 1 : 0,
+        ];
+
+        if ($id > 0) {
+            if (!$model->find($id)) {
+                return redirect()->back()->with('error', 'Payment term not found.');
+            }
+            $model->update($id, $data);
+            $message = 'Payment term updated. Invoices using it rebuild their schedule on next save or view.';
+        } else {
+            $model->insert($data);
+            $message = 'Payment term added.';
+        }
+
+        return redirect()->to(base_url('settings') . '#payment-terms')->with('success', $message);
+    }
+
+    /**
+     * JSON sibling of savePaymentTerm() for the quick-add popup on documents.
+     * Same validation and milestone normalisation, no redirect.
+     */
+    public function apiCreatePaymentTerm()
+    {
+        $input = $this->request->getJSON(true) ?? $this->request->getPost();
+
+        $name = trim((string)($input['name'] ?? ''));
+        $code = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', (string)($input['code'] ?? '')));
+        if ($name === '' || $code === '') {
+            return $this->response->setStatusCode(400)
+                ->setJSON(['success' => false, 'message' => 'Name and code are required.']);
+        }
+
+        $model = new PaymentTermModel();
+        if ($model->where('code', $code)->countAllResults() > 0) {
+            return $this->response->setStatusCode(409)
+                ->setJSON(['success' => false, 'message' => 'A payment term with that code already exists.']);
+        }
+
+        $normalized = [];
+        if (! empty($input['milestones']) && is_array($input['milestones'])) {
+            $normalized = (new InvoicePaymentScheduleService())->normalizeMilestones($input['milestones']);
+            if (empty($normalized)) {
+                return $this->response->setStatusCode(400)
+                    ->setJSON(['success' => false, 'message' => 'Instalment percentages must be above zero and add up to exactly 100%.']);
+            }
+        }
+
+        $netDays = (int)($input['net_days'] ?? 0);
+        if (! empty($normalized)) {
+            $netDays = max(array_column($normalized, 'offset_days'));
+        }
+
+        $id = $model->insert([
+            'name'                => $name,
+            'code'                => $code,
+            'description'         => trim((string)($input['description'] ?? '')) ?: null,
+            'net_days'            => max(0, $netDays),
+            'discount_days'       => 0,
+            'discount_percentage' => 0.00,
+            'milestones'          => ! empty($normalized) ? json_encode($normalized) : null,
+            'is_active'           => 1,
+        ]);
+
+        if (! $id) {
+            return $this->response->setStatusCode(500)
+                ->setJSON(['success' => false, 'message' => 'Failed to create payment term.']);
+        }
+
+        return $this->response->setJSON(['success' => true, 'id' => (int)$id, 'name' => $name]);
+    }
+
+    /** Deactivate a payment term; invoices already issued on it keep their schedule. */
+    public function deletePaymentTerm($id = null)
+    {
+        $id = (int)$id;
+        $model = new PaymentTermModel();
+        if ($id <= 0 || !$model->find($id)) {
+            return redirect()->back()->with('error', 'Payment term not found.');
+        }
+
+        $inUse = 0;
+        try {
+            $inUse = $this->db->table('customer_invoices')->where('payment_term_id', $id)->countAllResults();
+        } catch (\Throwable $_) {
+        }
+
+        if ($inUse > 0) {
+            $model->update($id, ['is_active' => 0]);
+            return redirect()->to(base_url('settings') . '#payment-terms')
+                ->with('success', 'Payment term is used by ' . $inUse . ' invoice(s), so it was deactivated instead of deleted.');
+        }
+
+        $model->delete($id);
+        return redirect()->to(base_url('settings') . '#payment-terms')->with('success', 'Payment term deleted.');
+    }
+
     public function addExchangeRate()
     {
         if (!$this->validate([
+            'base_code' => 'required|string|max_length[10]',
+            'quote_code' => 'required|string|max_length[10]',
             'rate' => 'required|decimal',
             'as_of' => 'required|valid_date'
         ])) {
-            return redirect()->back()->withInput()->with('error', 'Invalid rate or date.');
+            return redirect()->back()->withInput()->with('error', 'Invalid rate, date, or currency codes.');
         }
+        
+        $baseCode = strtoupper(trim($this->request->getPost('base_code')));
+        $quoteCode = strtoupper(trim($this->request->getPost('quote_code')));
+        
+        if ($baseCode === $quoteCode) {
+            return redirect()->back()->with('error', 'Base and quote currencies must be different.');
+        }
+        
         $model = new ExchangeRateModel();
         $model->insert([
-            'base_code' => 'USD',
-            'quote_code' => 'PKR',
+            'base_code' => $baseCode,
+            'quote_code' => $quoteCode,
             'rate' => (float)$this->request->getPost('rate'),
             'as_of' => $this->request->getPost('as_of')
         ]);
-        return redirect()->to(base_url('settings'))->with('success', 'Exchange rate recorded.');
+        return redirect()->to(base_url('settings') . '#section-exchange')->with('success', 'Exchange rate recorded.');
     }
 
     public function cleanDatabase()
@@ -701,6 +992,29 @@ class Settings extends BaseController
                 INDEX idx_pair_date (base_code, quote_code, as_of)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+            $this->db->query("CREATE TABLE IF NOT EXISTS tags (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                slug VARCHAR(120) NOT NULL,
+                description TEXT NULL,
+                created_by INT UNSIGNED NULL,
+                created_at DATETIME NULL,
+                updated_at DATETIME NULL,
+                KEY idx_tags_slug (slug)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS document_tags (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                tag_id INT UNSIGNED NOT NULL,
+                document_type VARCHAR(80) NOT NULL,
+                document_id INT UNSIGNED NOT NULL,
+                created_by INT UNSIGNED NULL,
+                created_at DATETIME NULL,
+                UNIQUE KEY uq_document_tags (tag_id, document_type, document_id),
+                KEY idx_document_tags_document (document_type, document_id),
+                KEY idx_document_tags_tag (tag_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
             // Odoo integration settings
             $this->db->query("CREATE TABLE IF NOT EXISTS odoo_settings (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -753,6 +1067,38 @@ class Settings extends BaseController
                 KEY idx_system_backup_jobs_status (status),
                 KEY idx_system_backup_jobs_schedule (schedule_id),
                 KEY idx_system_backup_jobs_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            try {
+                $this->db->query("ALTER TABLE system_backup_jobs ADD COLUMN IF NOT EXISTS progress_percent TINYINT UNSIGNED NOT NULL DEFAULT 0;");
+                $this->db->query("ALTER TABLE system_backup_jobs ADD COLUMN IF NOT EXISTS progress_stage VARCHAR(40) NULL;");
+                $this->db->query("ALTER TABLE system_backup_jobs ADD COLUMN IF NOT EXISTS cancel_requested TINYINT(1) NOT NULL DEFAULT 0;");
+            } catch (\Throwable $e) {
+                // older MySQL versions may not support IF NOT EXISTS on ALTER - ignore
+            }
+
+            $this->db->query("CREATE TABLE IF NOT EXISTS data_portability_jobs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                public_id CHAR(36) NOT NULL,
+                direction VARCHAR(10) NOT NULL DEFAULT 'export',
+                status VARCHAR(20) NOT NULL DEFAULT 'queued',
+                modules_json LONGTEXT NULL,
+                archive_path VARCHAR(500) NULL,
+                archive_name VARCHAR(255) NULL,
+                archive_size_bytes BIGINT NULL,
+                archive_sha256 CHAR(64) NULL,
+                result_summary_json LONGTEXT NULL,
+                error_message TEXT NULL,
+                initiated_by INT NULL,
+                progress_percent TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                progress_stage VARCHAR(40) NULL,
+                cancel_requested TINYINT(1) NOT NULL DEFAULT 0,
+                started_at DATETIME NULL,
+                completed_at DATETIME NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_data_portability_jobs_public_id (public_id),
+                KEY idx_data_portability_jobs_status (status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
             $this->db->query("CREATE TABLE IF NOT EXISTS system_backup_schedules (
@@ -960,17 +1306,59 @@ class Settings extends BaseController
         }
 
         $backupType = strtolower(trim((string) $this->request->getPost('backup_type')));
+        $skipMedia = $this->request->getPost('skip_media') !== null;
         $userId = session()->get('user_id');
 
         try {
-            $job = (new SystemBackupService())->createManualBackup($backupType ?: 'full', $userId ? (int) $userId : null);
+            $service = new SystemBackupService();
+            $job = $service->queueManualBackup($backupType ?: 'full', $userId ? (int) $userId : null);
+            $this->runBackupJobInBackground((int) $job['id'], $skipMedia);
+
             return redirect()->to(base_url('settings') . '#backups')
-                ->with('success', 'Backup created: ' . ($job['archive_name'] ?? 'archive ready'));
+                ->with('success', 'Backup queued (' . ($job['backup_type'] ?? $backupType) . '). It is running in the background — this page will update automatically when it finishes.');
         } catch (\Throwable $e) {
             log_message('error', 'createBackup error: ' . $e->getMessage());
             return redirect()->to(base_url('settings') . '#backups')
                 ->with('error', 'Backup creation failed: ' . $e->getMessage());
         }
+    }
+
+    /** Latest backup jobs as JSON, polled by the Backup Center UI to show live progress without blocking the page. */
+    public function backupJobsStatus()
+    {
+        $jobs = (new SystemBackupJobModel())->orderBy('id', 'DESC')->limit(10)->find();
+
+        return $this->response->setJSON(array_map(static function ($job) {
+            return [
+                'public_id' => $job['public_id'] ?? null,
+                'status' => $job['status'] ?? null,
+                'health_status' => $job['health_status'] ?? null,
+                'archive_name' => $job['archive_name'] ?? null,
+                'archive_size_bytes' => (int) ($job['archive_size_bytes'] ?? 0),
+                'error_message' => $job['error_message'] ?? null,
+                'progress_percent' => (int) ($job['progress_percent'] ?? 0),
+                'progress_stage' => $job['progress_stage'] ?? null,
+            ];
+        }, $jobs));
+    }
+
+    /** Spawns `spark system:backup` as a detached process so the archive work runs after this request returns. */
+    private function runBackupJobInBackground(int $jobId, bool $skipMedia): void
+    {
+        // IMPORTANT: PHP_BINARY is unusable here — under Apache mod_php
+        // (apache2handler SAPI, what this server runs) it resolves to
+        // httpd.exe, not php.exe. Using it silently spawned Apache with
+        // garbage arguments and left jobs stuck at "queued" forever.
+        $php = escapeshellarg((new SystemBackupService())->detectPhpCliBinary());
+        $spark = escapeshellarg(ROOTPATH . 'spark');
+        $command = "{$php} {$spark} system:backup --job-id={$jobId}" . ($skipMedia ? '' : ' --include-media');
+
+        if (DIRECTORY_SEPARATOR === '\\') {
+            pclose(popen('start "corelynk-backup" /B ' . $command . ' > NUL 2>&1', 'r'));
+            return;
+        }
+
+        exec($command . ' > /dev/null 2>&1 &');
     }
 
     public function downloadBackup(string $publicId = null)
@@ -1001,6 +1389,27 @@ class Settings extends BaseController
             log_message('error', 'verifyBackup error: ' . $e->getMessage());
             return redirect()->to(base_url('settings') . '#backups')
                 ->with('error', 'Backup verification failed: ' . $e->getMessage());
+        }
+    }
+
+    public function cancelBackup(string $publicId = null)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#backups');
+        }
+
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#backups')->with('error', 'Missing backup reference.');
+        }
+
+        try {
+            (new SystemBackupService())->requestCancel($publicId);
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('success', 'Cancellation requested. The backup will stop at its next safe checkpoint and any partial file will be discarded.');
+        } catch (\Throwable $e) {
+            log_message('error', 'cancelBackup error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#backups')
+                ->with('error', 'Unable to cancel backup: ' . $e->getMessage());
         }
     }
 
@@ -1104,6 +1513,173 @@ class Settings extends BaseController
             return redirect()->to(base_url('settings') . '#backups')
                 ->withInput()
                 ->with('error', 'Failed to save backup schedule: ' . $e->getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Data Export / Import
+    // ------------------------------------------------------------------
+
+    public function exportData()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#data');
+        }
+
+        $moduleKeys = (array) $this->request->getPost('modules');
+        $userId = session()->get('user_id');
+
+        try {
+            $service = new DataPortabilityService();
+            $job = $service->queueExport($moduleKeys, $userId ? (int) $userId : null);
+            $this->runDataJobInBackground((int) $job['id']);
+
+            return redirect()->to(base_url('settings') . '#data')
+                ->with('success', 'Export queued. It is running in the background — this page will update automatically when it finishes.');
+        } catch (\Throwable $e) {
+            log_message('error', 'exportData error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Export failed: ' . $e->getMessage());
+        }
+    }
+
+    /** Uploads and validates an import package, then shows a create/update/skip preview before anything is written. */
+    public function importPreviewData()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#data');
+        }
+
+        $file = $this->request->getFile('import_file');
+        $moduleKeys = (array) $this->request->getPost('modules');
+
+        if (!$file || !$file->isValid()) {
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Please choose a valid export .xlsx file to import.');
+        }
+        if (strtolower((string) $file->getClientExtension()) !== 'xlsx') {
+            return redirect()->to(base_url('settings') . '#data')->with('error', "Import file must be an .xlsx produced by CoreLynk's export.");
+        }
+
+        try {
+            $service = new DataPortabilityService();
+            $staged = $service->stageUpload($file->getTempName());
+            $preview = $service->previewImport($staged, $moduleKeys);
+
+            return redirect()->to(base_url('settings') . '#data')->with('import_preview', [
+                'staged_path' => $staged,
+                'modules' => $preview,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'importPreviewData error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Unable to read import file: ' . $e->getMessage());
+        }
+    }
+
+    /** Commits a previously previewed import package — the only step that actually writes to the database. */
+    public function importConfirmData()
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#data');
+        }
+
+        $stagedPath = (string) $this->request->getPost('staged_path');
+        $moduleKeys = (array) $this->request->getPost('modules');
+        $userId = session()->get('user_id');
+
+        // Only accept staged files inside our own upload storage — never a user-controlled arbitrary path.
+        $expectedDir = realpath(rtrim(WRITEPATH, '\\/') . DIRECTORY_SEPARATOR . 'data_exports');
+        $real = realpath($stagedPath);
+        if (!$real || !$expectedDir || !str_starts_with($real, $expectedDir)) {
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Invalid or expired import file reference — please re-upload.');
+        }
+
+        try {
+            $service = new DataPortabilityService();
+            $job = $service->queueImport($real, $moduleKeys, $userId ? (int) $userId : null);
+            $this->runDataJobInBackground((int) $job['id']);
+
+            return redirect()->to(base_url('settings') . '#data')
+                ->with('success', 'Import queued. It is running in the background — this page will update automatically when it finishes.');
+        } catch (\Throwable $e) {
+            log_message('error', 'importConfirmData error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Import failed: ' . $e->getMessage());
+        }
+    }
+
+    /** Latest export/import jobs as JSON, polled by the Data Center UI to show live progress without blocking the page. */
+    public function dataJobsStatus()
+    {
+        $jobModel = new DataPortabilityJobModel();
+
+        // A background job that hasn't touched its progress row in a while means the
+        // spawned CLI process died (crash/kill) without reaching the normal catch block
+        // that marks it failed — without this it would show "running" forever.
+        $jobModel->where('status', 'running')
+            ->where('started_at <', date('Y-m-d H:i:s', time() - 600))
+            ->set(['status' => 'failed', 'progress_stage' => 'failed', 'error_message' => 'Interrupted — the background process stopped responding. Please retry.', 'completed_at' => date('Y-m-d H:i:s')])
+            ->update();
+
+        $jobs = $jobModel->orderBy('id', 'DESC')->limit(10)->find();
+
+        return $this->response->setJSON(array_map(static function ($job) {
+            return [
+                'public_id' => $job['public_id'] ?? null,
+                'direction' => $job['direction'] ?? null,
+                'status' => $job['status'] ?? null,
+                'archive_name' => $job['archive_name'] ?? null,
+                'archive_size_bytes' => (int) ($job['archive_size_bytes'] ?? 0),
+                'error_message' => $job['error_message'] ?? null,
+                'progress_percent' => (int) ($job['progress_percent'] ?? 0),
+                'progress_stage' => $job['progress_stage'] ?? null,
+                'result_summary' => !empty($job['result_summary_json']) ? json_decode((string) $job['result_summary_json'], true) : null,
+            ];
+        }, $jobs));
+    }
+
+    /** Spawns `spark data:portability` as a detached process so export/import work runs after this request returns. */
+    private function runDataJobInBackground(int $jobId): void
+    {
+        $php = escapeshellarg((new SystemBackupService())->detectPhpCliBinary());
+        $spark = escapeshellarg(ROOTPATH . 'spark');
+        $command = "{$php} {$spark} data:portability --job-id={$jobId}";
+
+        if (DIRECTORY_SEPARATOR === '\\') {
+            pclose(popen('start "corelynk-data" /B ' . $command . ' > NUL 2>&1', 'r'));
+            return;
+        }
+
+        exec($command . ' > /dev/null 2>&1 &');
+    }
+
+    public function downloadDataExport(string $publicId = null)
+    {
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Missing export reference.');
+        }
+
+        $job = (new DataPortabilityJobModel())->where('public_id', $publicId)->first();
+        if (!$job || empty($job['archive_path']) || !is_file((string) $job['archive_path'])) {
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Export file not found.');
+        }
+
+        return $this->response->download((string) $job['archive_path'], null)->setFileName((string) ($job['archive_name'] ?? basename((string) $job['archive_path'])));
+    }
+
+    public function cancelDataJob(string $publicId = null)
+    {
+        if (!$this->request->is('post')) {
+            return redirect()->to(base_url('settings') . '#data');
+        }
+        if (!$publicId) {
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Missing job reference.');
+        }
+
+        try {
+            (new DataPortabilityService())->requestCancel($publicId);
+            return redirect()->to(base_url('settings') . '#data')
+                ->with('success', 'Cancellation requested. The job will stop at its next safe checkpoint and any partial work will be discarded.');
+        } catch (\Throwable $e) {
+            log_message('error', 'cancelDataJob error: ' . $e->getMessage());
+            return redirect()->to(base_url('settings') . '#data')->with('error', 'Unable to cancel: ' . $e->getMessage());
         }
     }
 

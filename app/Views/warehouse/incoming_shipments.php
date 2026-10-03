@@ -49,6 +49,14 @@
     @media (max-width:767px) { .po-grid-cols { flex-direction: column; } }
 </style>
 
+<div class="container-fluid cl-list-page cl-warehouse-page" data-cl-list>
+
+    <div class="cl-list-page-header">
+        <div>
+            <h2 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Incoming Stock</h2>
+        </div>
+    </div>
+
 <div class="card">
     <div class="card-body">
         <?php $req = service('request'); ?>
@@ -186,7 +194,7 @@
         <?php if (($viewMode ?? ($req->getGet('view') ?? 'grid')) === 'list'): ?>
             <?php $rows = $flatList ?? []; ?>
             <div class="table-responsive">
-                <table class="table table-sm table-striped table-bordered">
+                <table class="cl-table table table-sm table-bordered">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -256,7 +264,7 @@
                         </div>
                         <div class="card-body p-2">
                             <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0">
+                                <table class="cl-table table table-sm table-bordered align-middle mb-0">
                                     <thead class="table-light small">
                                         <tr>
                                             <th style="width:4%;">#</th>
@@ -329,7 +337,7 @@
                     <div class="card-body">
                         <h6 class="mb-2">Candidate Purchase Orders (sample)</h6>
                         <div class="table-responsive">
-                            <table class="table table-sm">
+                            <table class="cl-table table table-sm">
                                 <thead>
                                     <tr><th>PO</th><th>Vendor</th><th>Status</th><th>Expected</th></tr>
                                 </thead>
@@ -353,5 +361,6 @@
         <?php endif; ?>
     </div>
 </div>
+</div><!-- /.cl-list-page -->
 
 <?= $this->endSection() ?>

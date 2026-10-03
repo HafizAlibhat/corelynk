@@ -2,7 +2,9 @@
 
 namespace App\Controllers;
 
+use App\Libraries\RoleDataAccess;
 use App\Services\InventoryService;
+use App\Services\SalesOrderQuickStockService;
 use Config\Database;
 use InvalidArgumentException;
 use RuntimeException;
@@ -268,6 +270,98 @@ class StockAdjustments extends BaseController
         ]);
     }
 
+    /**
+     * Add only the currently missing quantity for selected sales-order lines.
+     * The service re-resolves every product and shortage; client values are not trusted.
+     */
+    public function salesOrder(string $identifier)
+    {
+        $this->requireAuth();
+
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON([
+                'success' => false,
+                'message' => 'Method not allowed.',
+            ]);
+        }
+
+        $policy = service('policy');
+        if (
+            ! $policy->isAdmin()
+            && (
+                ! $policy->can('inventory', 'read')
+                || ! $policy->can('inventory', 'edit')
+                || ! $policy->can('sales_orders', 'read')
+            )
+        ) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'success' => false,
+                'message' => 'You do not have permission to add stock from a sales order.',
+            ]);
+        }
+
+        $db = Database::connect();
+        $order = null;
+        if (ctype_digit($identifier)) {
+            $order = $db->table('sales_orders')->where('id', (int) $identifier)->get()->getRowArray();
+        }
+        if (! $order && $db->fieldExists('public_id', 'sales_orders')) {
+            $order = $db->table('sales_orders')->where('public_id', $identifier)->get()->getRowArray();
+        }
+        if (! $order || ! $this->canAccessSalesOrder($order)) {
+            return $this->response->setStatusCode(404)->setJSON([
+                'success' => false,
+                'message' => 'Sales order was not found.',
+            ]);
+        }
+
+        $body = $this->request->getJSON(true);
+        if (! is_array($body)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'message' => 'Invalid request body.',
+            ]);
+        }
+
+        try {
+            $result = (new SalesOrderQuickStockService())->addMissingStock(
+                $order,
+                $body,
+                $this->getCurrentUserId()
+            );
+        } catch (InvalidArgumentException $e) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ]);
+        } catch (RuntimeException $e) {
+            log_message('error', 'StockAdjustments::salesOrder failed: ' . $e->getMessage());
+            $safeMessage = str_contains($e->getMessage(), 'not installed') || str_contains($e->getMessage(), 'still processing')
+                ? $e->getMessage()
+                : 'Quick stock entry could not be completed. No stock was added.';
+            return $this->response->setStatusCode(409)->setJSON([
+                'success' => false,
+                'message' => $safeMessage,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'StockAdjustments::salesOrder unexpected: ' . $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Quick stock entry could not be completed. No stock was added.',
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => ! empty($result['replayed'])
+                ? 'This stock entry was already saved. Refreshing the order.'
+                : $result['line_count'] . ' missing item(s) added to stock.',
+            'batch_id' => $result['batch_id'],
+            'batch_ids' => $result['batch_ids'] ?? [$result['batch_id']],
+            'replayed' => (bool) $result['replayed'],
+        ]);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  History  –  GET inventory/adjustments/history
     // ─────────────────────────────────────────────────────────────────────────
@@ -424,8 +518,12 @@ class StockAdjustments extends BaseController
             ->orderBy('name', 'ASC')
             ->get()->getResultArray();
 
+        $locationSelect = 'id, name, warehouse_id, parent_id';
+        if ($db->fieldExists('vendor_id', 'warehouse_locations')) {
+            $locationSelect .= ', vendor_id';
+        }
         $locations = $db->table('warehouse_locations')
-            ->select('id, name, warehouse_id, parent_id')
+            ->select($locationSelect)
             ->where('is_active', 1)
             ->orderBy('name', 'ASC')
             ->get()->getResultArray();
@@ -438,6 +536,7 @@ class StockAdjustments extends BaseController
                 'name'         => $l['name'],
                 'warehouse_id' => (int)$l['warehouse_id'],
                 'parent_id'    => isset($l['parent_id']) && $l['parent_id'] ? (int)$l['parent_id'] : null,
+                'is_vendor'    => !empty($l['vendor_id']),
             ], $locations)),
         ]);
     }
@@ -475,6 +574,34 @@ class StockAdjustments extends BaseController
     // ─────────────────────────────────────────────────────────────────────────
     //  Helper: get current authenticated user ID
     // ─────────────────────────────────────────────────────────────────────────
+    private function canAccessSalesOrder(array $order): bool
+    {
+        if (service('policy')->isAdmin()) {
+            return true;
+        }
+
+        $userId = $this->getCurrentUserId();
+        $ownerId = (int) ($order['created_by'] ?? 0);
+        try {
+            $roleAccess = new RoleDataAccess();
+            $access = $roleAccess->resolveForUser($userId);
+            if (! empty($access['isolate_sales_orders']) && $ownerId > 0 && $ownerId !== $userId) {
+                return false;
+            }
+            if ($ownerId > 0 && $ownerId !== $userId) {
+                $privateIds = $roleAccess->getPrivateUserIds($userId, false);
+                if (in_array($ownerId, $privateIds, true)) {
+                    return false;
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'StockAdjustments sales-order access check failed: ' . $e->getMessage());
+            return false;
+        }
+
+        return true;
+    }
+
     private function getCurrentUserId(): int
     {
         try {

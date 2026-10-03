@@ -14,9 +14,17 @@ Request for Quotation
       </div>
       <div class="d-flex align-items-start" style="gap:.5rem;">
         <div id="statusBtnContainer"></div>
+        <?= view('partials/record_nav', [
+            'table'   => 'purchase_rfqs',
+            'id'      => $rfqIdentifier ?? '',
+            'pattern' => 'purchases/rfq/{id}',
+            'list'    => 'newpurchaseui/rfqs',
+        ]) ?>
         <div class="btn-group">
           <button id="confirmBtn" type="button" class="btn btn-sm btn-success" style="display:none;">Confirm</button>
           <button id="editRfqBtn" type="button" class="btn btn-sm btn-outline-primary" style="display:none;"><i class="bi bi-pencil me-1"></i>Edit</button>
+          <button id="duplicateRfqBtn" type="button" class="btn btn-sm btn-outline-info"><i class="bi bi-files me-1"></i>Duplicate</button>
+          <button id="manageTagsBtn" type="button" class="btn btn-sm btn-outline-secondary btn-manage-tags" data-doc-type="purchase_rfq" data-doc-id="" style="display:none;"><i class="bi bi-tags me-1"></i>Tags</button>
           <a id="downloadPdfBtn" href="#" target="_blank" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
           <a id="backLink" href="<?= site_url('newpurchaseui/rfqpo') ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
           <button id="printBtn" type="button" class="btn btn-sm btn-outline-primary">Print</button>
@@ -101,6 +109,27 @@ Request for Quotation
           }
         });
       }
+      // Duplicate: exact copy of this RFQ as a new draft.
+      const duplicateRfqBtn = document.getElementById('duplicateRfqBtn');
+      if (duplicateRfqBtn) {
+        duplicateRfqBtn.addEventListener('click', async function () {
+          if (!confirm('Create a copy of this RFQ as a new draft?')) return;
+          duplicateRfqBtn.disabled = true;
+          try {
+            const res = await fetch('<?= site_url("new-purchase-rfqs/") ?>' + id + '/duplicate', {
+              method: 'POST',
+              headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const resp = await res.json();
+            if (!res.ok || !resp.success) throw new Error(resp.error || 'Failed to duplicate RFQ');
+            window.location.href = resp.redirect;
+          } catch (e) {
+            alert('Error: ' + (e.message || 'Failed to duplicate RFQ'));
+            duplicateRfqBtn.disabled = false;
+          }
+        });
+      }
+
       // Show Edit button for draft/sent RFQs
       const editRfqBtn = document.getElementById('editRfqBtn');
       if (editRfqBtn && ['draft','sent'].includes((''+status).toLowerCase())) {
@@ -145,6 +174,8 @@ Request for Quotation
         const isSection = String(ln.display_type || 'line').toLowerCase() === 'section';
 
         if (isSection) {
+          const title = ln.section_title || ln.description || 'Section';
+          html += `<tr class="doc-section-row" data-line-id="${ln.id || ''}" data-display-type="section" data-line-updated-at="${ln.updated_at || ''}"><td colspan="8"><div class="doc-section-title"><span class="doc-drag-handle me-2" title="Drag section" style="cursor:grab;opacity:.75;"><i class="bi bi-grip-vertical"></i></span><input type="text" class="form-control form-control-sm doc-section-input" value="${title}" aria-label="Section heading" style="max-width:520px;font-weight:700;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#fff;"><button type="button" class="btn btn-sm btn-outline-danger ms-auto" data-delete-section-btn="1" title="Delete this heading"><i class="bi bi-trash"></i></button></div></td></tr>`;
           return;
         }
 
@@ -224,6 +255,12 @@ Request for Quotation
       html += `<div class="mt-4"><label class="form-label"><strong>Notes</strong></label><textarea class="form-control form-control-sm" rows="3" readonly>${(r.notes||'')}</textarea></div>`;
       container.innerHTML = html;
 
+      const manageTagsBtn = document.getElementById('manageTagsBtn');
+      if (manageTagsBtn) {
+        manageTagsBtn.dataset.docId = (r.id || id);
+        manageTagsBtn.style.display = 'inline-block';
+      }
+
       document.getElementById('printBtn').addEventListener('click', function(){
         window.open('<?= site_url('new-purchase-rfqs/') ?>' + id + '/print', '_blank');
       });
@@ -301,5 +338,7 @@ Request for Quotation
     .catch(function() { logEl.innerHTML = '<div class="text-muted small">Could not load activity log.</div>'; });
 })();
 </script>
+
+<?= $this->include('components/tag_modal') ?>
 
 <?= $this->endSection() ?>

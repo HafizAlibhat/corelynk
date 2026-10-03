@@ -80,17 +80,7 @@
     .vbl-btn-primary { background: var(--cl-primary); color: #fff; border-color: var(--cl-primary); }
     .vbl-btn-primary:hover { background: var(--cl-primary-dark, #1d4ed8); color: #fff; }
 
-    /* Table */
-    .vbl-table-wrap { overflow: hidden; border-radius: 0 0 .5rem .5rem; }
-    .vbl-table { width: 100%; border-collapse: collapse; font-size: .76rem; }
-    .vbl-table th { font-size: .67rem; text-transform: uppercase; letter-spacing: .4px; padding: .45rem .55rem; background: var(--cl-surface-alt, var(--cl-surface)); color: var(--cl-text-muted); border-bottom: 2px solid var(--cl-border); white-space: nowrap; }
-    .vbl-table td { padding: .4rem .55rem; border-bottom: 1px solid var(--cl-border); vertical-align: middle; color: var(--cl-text-primary); }
-    .vbl-table tbody tr:last-child td { border-bottom: none; }
-    .vbl-table tbody tr:hover td { background: rgba(59,130,246,.04); }
     .vbl-table .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    body.theme-dark .vbl-table tbody tr:nth-child(even) td { background: #0f1a2b; }
-    body.theme-dark .vbl-table tbody tr:nth-child(odd)  td { background: #1a2740; }
-    body.theme-dark .vbl-table tbody tr:hover td { background: rgba(37,99,235,.1) !important; }
 
     /* Payment status badges */
     .ps-badge { display: inline-flex; align-items: center; gap: .25rem; padding: .12rem .4rem; border-radius: .25rem; font-size: .64rem; font-weight: 600; white-space: nowrap; }
@@ -123,10 +113,10 @@
     .pay-input:disabled { opacity:.35; cursor:not-allowed; }
 </style>
 
-<div class="vbl-wrap">
+<div class="vbl-wrap cl-list-page cl-list-page--dashboard">
 
     <!-- Header -->
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.5rem;">
+    <div class="vbl-page-header cl-list-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.5rem;">
         <div>
             <h5 class="mb-0 fw-bold" style="color:var(--cl-text-primary)">Vendor Bills</h5>
             <small style="color:var(--cl-text-muted)">Manage and pay outstanding vendor bills</small>
@@ -200,7 +190,7 @@
     <div class="vbl-card">
         <div style="padding:.4rem .75rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--cl-border);">
             <span style="font-size:.8rem; font-weight:600; color:var(--cl-text-primary)">
-                Bills <span class="badge bg-secondary ms-1" style="font-size:.65rem"><?= $totalRecords ?></span>
+                Bills <span class="cl-count-badge ms-1"><?= $totalRecords ?></span>
                 <?php if ($totalRecords !== count($bills)): ?>
                     <span style="font-size:.68rem;color:var(--cl-text-muted);font-weight:400">showing <?= count($bills) ?> of <?= $totalRecords ?></span>
                 <?php endif; ?>
@@ -211,7 +201,7 @@
         </div>
         <div class="vbl-table-wrap">
             <div style="overflow-x:auto">
-                <table class="vbl-table">
+                <table class="cl-table vbl-table">
                     <thead>
                         <tr>
                             <th style="width:30px"><input type="checkbox" class="form-check-input" id="chk_all"></th>
@@ -248,9 +238,7 @@
                     </thead>
                     <tbody id="bills_tbody">
                     <?php if (empty($bills)): ?>
-                        <tr><td colspan="14" class="text-center" style="padding:2.5rem; color:var(--cl-text-muted)">
-                            <i class="bi bi-receipt fs-3 d-block mb-2 opacity-50"></i>No vendor bills found.
-                        </td></tr>
+                        <tr><td colspan="14"><div class="cl-list-empty cl-list-empty--row"><span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-receipt"></i></span><h6>No Vendor Bills Found</h6><p>Try adjusting the vendor, status, or search filters.</p></div></td></tr>
                     <?php else: ?>
                         <?php foreach ($bills as $row):
                             $total      = (float)($row['total_amount']    ?? 0);
@@ -260,20 +248,21 @@
                             $bal        = max(0, $total - $paidAmt);
                             $payStatus  = vbPayStatus($row);
                             $isPayable  = $payStatus !== 'paid' && $payStatus !== 'cancelled' && $payStatus !== 'draft' && $bal > 0;
-                            $psBadgeClass = match($payStatus) {
-                                'paid'      => 'ps-paid',
-                                'partial'   => 'ps-partial',
-                                'cancelled' => 'ps-cancelled',
-                                'draft'     => 'ps-draft',
-                                default     => 'ps-unpaid',
+                            $payStatusTone = match($payStatus) {
+                                'paid' => 'success',
+                                'partial', 'draft' => 'warning',
+                                'cancelled' => 'neutral',
+                                default => 'danger',
                             };
                             $psLabel = match($payStatus) {
-                                'paid'      => '<i class="bi bi-check-circle-fill"></i> Paid',
-                                'partial'   => '<i class="bi bi-half"></i> Partial',
-                                'cancelled' => '<i class="bi bi-x-circle"></i> Cancelled',
-                                'draft'     => '<i class="bi bi-pencil"></i> Draft',
-                                default     => '<i class="bi bi-exclamation-circle"></i> Unpaid',
+                                'paid' => 'Paid',
+                                'partial' => 'Partial',
+                                'cancelled' => 'Cancelled',
+                                'draft' => 'Draft',
+                                default => 'Unpaid',
                             };
+                            $rowCurrency = trim((string)($row['currency_code'] ?? $row['currency'] ?? ''));
+                            $currencyPrefix = $rowCurrency !== '' ? esc($rowCurrency) . ' ' : '';
                         ?>
                         <tr class="<?= $isPayable ? 'bill-payable' : '' ?>"
                             data-bill-id="<?= (int)($row['id'] ?? 0) ?>"
@@ -294,16 +283,16 @@
                                     <a href="<?= base_url('purchases/po/' . (int)$row['po_id']) ?>" class="text-decoration-none" style="font-size:.73rem">#<?= (int)$row['po_id'] ?></a>
                                 <?php else: ?><span style="color:var(--cl-text-muted)">—</span><?php endif; ?>
                             </td>
-                            <td><span class="ps-badge <?= $psBadgeClass ?>"><?= $psLabel ?></span></td>
+                            <td><span class="cl-status-badge cl-status-badge--<?= $payStatusTone ?>"><span class="cl-status-badge__dot"></span><?= esc($psLabel) ?></span></td>
                             <td style="font-size:.72rem; color:var(--cl-text-muted)"><?= vbFmtDate($lastPaid) ?></td>
                             <td class="text-center">
                                 <?php if ($payCount > 0): ?>
-                                    <span class="pay-cnt"><span class="dot"></span><?= $payCount ?></span>
+                                    <span class="cl-count-badge"><?= $payCount ?></span>
                                 <?php else: ?><span style="color:var(--cl-text-muted);font-size:.7rem">—</span><?php endif; ?>
                             </td>
-                            <td class="text-end money"><?= number_format($total, 2) ?></td>
-                            <td class="text-end money" style="color:<?= $paidAmt > 0 ? '#22c55e' : 'var(--cl-text-muted)' ?>"><?= number_format($paidAmt, 2) ?></td>
-                            <td class="text-end money fw-semibold" style="color:<?= $bal > 0 ? '#ef4444' : '#22c55e' ?>"><?= number_format($bal, 2) ?></td>
+                            <td class="text-end money cl-data-number"><?= $currencyPrefix ?><?= number_format($total, 2) ?></td>
+                            <td class="text-end money cl-data-number" style="color:<?= $paidAmt > 0 ? '#22c55e' : 'var(--cl-text-muted)' ?>"><?= $currencyPrefix ?><?= number_format($paidAmt, 2) ?></td>
+                            <td class="text-end money fw-semibold cl-data-number" style="color:<?= $bal > 0 ? '#ef4444' : '#22c55e' ?>"><?= $currencyPrefix ?><?= number_format($bal, 2) ?></td>
                             <td class="text-end">
                                 <?php if ($isPayable): ?>
                                     <input type="number" step="0.01" min="0" max="<?= $bal ?>" class="pay-input adv-pay" value="0.00" disabled>
@@ -315,7 +304,7 @@
                                 <?php else: ?><span style="color:var(--cl-text-muted)">—</span><?php endif; ?>
                             </td>
                             <td>
-                                <a class="vbl-btn" style="font-size:.68rem; padding:.1rem .35rem" href="<?= base_url('vendor-bills/' . (int)($row['id'] ?? 0)) ?>"><i class="bi bi-eye"></i> View</a>
+                                <a class="vbl-btn cl-icon-action" title="View bill" aria-label="View bill" href="<?= base_url('vendor-bills/' . (int)($row['id'] ?? 0)) ?>"><i class="bi bi-eye"></i></a>
                             </td>
                         </tr>
                         <?php endforeach; ?>

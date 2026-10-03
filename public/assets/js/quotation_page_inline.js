@@ -5,9 +5,16 @@
     var tableEl = document.getElementById('quote-lines-table');
     var table = tableEl ? tableEl.getElementsByTagName('tbody')[0] : null;
     var addBtn = document.getElementById('add-line');
+    var addHeadingBtn = document.getElementById('add-heading');
+    if (!document.getElementById('quote-line-drag-style')) {
+      var dragStyle = document.createElement('style');
+      dragStyle.id = 'quote-line-drag-style';
+      dragStyle.textContent = '.quote-row-drag-handle{cursor:grab}.quote-row-drag-handle:active{cursor:grabbing}.quote-row-dragging{opacity:.62;outline:1px dashed rgba(109,93,252,.75)}';
+      document.head.appendChild(dragStyle);
+    }
 
     // Client-side preview totals (server remains source of truth when saved).
-    function n(v){ var x = parseFloat(v); return isFinite(x) ? x : 0; }
+    function n(v){ var x = parseFloat(v); if (!isFinite(x) || x < 0) return 0; return x; }
     function updateTotals(){
       try {
         var subtotal = 0, lineDiscountTotal = 0, taxTotal = 0;
@@ -56,22 +63,138 @@
       }
     }
 
-    function bindRow(row){
-  row.querySelectorAll('input, select').forEach(function(el){
-        el.addEventListener('change', updateTotals);
-        el.addEventListener('input', updateTotals);
+    // Delegated on the tbody: covers prefilled edit rows, cloned rows and any
+    // row a script injects later, without re-binding per row.
+    function bindRow(){ /* kept for callers; binding is delegated below */ }
+
+    function nextLineIndex(){
+      var max = -1;
+      if (!table) return 0;
+      table.querySelectorAll('select[name], input[name], textarea[name]').forEach(function(el){
+        var m = String(el.name || '').match(/^lines\[(\d+)\]/);
+        if (m) max = Math.max(max, parseInt(m[1], 10));
       });
-      row.querySelector('.btn-remove-line').addEventListener('click', function(){
-        if (table.querySelectorAll('tr.quote-line').length > 1){ row.remove(); updateTotals(); }
+      return max + 1;
+    }
+
+    function quoteRows(){
+      return table ? Array.prototype.slice.call(table.querySelectorAll('tr.quote-line, tr.quote-section-line')) : [];
+    }
+
+    function ensureSortOrderInput(row, idx){
+      var input = row.querySelector('input[name$="[sort_order]"]');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        row.appendChild(input);
+      }
+      input.name = 'lines[' + idx + '][sort_order]';
+      input.value = String(idx + 1);
+    }
+
+    function setRowIndex(row, idx){
+      row.querySelectorAll('select[name], input[name], textarea[name]').forEach(function(el){
+        el.name = el.name.replace(/^lines\[\d+\]/, 'lines[' + idx + ']');
+      });
+      ensureSortOrderInput(row, idx);
+      row.setAttribute('data-line-position', String(idx + 1));
+    }
+
+    function reindexLineRows(){
+      quoteRows().forEach(function(row, idx){ setRowIndex(row, idx); });
+    }
+    window.corelynkReindexQuoteRows = reindexLineRows;
+
+    function ensureDragHandle(row){
+      var handle = row.querySelector('.quote-row-drag-handle');
+      if (!handle && row.classList.contains('quote-section-line')) {
+        handle = row.querySelector('.bi-grip-vertical');
+        if (handle) handle.classList.add('quote-row-drag-handle');
+      }
+      if (!handle && row.classList.contains('quote-line')) {
+        var firstCell = row.querySelector('td');
+        if (firstCell) {
+          handle = document.createElement('span');
+          handle.className = 'quote-row-drag-handle text-muted me-1';
+          handle.innerHTML = '<i class="bi bi-grip-vertical"></i>';
+          handle.title = 'Drag to reorder';
+          handle.style.cursor = 'grab';
+          handle.style.display = 'inline-flex';
+          handle.style.verticalAlign = 'middle';
+          firstCell.insertBefore(handle, firstCell.firstChild);
+        }
+      }
+      if (handle) {
+        handle.setAttribute('draggable', 'true');
+        handle.setAttribute('role', 'button');
+        handle.setAttribute('aria-label', 'Drag line');
+        handle.style.cursor = 'grab';
+      }
+      return handle;
+    }
+
+    function prepareDragRows(){
+      quoteRows().forEach(function(row){ ensureDragHandle(row); });
+      reindexLineRows();
+    }
+
+    function initDragReorder(){
+      if (!table || table._quoteDragReorderBound) return;
+      table._quoteDragReorderBound = true;
+      var draggingRow = null;
+
+      table.addEventListener('dragstart', function(e){
+        var handle = e.target && e.target.closest ? e.target.closest('.quote-row-drag-handle') : null;
+        if (!handle || !table.contains(handle)) return;
+        draggingRow = handle.closest('tr.quote-line, tr.quote-section-line');
+        if (!draggingRow) return;
+        draggingRow.classList.add('quote-row-dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', draggingRow.getAttribute('data-line-position') || '');
+        }
+      });
+
+      table.addEventListener('dragover', function(e){
+        if (!draggingRow) return;
+        var targetRow = e.target && e.target.closest ? e.target.closest('tr.quote-line, tr.quote-section-line') : null;
+        if (!targetRow || targetRow === draggingRow || !table.contains(targetRow)) return;
+        e.preventDefault();
+        var rect = targetRow.getBoundingClientRect();
+        var after = e.clientY > rect.top + (rect.height / 2);
+        table.insertBefore(draggingRow, after ? targetRow.nextSibling : targetRow);
+      });
+
+      table.addEventListener('drop', function(e){
+        if (draggingRow) e.preventDefault();
+      });
+
+      table.addEventListener('dragend', function(){
+        if (draggingRow) draggingRow.classList.remove('quote-row-dragging');
+        draggingRow = null;
+        reindexLineRows();
+        updateTotals();
       });
     }
 
-    bindRow(table.querySelector('tr.quote-line'));
+    if (table) {
+      table.addEventListener('input', updateTotals);
+      table.addEventListener('change', updateTotals);
+      table.addEventListener('click', function(e){
+        var btn = e.target && e.target.closest ? e.target.closest('.btn-remove-line') : null;
+        if (!btn || !table.contains(btn)) return;
+        var row = btn.closest('tr.quote-line, tr.quote-section-line');
+        if (!row) return;
+        if (row.classList.contains('quote-section-line') || table.querySelectorAll('tr.quote-line').length > 1){ row.remove(); reindexLineRows(); updateTotals(); }
+      });
+      initDragReorder();
+      prepareDragRows();
+    }
 
     if (addBtn && !addBtn._corelynkAddLineBound) {
     addBtn._corelynkAddLineBound = true;
     addBtn.addEventListener('click', function(){
-      var idx = table.querySelectorAll('tr.quote-line').length;
+      var idx = nextLineIndex();
       var newRow = table.querySelector('tr.quote-line').cloneNode(true);
       // Reset all inputs (including hidden IDs) so we don't copy previous line state
       newRow.querySelectorAll('input').forEach(function(i){
@@ -126,10 +249,19 @@
       }
       if (thumbIcon) thumbIcon.style.display = 'flex';
       newRow.querySelectorAll('select, input').forEach(function(el){ if (el.name){ el.name = el.name.replace(/lines\[\d+\]/, 'lines['+idx+']'); } });
+      var displayType = newRow.querySelector('input[name$="[display_type]"]');
+      if (!displayType) {
+        displayType = document.createElement('input');
+        displayType.type = 'hidden';
+        displayType.name = 'lines[' + idx + '][display_type]';
+        newRow.appendChild(displayType);
+      }
+      displayType.value = 'line';
       newRow.querySelectorAll('.autocomplete-list').forEach(function(list){ list.remove(); });
       ['product-code','product-name'].forEach(function(cls){ var inp = newRow.querySelector('input.'+cls); if (inp && inp.parentNode) inp.parentNode.style.position = 'relative'; });
       table.appendChild(newRow);
       bindRow(newRow);
+      prepareDragRows();
       // attach autocomplete
       (function(){
         var pc = newRow.querySelector('input.product-code');
@@ -149,6 +281,33 @@
       })();
   updateTotals();
     });
+    }
+
+    if (addHeadingBtn && !addHeadingBtn._corelynkAddHeadingBound) {
+      addHeadingBtn._corelynkAddHeadingBound = true;
+      addHeadingBtn.addEventListener('click', function(){
+        if (!table) return;
+        var idx = nextLineIndex();
+        var row = document.createElement('tr');
+        row.className = 'quote-section-line';
+        row.innerHTML = '' +
+          '<td colspan="10" style="padding:4px 6px !important;background:#3f4650;color:#fff;">' +
+            '<div class="d-flex align-items-center gap-2">' +
+              '<i class="bi bi-grip-vertical text-white-50"></i>' +
+              '<input type="hidden" name="lines[' + idx + '][display_type]" value="section">' +
+              '<input type="hidden" name="lines[' + idx + '][quantity]" value="0">' +
+              '<input type="hidden" name="lines[' + idx + '][unit_price]" value="0">' +
+              '<input type="hidden" name="lines[' + idx + '][discount_value]" value="0">' +
+              '<input type="hidden" name="lines[' + idx + '][tax_value]" value="0">' +
+              '<input type="text" name="lines[' + idx + '][section_title]" class="form-control form-control-sm" placeholder="Section heading" style="max-width:520px;font-weight:700;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#fff;" required>' +
+              '<button type="button" class="btn btn-sm btn-outline-light btn-remove-line ms-auto"><i class="bi bi-trash"></i></button>' +
+            '</div>' +
+          '</td>';
+        table.appendChild(row);
+        prepareDragRows();
+        var input = row.querySelector('input[name$="[section_title]"]');
+        if (input) input.focus();
+      });
     }
 
     // shipping toggle
@@ -207,6 +366,7 @@
     }
     if (docExcludeInput) docExcludeInput.addEventListener('change', updateTotals);
 
+  prepareDragRows();
   updateTotals();
   });
 
@@ -234,6 +394,20 @@
     var hid = document.getElementById('customer_id');
     var priceListSelect = document.getElementById('price_list_id');
     function debounce(fn, wait){ var t; return function(){ var ctx=this, args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(ctx,args); }, wait); }; }
+    // Shared by the search dropdown and the quick "Add New Customer" modal.
+    function selectCustomer(c){
+      input.value = c.code + ' - ' + c.name;
+      hid.value = c.id;
+      list.style.display='none';
+      var plurl = (window.APP_BASE||'') + '/quotations/price-lists/' + c.id;
+      fetch(plurl)
+        .then(function(r){ return r.json(); })
+        .catch(function(){ return fetch('/quotations/price-lists/' + c.id).then(function(r){ return r.json(); }); })
+        .then(function(pls){
+        priceListSelect.innerHTML = '<option value="">Default</option>';
+        pls.forEach(function(pl){ var opt = document.createElement('option'); opt.value=pl.id; opt.text=pl.name; priceListSelect.appendChild(opt); });
+      }).catch(function(err){ console.error('Failed to load price lists', err); });
+    }
     function doSearch(inputEl, term){
       if (!term) { list.style.display='none'; return; }
       var url = (window.APP_BASE||'') + '/quotations/search-customers?q=' + encodeURIComponent(term);
@@ -246,19 +420,7 @@
         data.forEach(function(c){
           var row = document.createElement('div'); row.className='p-2'; row.style.cursor='pointer';
           row.innerHTML = '<strong>'+c.code+'</strong> — '+c.name+' <div class="small text-muted">'+(c.company||'')+' '+(c.email?'- '+c.email:'')+'</div>';
-          row.addEventListener('click', function(){
-            inputEl.value = c.code + ' - ' + c.name;
-            hid.value = c.id;
-            list.style.display='none';
-            var plurl = (window.APP_BASE||'') + '/quotations/price-lists/' + c.id;
-            fetch(plurl)
-              .then(function(r){ return r.json(); })
-              .catch(function(){ return fetch('/quotations/price-lists/' + c.id).then(function(r){ return r.json(); }); })
-              .then(function(pls){
-              priceListSelect.innerHTML = '<option value="">Default</option>';
-              pls.forEach(function(pl){ var opt = document.createElement('option'); opt.value=pl.id; opt.text=pl.name; priceListSelect.appendChild(opt); });
-            }).catch(function(err){ console.error('Failed to load price lists', err); });
-          });
+          row.addEventListener('click', function(){ selectCustomer(c); });
           list.appendChild(row);
         });
         list.style.display='block';
@@ -268,6 +430,78 @@
     if (input) {
       input.addEventListener('input', debouncedSearch);
       input.addEventListener('blur', function(){ setTimeout(function(){ list.style.display='none'; },200); });
+    }
+
+    // Quick "Add New Customer" modal
+    var addCustomerBtn = document.getElementById('btn-add-customer');
+    if (addCustomerBtn) {
+      addCustomerBtn.addEventListener('click', function(){
+        var errEl = document.getElementById('modal-add-customer-error');
+        if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+        ['modal-add-customer-name','modal-add-customer-phone','modal-add-customer-email',
+         'modal-add-customer-line1','modal-add-customer-line2','modal-add-customer-city',
+         'modal-add-customer-postal','modal-add-customer-country'].forEach(function(id){
+          var el = document.getElementById(id); if (el) el.value = '';
+        });
+        var modalEl = document.getElementById('modal-add-customer');
+        var nameEl0 = document.getElementById('modal-add-customer-name');
+        if (window.bootstrap && modalEl) {
+          window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+          modalEl.addEventListener('shown.bs.modal', function(){ nameEl0 && nameEl0.focus(); }, { once: true });
+        }
+      });
+    }
+    var saveCustomerBtn = document.getElementById('modal-add-customer-save');
+    if (saveCustomerBtn) {
+      var saveCustomerBtnDefaultHtml = saveCustomerBtn.innerHTML;
+      saveCustomerBtn.addEventListener('click', function(){
+        var errEl = document.getElementById('modal-add-customer-error');
+        var nameEl = document.getElementById('modal-add-customer-name');
+        var name = (nameEl.value || '').trim();
+        if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+        if (!name) {
+          if (errEl) { errEl.textContent = 'Name is required'; errEl.classList.remove('d-none'); }
+          nameEl.focus();
+          return;
+        }
+        function val(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; }
+        var payload = {
+          name: name,
+          phone: val('modal-add-customer-phone'),
+          email: val('modal-add-customer-email'),
+          address: {
+            line1: val('modal-add-customer-line1'),
+            line2: val('modal-add-customer-line2'),
+            country_id: val('modal-add-customer-country'),
+            city_name: val('modal-add-customer-city'),
+            postal_code: val('modal-add-customer-postal')
+          }
+        };
+        saveCustomerBtn.disabled = true;
+        saveCustomerBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+        fetch((window.APP_BASE||'') + '/customers/api-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+          .then(function(r){ return r.json().then(function(data){ return { ok: r.ok, data: data }; }); })
+          .then(function(res){
+            saveCustomerBtn.disabled = false;
+            saveCustomerBtn.innerHTML = saveCustomerBtnDefaultHtml;
+            if (!res.ok || !res.data.success) {
+              if (errEl) { errEl.textContent = res.data.message || 'Failed to create customer'; errEl.classList.remove('d-none'); }
+              return;
+            }
+            selectCustomer({ id: res.data.id, code: res.data.code, name: res.data.name });
+            var modalEl = document.getElementById('modal-add-customer');
+            if (window.bootstrap && modalEl) window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+          })
+          .catch(function(){
+            saveCustomerBtn.disabled = false;
+            saveCustomerBtn.innerHTML = saveCustomerBtnDefaultHtml;
+            if (errEl) { errEl.textContent = 'Failed to create customer'; errEl.classList.remove('d-none'); }
+          });
+      });
     }
 
     // Edit-mode prefill: if customer_id already exists, preload price lists
@@ -454,8 +688,8 @@
           } catch(e){ console.error('fallbackToApiCreate error', e); }
         }
       }
-      form.addEventListener('submit', function(e){ if (e.shiftKey) return false; e.preventDefault(); var fd = new FormData(form); sendAjaxForm(fd); return false; });
-      try { window.doQuoteAjaxSubmit = function(status){ try{ if (statusInput) statusInput.value = status || 'quoted'; var fd = new FormData(form); return sendAjaxForm(fd); } catch(e){ console.error('doQuoteAjaxSubmit failed', e); } }; } catch(e){}
+      form.addEventListener('submit', function(e){ if (e.shiftKey) return false; e.preventDefault(); if (window.corelynkReindexQuoteRows) window.corelynkReindexQuoteRows(); var fd = new FormData(form); sendAjaxForm(fd); return false; });
+      try { window.doQuoteAjaxSubmit = function(status){ try{ if (statusInput) statusInput.value = status || 'quoted'; if (window.corelynkReindexQuoteRows) window.corelynkReindexQuoteRows(); var fd = new FormData(form); return sendAjaxForm(fd); } catch(e){ console.error('doQuoteAjaxSubmit failed', e); } }; } catch(e){}
       var btnQuote = document.getElementById('btn-save-quote');
       if (btnQuote){ btnQuote.addEventListener('click', function(ev){ ev.preventDefault(); try{ window.doQuoteAjaxSubmit('quoted'); } catch(e){ console.error(e); } return false; }); }
       form.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ var tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toLowerCase() : ''; if (tag==='input' || tag==='select' || tag==='textarea'){ ev.preventDefault(); try{ window.doQuoteAjaxSubmit(); } catch(e){} return false; } } });
@@ -537,4 +771,167 @@
       }
     }, 50);
   })();
+})();
+
+// Price list -> line prices. Picking (or changing) the price list re-prices
+// every line that has a product, the same way the server prices them.
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var select = document.getElementById('price_list_id');
+    if (!select) { return; }
+
+    function repriceLines(confirmFirst) {
+      var rows = [];
+      document.querySelectorAll('tr').forEach(function (tr, i) {
+        var pid = tr.querySelector('.product-id');
+        var priceEl = tr.querySelector('.line-price');
+        if (!pid || !priceEl || !parseInt(pid.value || 0, 10)) { return; }
+        var qtyEl = tr.querySelector('.line-qty');
+        var vEl = tr.querySelector('.product-variant-id');
+        rows.push({ key: 'r' + i, product_id: parseInt(pid.value, 10), variant_id: parseInt((vEl && vEl.value) || 0, 10) || 0, quantity: parseFloat(qtyEl && qtyEl.value ? qtyEl.value : 1) || 1, el: priceEl });
+      });
+      if (!rows.length) { return; }
+      if (confirmFirst && !window.confirm('Re-price ' + rows.length + ' line(s) using this price list?')) { return; }
+
+      var currencyEl = document.querySelector('select[name="currency"]');
+      var customerEl = document.getElementById('customer_id');
+      fetch((window.APP_BASE || '') + '/pricing/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          party_type: 'customer',
+          party_id: customerEl ? customerEl.value : '',
+          price_list_id: select.value || 0,
+          currency: currencyEl ? currencyEl.value : '',
+          lines: rows.map(function (r) { return { key: r.key, product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity }; })
+        })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          if (!resp || !resp.success) { return; }
+          var byKey = {};
+          resp.prices.forEach(function (p) { byKey[p.key] = p; });
+          rows.forEach(function (r) {
+            var p = byKey[r.key];
+            if (!p) { return; }
+            r.el.value = (parseFloat(p.unit_price) || 0).toFixed(2);
+            r.el.title = 'Price source: ' + p.source + (p.list_name ? ' (' + p.list_name + ')' : '');
+            r.el.dispatchEvent(new Event('input', { bubbles: true }));
+            r.el.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        })
+        .catch(function (err) { try { console.error('reprice failed', err); } catch (e) {} });
+    }
+
+    select.addEventListener('change', function () { repriceLines(true); });
+  });
+})();
+
+// Quick "Add Payment Term" popup: creates the term and selects it on the quote.
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var openBtn = document.getElementById('btn-add-payment-term');
+    var modalEl = document.getElementById('modal-add-payment-term');
+    if (!openBtn || !modalEl) { return; }
+
+    var tbody = modalEl.querySelector('#modal-pt-rows tbody');
+    var errEl = document.getElementById('modal-pt-error');
+    var saveBtn = document.getElementById('modal-pt-save');
+    var saveDefaultHtml = saveBtn.innerHTML;
+
+    function addRow() {
+      var tpl = document.getElementById('modal-pt-row-template');
+      var holder = document.createElement('tbody');
+      holder.innerHTML = '<table>' + tpl.innerHTML + '</table>';
+      tbody.appendChild(holder.querySelector('tr'));
+    }
+    document.getElementById('modal-pt-add-row').addEventListener('click', addRow);
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target.closest('.pt-del-row');
+      if (btn) { btn.closest('tr').remove(); }
+    });
+
+    // Code defaults to a slug of the name, but stays editable.
+    var nameEl = document.getElementById('modal-pt-name');
+    var codeEl = document.getElementById('modal-pt-code');
+    nameEl.addEventListener('input', function () {
+      if (codeEl.dataset.touched === '1') { return; }
+      codeEl.value = nameEl.value.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 20);
+    });
+    codeEl.addEventListener('input', function () { codeEl.dataset.touched = '1'; });
+
+    openBtn.addEventListener('click', function () {
+      errEl.classList.add('d-none');
+      errEl.textContent = '';
+      ['modal-pt-name', 'modal-pt-code', 'modal-pt-description'].forEach(function (id) { document.getElementById(id).value = ''; });
+      document.getElementById('modal-pt-net-days').value = '0';
+      codeEl.dataset.touched = '';
+      tbody.innerHTML = '';
+      if (window.bootstrap) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        modalEl.addEventListener('shown.bs.modal', function () { nameEl.focus(); }, { once: true });
+      }
+    });
+
+    saveBtn.addEventListener('click', function () {
+      errEl.classList.add('d-none');
+      errEl.textContent = '';
+
+      var milestones = [];
+      var total = 0;
+      tbody.querySelectorAll('tr').forEach(function (tr) {
+        var pct = parseFloat(tr.querySelector('.pt-pct').value);
+        if (isNaN(pct) || pct <= 0) { return; }
+        total += pct;
+        milestones.push({
+          label: (tr.querySelector('.pt-label').value || '').trim(),
+          percentage: pct,
+          basis: tr.querySelector('.pt-basis').value,
+          offset_days: parseInt(tr.querySelector('.pt-days').value || 0, 10) || 0
+        });
+      });
+      if (milestones.length && Math.abs(total - 100) > 0.01) {
+        errEl.textContent = 'Instalment percentages must add up to 100 (currently ' + total + ').';
+        errEl.classList.remove('d-none');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+      fetch((window.APP_BASE || '') + '/settings/apiCreatePaymentTerm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          name: nameEl.value.trim(),
+          code: codeEl.value.trim(),
+          description: document.getElementById('modal-pt-description').value.trim(),
+          net_days: parseInt(document.getElementById('modal-pt-net-days').value || 0, 10) || 0,
+          milestones: milestones
+        })
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveDefaultHtml;
+          if (!res.ok || !res.data.success) {
+            errEl.textContent = res.data.message || 'Failed to create payment term';
+            errEl.classList.remove('d-none');
+            return;
+          }
+          var sel = document.getElementById('payment_term_id');
+          var opt = document.createElement('option');
+          opt.value = res.data.id;
+          opt.text = res.data.name;
+          opt.selected = true;
+          sel.appendChild(opt);
+          if (window.bootstrap) { window.bootstrap.Modal.getOrCreateInstance(modalEl).hide(); }
+        })
+        .catch(function () {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveDefaultHtml;
+          errEl.textContent = 'Failed to create payment term';
+          errEl.classList.remove('d-none');
+        });
+    });
+  });
 })();

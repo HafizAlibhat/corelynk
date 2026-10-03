@@ -96,7 +96,7 @@
                     </tr>
                 <?php endif; ?>
                 </tbody>
-                <tfoot class="table-secondary">
+                <tfoot>
                     <tr class="fw-semibold">
                         <td colspan="3" class="text-end">Totals</td>
                         <td class="text-end font-monospace"><?= number_format($totals['debit'] ?? 0,2) ?></td>
@@ -161,6 +161,8 @@ body.theme-dark #tbRoot { --surface:#111827; --surface-alt:#1f2937; --surface-2:
 .tb-balance-status.bad{ border-color:rgba(239,68,68,.4); }
 body.theme-dark .tb-balance-status.ok{ border-color:rgba(52,211,153,.45); }
 body.theme-dark .tb-balance-status.bad{ border-color:rgba(248,113,113,.45); }
+body.theme-dark .tile .text-primary { color: #60a5fa !important; }
+body.theme-dark .tile .text-danger { color: #f87171 !important; }
 .tb-balance-dot{ width:8px; height:8px; border-radius:50%; background:var(--ok); display:inline-block; }
 .tb-balance-status.bad .tb-balance-dot{ background:var(--bad); }
 .tile { background:linear-gradient(135deg,var(--surface),var(--surface-alt)); border:1px solid var(--border); border-radius:12px; padding:10px 14px; height:100%; }
@@ -198,3 +200,5 @@ body.theme-dark #tbRoot .text-muted{ color:var(--muted) !important; }
 @media (max-width: 767px){ .filterbar{ flex-direction:column } }
 </style>
 <?= $this->endSection() ?>
+
+

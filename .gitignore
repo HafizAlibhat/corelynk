@@ -140,7 +140,7 @@ user_guide_src/cilexer/pycilexer.egg-info/*
 
 tests/coverage*
 
-phpunit
+/phpunit
 
 # -------------------------
 
@@ -218,8 +218,24 @@ app/Config/Routes.php.corrupt_backup
 
 database/debug_queries.sql
 
-debug_*.php
+/debug_*.php
 
-test.php
+/test.php
 
 public/uploads.zip
+
+# -------------------------
+# Production package (dst/) - must be committed in full
+# -------------------------
+
+!dst/vendor/
+!dst/writable/backups/
+
+# -------------------------
+# Local Scratch & Temp Artifacts
+# -------------------------
+scratch/
+test_*.php
+*.zip
+public/debug_*.txt
+public/so_view_debug.html

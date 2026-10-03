@@ -2,954 +2,446 @@
 
 <?= $this->section('title') ?>Dashboard<?= $this->endSection() ?>
 
+<?= $this->section('styles') ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="<?= base_url('assets/css/command-center.css') ?>?v=21">
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
-<div class="container-fluid px-3 px-lg-5 dashboard dashboard-compact">
-    <div class="card shadow-sm">
-        <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-            <div class="d-flex align-items-center gap-3">
-                <div class="section-icon section-accent-primary"><i class="bi bi-speedometer2"></i></div>
-                <div>
-                    <h5 class="mb-0 section-title">Company Dashboard</h5>
-                    <small class="section-sub">Snapshot — key metrics, inventory health, and quick links</small>
-                </div>
-            </div>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                <!-- Replaced module quick-links with timezone selector + digital clock -->
-                <div class="d-flex align-items-center gap-3 dashboard-topbar">
-                    <!-- Compact FX (shows before timezone select) -->
-                    <div id="fxSmall" class="text-start dashboard-fx">
-                        <div><strong id="usdPkr">USD: Loading…</strong> <small id="fxUpdated" class="text-muted ms-2">—</small></div>
-                        <div class="small text-muted" id="fxSub">EUR: Loading… &middot; GBP: Loading…</div>
-                    </div>
-                    <label for="tzCountrySelect" class="visually-hidden">Timezone</label>
-                    <select id="tzCountrySelect" class="form-select form-select-sm dashboard-tz-select">
-                        <option value="Asia/Karachi" selected>Pakistan (Karachi)</option>
-                        <option value="America/New_York">USA (New York)</option>
-                        <option value="Europe/Berlin">Germany (Berlin)</option>
-                        <option value="Europe/London">UK (London)</option>
-                        <option value="Australia/Sydney">Australia (Sydney)</option>
-                        <option value="Asia/Riyadh">Saudi (Riyadh)</option>
-                        <option value="Asia/Dubai">UAE (Dubai)</option>
-                        <option value="Asia/Jakarta">Indonesia (Jakarta)</option>
-                        <option value="America/Sao_Paulo">Brazil (Sao Paulo)</option>
-                        <option value="Europe/Warsaw">Poland (Warsaw)</option>
-                        <option value="Africa/Algiers">Algeria (Algiers)</option>
-                        <option value="Europe/Rome">Italy (Rome)</option>
-                        <option value="Europe/Paris">France (Paris)</option>
-                        <option value="Europe/Athens">Greece (Athens)</option>
-                        <option value="America/Santiago">Chile (Santiago)</option>
-                        <option value="Asia/Beirut">Lebanon (Beirut)</option>
-                        <option value="Asia/Tbilisi">Georgia (Tbilisi)</option>
-                        <option value="Asia/Shanghai">China (Shanghai)</option>
-                        <option value="Africa/Johannesburg">South Africa (Johannesburg)</option>
-                        <option value="Asia/Baghdad">Iraq (Baghdad)</option>
-                        <option value="Africa/Cairo">Egypt (Cairo)</option>
-                        <option value="Indian/Comoro">Comoros</option>
-                    </select>
-                    <div class="text-end dashboard-clock">
-                        <div id="tzTime" class="fw-semibold fs-5" style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;letter-spacing:1px">--:--:-- AM</div>
-                        <div id="tzDate" class="small text-muted">--</div>
-                    </div>
-                </div>
-            </div>
+<?php
+$kpis = is_array($kpi_cards ?? null) ? $kpi_cards : [];
+$products = is_array($trending_products ?? null) ? $trending_products : [];
+$pendingInvoices = is_array($pending_customer_invoices ?? null) ? $pending_customer_invoices : [];
+$recentInvoices = is_array($recent_customer_invoices ?? null) ? $recent_customer_invoices : $pendingInvoices;
+$recentInvoiceCounts = ['unpaid' => 0, 'draft' => 0, 'paid' => 0];
+foreach ($recentInvoices as $recentInvoice) {
+    $recentStatus = strtolower((string) ($recentInvoice['status'] ?? ''));
+    $recentOutstanding = (float) ($recentInvoice['outstanding'] ?? 0);
+    if ($recentStatus === 'draft') {
+        $recentInvoiceCounts['draft']++;
+    } elseif ($recentStatus === 'paid') {
+        $recentInvoiceCounts['paid']++;
+    } elseif (!in_array($recentStatus, ['cancelled', 'void'], true) && $recentOutstanding > 0) {
+        $recentInvoiceCounts['unpaid']++;
+    }
+}
+$workOrders = is_array($recent_activity ?? null) ? $recent_activity : [];
+$businessAlerts = is_array($alerts ?? null) ? $alerts : [];
+$ownerMetrics = is_array($owner_metrics ?? null) ? $owner_metrics : [];
+$ownerAttentionCount = (int) ($owner_attention_count ?? 0);
+$topCustomersMonth = is_array($top_customers_month ?? null) ? $top_customers_month : ['currency' => 'USD', 'labels' => [], 'values' => [], 'summary' => ['label' => 'No customer data', 'amount' => 0, 'count' => 0, 'total' => 0]];
+$topCustomersYear = is_array($top_customers_year ?? null) ? $top_customers_year : ['currency' => 'USD', 'labels' => [], 'values' => [], 'summary' => ['label' => 'No customer data', 'amount' => 0, 'count' => 0, 'total' => 0]];
+$topCustomerDefaultRange = array_sum(array_map('floatval', $topCustomersMonth['values'] ?? [])) > 0 ? 'month' : 'year';
+$salesTotal = 0.0;
+foreach (($chart_labels ?? []) as $chartIndex => $chartLabel) {
+    if (str_ends_with((string) $chartLabel, date('Y'))) {
+        $salesTotal += (float) ($revenue_timeline[$chartIndex] ?? 0);
+    }
+}
+$kpiTones = ['violet', 'teal', 'rose', 'amber'];
+?>
+<section
+    class="cl-command-center"
+    aria-labelledby="commandCenterTitle"
+    data-chart-labels="<?= esc(json_encode(array_values($chart_labels ?? [])), 'attr') ?>"
+    data-revenue-series="<?= esc(json_encode(array_values($revenue_timeline ?? [])), 'attr') ?>"
+    data-expense-series="<?= esc(json_encode(array_values($expense_timeline ?? [])), 'attr') ?>"
+    data-chart-series-by-currency="<?= esc(json_encode($chart_series_by_currency ?? []), 'attr') ?>"
+    data-chart-currency="<?= esc($chart_currency ?? 'PKR', 'attr') ?>"
+    data-top-customers-month="<?= esc(json_encode($topCustomersMonth), 'attr') ?>"
+    data-top-customers-year="<?= esc(json_encode($topCustomersYear), 'attr') ?>"
+    data-fx-url="<?= esc(site_url('corelynk/fx-rates?base=USD&symbols=PKR,EUR,GBP'), 'attr') ?>"
+    data-activity-feed-url="<?= esc(site_url('corelynk/activity-center/feed?limit=10'), 'attr') ?>"
+    data-activity-read-url="<?= esc(site_url('corelynk/activity-center/read'), 'attr') ?>"
+    data-activity-read-all-url="<?= esc(site_url('corelynk/activity-center/read-all'), 'attr') ?>"
+>
+    <header class="cc-page-heading">
+        <div>
+            <h1 id="commandCenterTitle">Dashboard</h1>
+            <p>Real-time systemic overview</p>
         </div>
-        <div class="card-body">
-            <?php if (!empty($receivables_debug) && is_array($receivables_debug)): ?>
-                <div class="alert alert-info small">Receivables (debug): <?= esc(json_encode($receivables_debug)) ?></div>
-            <?php endif; ?>
-            <div class="row g-4">
-                <div class="col-12">
-                    <div class="row g-3 row-cols-1 row-cols-md-2 row-cols-xl-4">
-                        <?php $kpis = $kpi_cards ?? [
-                            ['label' => 'Total Sales (MTD)', 'value' => '$0.00', 'hint' => 'vs last month: +0%', 'icon' => 'bi-cash-stack', 'link' => base_url('/reports'), 'linkLabel' => 'View Sales', 'bg' => 'linear-gradient(135deg,#eef2ff,#e0e7ff)', 'textColor' => 'text-dark'],
-                            ['label' => 'Total Profit (MTD)', 'value' => '$0.00', 'hint' => 'Gross margin', 'icon' => 'bi-graph-up', 'link' => base_url('/reports'), 'linkLabel' => 'Profit Report', 'bg' => 'linear-gradient(135deg,#ecfdf5,#d1fae5)', 'textColor' => 'text-dark'],
-                            ['label' => 'Vendor Payables', 'value' => '$0.00', 'hint' => 'Due next 7 days: $0', 'icon' => 'bi-wallet2', 'link' => base_url('/accounting/cheques'), 'linkLabel' => 'Vendor Payments', 'bg' => 'linear-gradient(135deg,#fffbeb,#fde68a)', 'textColor' => 'text-dark'],
-                            ['label' => 'Customer Receivables', 'value' => isset($kpi_cards) ? ($kpi_cards[3]['value'] ?? '$0.00') : (isset($receivablesDisplay) ? $receivablesDisplay : '$0.00'), 'hint' => isset($kpi_cards) ? ($kpi_cards[3]['hint'] ?? 'Expected this week: $0') : (isset($receivablesCount) && $receivablesCount ? ($receivablesCount . ' currency(ies) with unpaid invoices') : 'No unpaid invoices'), 'icon' => 'bi-wallet', 'link' => base_url('/customers'), 'linkLabel' => 'Customer Collections', 'bg' => 'linear-gradient(135deg,#e0f2fe,#bae6fd)', 'textColor' => 'text-dark'],
-                        ]; ?>
-                        <?php foreach ($kpis as $card): ?>
-                            <div class="col">
-                                <div class="card h-100" style="background: <?= $card['bg'] ?>;">
-                                    <div class="p-3 d-flex justify-content-between align-items-start <?= $card['textColor'] ?? '' ?>">
-                                        <div>
-                                            <div class="text-uppercase small text-muted"><?= esc($card['label']) ?></div>
-                                            <div class="fs-3 fw-semibold"><?= esc($card['value']) ?></div>
-                                            <div class="small text-muted"><?= esc($card['hint']) ?></div>
-                                        </div>
-                                        <div class="text-end"><i class="bi <?= esc($card['icon']) ?> fs-1"></i></div>
-                                    </div>
-                                    <div class="px-3 pb-3"><a href="<?= $card['link'] ?>" class="small"><?= esc($card['linkLabel']) ?></a></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
+    </header>
 
-                <div class="col-12">
-                    <div class="row g-3">
-                        <div class="col-lg-6">
-                            <div class="card p-3 h-100">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Sales Performance (last 90 days)</h6>
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-secondary active">Daily</button>
-                                        <button class="btn btn-outline-secondary">Weekly</button>
-                                    </div>
-                                </div>
-                                <canvas id="salesTimelineChart" height="160"></canvas>
-                                <div class="mt-2 small text-muted">Top channel: Direct • Best day: —</div>
-                            </div>
-                        </div>
-                        <div class="col-lg-6">
-                            <div class="card p-3 h-100">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Expenses vs Vendor Payments (6 months)</h6>
-                                </div>
-                                <canvas id="expensesPaymentsChart" height="160"></canvas>
-                                <div class="mt-2 small text-muted">Avg cycle time: — days • Cleared %: —%</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <?php if (!empty($receivables_debug) && is_array($receivables_debug)): ?>
+        <div class="cc-debug" role="status">Receivables: <?= esc(json_encode($receivables_debug)) ?></div>
+    <?php endif; ?>
 
-                <div class="col-12">
-                    <div class="row g-3">
-                        <div class="col-lg-4">
-                            <div class="card p-3 h-100">
-                                <h6 class="mb-3"><i class="bi bi-box-seam"></i> Stock Health</h6>
-                                <?php
-                                    $trending = $trending_products ?? [];
-                                    $lowStock = count(array_filter($trending, fn($p) => ($p['current_stock'] ?? 0) > 0 && ($p['current_stock'] ?? 0) < 10));
-                                    $outStock = count(array_filter($trending, fn($p) => ($p['current_stock'] ?? 0) <= 0));
-                                    $totalSkus = count($trending);
-                                ?>
-                                <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Items low in stock</span><strong><?= number_format($lowStock) ?></strong></div>
-                                <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Items out of stock</span><strong><?= number_format($outStock) ?></strong></div>
-                                <div class="d-flex justify-content-between py-2"><span class="text-muted">Total SKUs</span><strong><?= number_format($totalSkus) ?></strong></div>
-                                <hr />
-                                <h6 class="mb-2">Pending Purchase Orders</h6>
-                                <p class="mb-1 small">Count: <strong><?= number_format($open_pos ?? 0) ?></strong></p>
-                                <p class="mb-1 small">Value: <strong>$<?= number_format($open_pos_value ?? 0.0, 2) ?></strong></p>
-                                <div class="small text-muted">Next arrivals:</div>
-                                <ul class="ps-3 mb-0 small">
-                                    <?php $upcomingPos = $upcoming_pos ?? []; ?>
-                                    <?php if (!empty($upcomingPos)): ?>
-                                        <?php foreach ($upcomingPos as $po): ?>
-                                            <li><span class="badge bg-light text-dark">PO#<?= esc($po['id']) ?></span> <?= esc($po['vendor_name'] ?? 'Vendor') ?> • <?= esc($po['order_date'] ? date('M j', strtotime($po['order_date'])) : 'TBD') ?></li>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <li>No upcoming POs.</li>
-                                    <?php endif; ?>
-                                </ul>
-                                <div class="mt-3"><a href="<?= base_url('/accounting/purchase-orders') ?>">Reorder Recommendations</a></div>
-                            </div>
-                        </div>
-                        <div class="col-lg-5">
-                            <div class="card p-3 h-100">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Trending Items</h6>
-                                    <button class="btn btn-sm btn-outline-secondary">Filter</button>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-compact align-middle mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Product</th>
-                                                <th class="text-end">Stock</th>
-                                                <th class="text-end">Unit Cost</th>
-                                                <th>Status</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php if (!empty($trending_products)): ?>
-                                                <?php foreach ($trending_products as $p): ?>
-                                                    <tr>
-                                                        <td><span class="badge bg-light text-dark"><?= esc($p['code']) ?></span> <?= esc($p['name']) ?></td>
-                                                        <td class="text-end"><?= number_format($p['current_stock'], 2) ?></td>
-                                                        <td class="text-end">$<?= number_format($p['unit_cost'], 2) ?></td>
-                                                        <td>
-                                                            <?php if ($p['current_stock'] <= 0): ?>
-                                                                <span class="badge bg-danger">Out of Stock</span>
-                                                            <?php elseif ($p['current_stock'] < 10): ?>
-                                                                <span class="badge bg-warning text-dark">Low Stock</span>
-                                                            <?php else: ?>
-                                                                <span class="badge bg-success">Healthy</span>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td class="text-end"><a href="<?= base_url('/products') ?>" class="btn btn-xs btn-outline-secondary"><i class="bi bi-chevron-right"></i></a></td>
-                                                    </tr>
-                                                <?php endforeach; ?>
-                                            <?php else: ?>
-                                                <tr><td colspan="5" class="text-center text-muted">No products found.</td></tr>
-                                            <?php endif; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="mt-2"><a href="<?= base_url('/products') ?>">View All</a></div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3">
-                            <div class="card p-3 h-100">
-                                <h6 class="mb-3"><i class="bi bi-journal-text"></i> Business Alerts</h6>
-                                <?php $alertItems = $alerts ?? []; ?>
-                                <?php if (!empty($alertItems)): ?>
-                                    <?php foreach ($alertItems as $alert): ?>
-                                        <div class="card mb-2 alert-card" style="background: <?= esc($alert['bg'] ?? 'linear-gradient(135deg,#f8fafc,#e2e8f0)') ?>;">
-                                            <div class="p-3 d-flex align-items-center gap-2"><i class="bi <?= esc($alert['icon']) ?> text-dark"></i><div><strong><?= esc($alert['title']) ?></strong><div class="small"><?= esc($alert['text']) ?></div></div></div>
-                                        </div>
+    <div class="cc-kpi-grid" aria-label="Key performance indicators">
+        <?php foreach ($kpis as $index => $card): ?>
+            <?php
+            $tone = $kpiTones[$index % count($kpiTones)];
+            $hint = trim((string) ($card['hint'] ?? ''));
+            $trendClass = str_contains($hint, '-') ? 'is-negative' : 'is-positive';
+            ?>
+            <a class="cc-kpi-card cc-tone-<?= esc($tone) ?>" href="<?= esc($card['link'] ?? '#') ?>">
+                <div class="cc-kpi-topline">
+                    <span class="cc-eyebrow"><?= esc($card['label'] ?? 'Metric') ?></span>
+                    <span class="cc-kpi-icon"><i class="bi <?= esc($card['icon'] ?? 'bi-bar-chart') ?>" aria-hidden="true"></i></span>
+                </div>
+                <strong class="cc-kpi-value"><?= esc($card['value'] ?? '0') ?></strong>
+                <span class="cc-kpi-trend <?= $trendClass ?>">
+                    <i class="bi <?= $trendClass === 'is-negative' ? 'bi-arrow-down' : 'bi-arrow-up' ?>" aria-hidden="true"></i>
+                    <?= esc($hint !== '' ? $hint : ($card['linkLabel'] ?? 'View details')) ?>
+                </span>
+            </a>
+        <?php endforeach; ?>
+        <?php if ($kpis === []): ?>
+            <div class="cc-empty cc-empty-wide">No dashboard metrics are available for your current permissions.</div>
+        <?php endif; ?>
+    </div>
+
+    <div class="cc-dashboard-grid">
+        <div class="cc-primary-column">
+            <article class="cc-panel cc-revenue-panel">
+                <header class="cc-panel-heading cc-revenue-heading">
+                    <div>
+                        <h2>Annual Revenue Matrix</h2>
+                        <p>Posted revenue and expenses in the selected document currency</p>
+                    </div>
+                    <div class="cc-captured-value">
+                        <span>Revenue captured</span>
+                        <strong id="ccCapturedValue" aria-live="polite"><?= esc($chart_currency ?? 'PKR') ?> <?= number_format($salesTotal, 0) ?></strong>
+                    </div>
+                    <div class="cc-period-controls" aria-label="Revenue timeline controls">
+                        <label class="cc-period" for="ccRevenueCurrency">
+                            <span class="visually-hidden">Document currency</span>
+                            <select id="ccRevenueCurrency" aria-label="Document currency">
+                                <?php foreach (array_keys($chart_series_by_currency ?? [$chart_currency ?? 'USD' => []]) as $currencyCode): ?>
+                                    <option value="<?= esc($currencyCode) ?>" <?= $currencyCode === ($chart_currency ?? 'USD') ? 'selected' : '' ?>><?= esc($currencyCode) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                        </label>
+                        <label class="cc-period" for="ccRevenueYear">
+                            <span class="visually-hidden">Reporting year</span>
+                            <select id="ccRevenueYear" aria-label="Reporting year">
+                                <option value="<?= esc(date('Y')) ?>"><?= esc(date('Y')) ?></option>
+                            </select>
+                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                        </label>
+                        <label class="cc-period" for="ccRevenuePeriod">
+                            <span class="visually-hidden">Month range</span>
+                            <select id="ccRevenuePeriod" aria-label="Month or range">
+                                <option value="year" selected>All Months</option>
+                                <option value="6">Last 6M</option>
+                                <option value="3">Last 3M</option>
+                                <optgroup label="Specific month">
+                                    <?php foreach (['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as $monthIndex => $monthLabel): ?>
+                                        <option value="month-<?= $monthIndex ?>"><?= esc($monthLabel) ?></option>
                                     <?php endforeach; ?>
-                                <?php else: ?>
-                                    <div class="card alert-card" style="background: linear-gradient(135deg,#f8fafc,#e2e8f0);">
-                                        <div class="p-3 text-muted small">No critical alerts.</div>
-                                    </div>
+                                </optgroup>
+                            </select>
+                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                        </label>
+                    </div>
+                </header>
+                <div class="cc-chart-wrap">
+                    <canvas id="ccRevenueChart" aria-label="Posted revenue and posted expenses by selected currency" role="img"></canvas>
+                    <div class="cc-chart-empty" id="ccRevenueEmpty" hidden>
+                        <i class="bi bi-bar-chart" aria-hidden="true"></i>
+                        <strong>No posted activity</strong>
+                        <span>No revenue or expenses were posted for this selection.</span>
+                    </div>
+                </div>
+                <div class="cc-chart-legend" aria-hidden="true">
+                    <span><i class="is-gross"></i>Posted Revenue</span>
+                    <span><i class="is-cost"></i>Posted Expenses</span>
+                </div>
+            </article>
+
+            <article class="cc-panel cc-items-panel">
+                <header class="cc-panel-heading">
+                    <h2>Top Velocity Items</h2>
+                    <a href="<?= base_url('/products') ?>">View Directory</a>
+                </header>
+                <div class="cc-table-scroll">
+                    <table class="cc-data-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Item Code</th>
+                                <th scope="col">Description</th>
+                                <th scope="col">On Hand</th>
+                                <th scope="col">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($products as $product): ?>
+                                <?php
+                                $stock = (float) ($product['current_stock'] ?? 0);
+                                $statusClass = $stock <= 0 ? 'danger' : ($stock < 10 ? 'warning' : 'success');
+                                $statusLabel = $stock <= 0 ? 'Out of Stock' : ($stock < 10 ? 'Low Stock' : 'Optimal');
+                                ?>
+                                <?php
+                                $productCode = trim((string) ($product['code'] ?? ''));
+                                $variantCount = (int) ($product['variant_count'] ?? 0);
+                                $productRef = entityRouteIdentifier($product);
+                                $productHref = $productRef !== ''
+                                    ? base_url('/products/' . $productRef)
+                                    : base_url('/products');
+                                ?>
+                                <tr>
+                                    <td>
+                                        <span class="cc-code"><?= esc($productCode !== '' ? $productCode : '-') ?></span>
+                                        <?php if ($variantCount > 1): ?>
+                                            <span class="cc-code-more" title="<?= esc($variantCount) ?> variants">+<?= esc($variantCount - 1) ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <a class="cc-product-link" href="<?= $productHref ?>"><?= esc($product['name'] ?? 'Unnamed product') ?></a>
+                                        <small>Unit cost <?= esc($product['cost_currency'] ?? 'USD') ?> <?= number_format((float) ($product['unit_cost'] ?? 0), 2) ?></small>
+                                    </td>
+                                    <td class="cc-mono"><?= number_format($stock, 2) ?></td>
+                                    <td><span class="cc-status cc-status-<?= $statusClass ?>"><i></i><?= esc($statusLabel) ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if ($products === []): ?>
+                                <tr><td colspan="4"><div class="cc-empty">No product signals are available.</div></td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="cc-panel cc-owner-panel" aria-labelledby="ownerActionTitle">
+                <header class="cc-panel-heading">
+                    <div>
+                        <h2 id="ownerActionTitle">Owner Action Center</h2>
+                        <p>Operational priorities that need review or follow-through</p>
+                    </div>
+                    <span class="cc-owner-attention<?= $ownerAttentionCount > 0 ? ' has-attention' : '' ?>">
+                        <?= number_format($ownerAttentionCount) ?> active <?= $ownerAttentionCount === 1 ? 'priority' : 'priorities' ?>
+                    </span>
+                </header>
+                <div class="cc-owner-grid">
+                    <?php foreach ($ownerMetrics as $metric): ?>
+                        <a class="cc-owner-metric cc-owner-tone-<?= esc($metric['tone'] ?? 'slate') ?>" href="<?= esc($metric['link'] ?? '#') ?>">
+                            <span class="cc-owner-metric-icon"><i class="bi <?= esc($metric['icon'] ?? 'bi-graph-up') ?>" aria-hidden="true"></i></span>
+                            <span class="cc-owner-metric-copy">
+                                <small><?= esc($metric['label'] ?? 'Business metric') ?></small>
+                                <strong><?= esc($metric['value'] ?? '0') ?></strong>
+                                <span><?= esc($metric['detail'] ?? 'Review details') ?></span>
+                            </span>
+                            <i class="bi bi-arrow-up-right cc-owner-metric-arrow" aria-hidden="true"></i>
+                        </a>
+                    <?php endforeach; ?>
+                    <?php if ($ownerMetrics === []): ?>
+                        <div class="cc-empty cc-empty-wide">No owner metrics are available for your current permissions.</div>
+                    <?php endif; ?>
+                </div>
+                <footer class="cc-owner-footer">
+                    <i class="bi bi-shield-check" aria-hidden="true"></i>
+                    <span>Live operational counts. Currency values remain grouped by their source documents.</span>
+                </footer>
+            </article>
+        </div>
+
+        <aside class="cc-secondary-column" aria-label="Operational signals">
+            <article class="cc-panel cc-recent-orders-panel">
+                <header class="cc-panel-heading">
+                    <h2><i class="bi bi-receipt" aria-hidden="true"></i>Recent Sales Orders</h2>
+                    <a href="<?= base_url('/sales-orders') ?>">View all</a>
+                </header>
+                <div class="cc-recent-orders-list" id="ccRecentSalesOrders" aria-live="polite">
+                    <div class="cc-empty">Loading recent sales orders...</div>
+                </div>
+            </article>
+
+            <article class="cc-panel cc-invoices-panel">
+                <header class="cc-panel-heading">
+                    <div>
+                        <h2>Customer Invoices</h2>
+                        <p>Recent activity with clear payment status</p>
+                    </div>
+                    <a href="<?= base_url('/customer-invoices') ?>">View all</a>
+                </header>
+                <div class="cc-invoice-overview" aria-label="Status of recent customer invoices">
+                    <div class="is-unpaid"><span>Unpaid</span><strong><?= $recentInvoiceCounts['unpaid'] ?></strong></div>
+                    <div class="is-draft"><span>Draft</span><strong><?= $recentInvoiceCounts['draft'] ?></strong></div>
+                    <div class="is-paid"><span>Paid</span><strong><?= $recentInvoiceCounts['paid'] ?></strong></div>
+                </div>
+                <?php if ($recentInvoiceCounts['unpaid'] === 0 && $recentInvoices !== []): ?>
+                    <div class="cc-invoice-note"><i class="bi bi-info-circle" aria-hidden="true"></i><span>No collectible balance. Drafts below have not been issued to customers.</span></div>
+                <?php endif; ?>
+                <div class="cc-invoice-list">
+                    <?php foreach ($recentInvoices as $invoice): ?>
+                        <?php
+                            $invoiceId = (int) ($invoice['id'] ?? 0);
+                            $outstanding = (float) ($invoice['outstanding'] ?? 0);
+                            $totalAmount = (float) ($invoice['total_amount'] ?? 0);
+                            $invoiceStatus = strtolower((string) ($invoice['status'] ?? 'open'));
+                            $isCollectible = !in_array($invoiceStatus, ['draft', 'paid', 'cancelled', 'void'], true) && $outstanding > 0;
+                            $isOverdue = $isCollectible && !empty($invoice['due_date']) && strtotime((string) $invoice['due_date']) < time();
+                            $statusClass = $isOverdue ? 'danger' : ($invoiceStatus === 'paid' ? 'success' : ($invoiceStatus === 'draft' ? 'neutral' : ($invoiceStatus === 'partially_paid' ? 'warning' : 'info')));
+                            $statusLabel = $isOverdue ? 'Overdue' : ucfirst(str_replace('_', ' ', $invoiceStatus));
+                            $dueDate = !empty($invoice['due_date']) ? date('M j, Y', strtotime((string) $invoice['due_date'])) : 'Due soon';
+                            $issueDate = !empty($invoice['issue_date']) ? date('M j, Y', strtotime((string) $invoice['issue_date'])) : '';
+                            $displayAmount = $isCollectible ? $outstanding : $totalAmount;
+                            $amountLabel = $isCollectible ? 'outstanding' : ($invoiceStatus === 'paid' ? 'paid' : 'draft total');
+                        ?>
+                        <a href="<?= base_url('/customer-invoices/view/' . $invoiceId) ?>" class="cc-invoice-item">
+                            <div class="cc-invoice-main">
+                                <strong><?= esc($invoice['invoice_number'] ?? ('INV-' . $invoiceId)) ?></strong>
+                                <span><?= esc($invoice['customer_name'] ?? 'Customer') ?></span>
+                                <?php if ($issueDate !== ''): ?>
+                                    <small>Issued <?= esc($issueDate) ?></small>
+                                <?php endif; ?>
+                                <?php if (!empty($invoice['sales_order_number'])): ?>
+                                    <small><?= esc($invoice['sales_order_number']) ?></small>
                                 <?php endif; ?>
                             </div>
-                        </div>
-                    </div>
+                            <div class="cc-invoice-meta">
+                                <?php if ($isCollectible): ?><span class="cc-eta">Due <?= esc($dueDate) ?></span><?php endif; ?>
+                                <b><?= esc($invoice['currency_code'] ?? 'USD') ?> <?= number_format($displayAmount, 2) ?></b>
+                                <span class="cc-invoice-amount-label"><?= esc($amountLabel) ?></span>
+                                <small class="cc-status-pill cc-status-<?= $statusClass ?>"><?= esc($statusLabel) ?></small>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                    <?php if ($recentInvoices === []): ?>
+                        <div class="cc-empty">No customer invoices have been created yet.</div>
+                    <?php endif; ?>
                 </div>
+            </article>
 
-                <div class="col-12">
-                    <div class="row g-3">
-                        <div class="col-lg-8">
-                            <div class="row g-3">
-                                <div class="col-lg-6">
-                                    <div class="card p-3 h-100">
-                                        <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <h6 class="mb-0">Revenue Overview — YoY</h6>
-                                            <div class="btn btn-sm btn-outline-secondary">Export</div>
-                                        </div>
-                                        <canvas id="revenueYoYChart" height="160"></canvas>
-                                        <div class="mt-2 small text-muted">YTD • YoY change: —%</div>
-                                    </div>
-                                </div>
-                                <div class="col-lg-6">
-                                    <div class="card p-3 h-100">
-                                        <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <h6 class="mb-0">Expense Breakdown</h6>
-                                        </div>
-                                        <canvas id="expensePieChart" height="160"></canvas>
-                                        <div class="mt-2 small text-muted">Opex • Purchases • Salaries • Utilities</div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="card p-3">
-                                        <h6>Sales / Activity (recent)</h6>
-                                        <canvas id="activityChart" height="120"></canvas>
-                                        <div class="mt-2 small text-muted">Shows recent activity (work orders) as a simple trend.</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-4">
-                            <div class="card p-3 h-100">
-                                <h6>Recent Activity</h6>
-                                <div class="list-group list-group-flush">
-                                    <?php if (!empty($recent_activity)): ?>
-                                        <?php foreach($recent_activity as $r): ?>
-                                            <a href="<?= base_url('/work-orders/view/'.$r['id']) ?>" class="list-group-item list-group-item-action px-0 border-0">
-                                                <div class="fw-semibold"><?= esc($r['wo_number'] ?? 'WO#'.$r['id']) ?></div>
-                                                <small class="text-muted d-block"><?= esc($r['status'] ?? '—') ?> • <?= esc($r['created_at'] ?? '—') ?></small>
-                                                <small class="text-muted">Customer: <?= esc($r['customer_name'] ?? '—') ?> • SKU: <?= esc($r['product_code'] ?? '—') ?></small>
-                                            </a>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <div class="text-muted">No recent activity.</div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <div class="card p-3" id="activityCenterCard">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0"><i class="bi bi-bell"></i> Corelynk Activity Center</h6>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge rounded-pill bg-danger" id="activityUnreadBadge" style="display:none;">0 unread</span>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="activityMarkAllBtn">Mark all read</button>
-                                    </div>
-                                </div>
-                                <div class="row g-3">
-                                    <div class="col-lg-6">
-                                        <h6 class="small text-uppercase text-muted mb-2">Last 10 Active Sales Orders</h6>
-                                        <div class="list-group list-group-flush" id="activityActiveOrders">
-                                            <div class="text-muted small">Loading...</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-6">
-                                        <h6 class="small text-uppercase text-muted mb-2">Last 10 Ready-to-Ship Orders</h6>
-                                        <div class="list-group list-group-flush" id="activityReadyOrders">
-                                            <div class="text-muted small">Loading...</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+            <article class="cc-panel cc-customer-panel">
+                <header class="cc-panel-heading">
+                    <div>
+                        <h2>Top Customers</h2>
+                        <p>Share of invoiced value for the selected period</p>
+                    </div>
+                    <label class="cc-period cc-period-compact" for="ccTopCustomerRange">
+                        <span class="visually-hidden">Top customer range</span>
+                        <select id="ccTopCustomerRange" aria-label="Top customer range">
+                            <option value="month" <?= $topCustomerDefaultRange === 'month' ? 'selected' : '' ?>>This Month</option>
+                            <option value="year" <?= $topCustomerDefaultRange === 'year' ? 'selected' : '' ?>>This Year</option>
+                        </select>
+                        <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                    </label>
+                </header>
+                <div class="cc-top-customer">
+                    <div class="cc-top-customer-chart">
+                        <canvas id="ccTopCustomerChart" aria-label="Customer invoice value distribution" role="img"></canvas>
+                        <div class="cc-top-customer-share" aria-hidden="true">
+                            <strong id="ccTopCustomerShare">0%</strong>
+                            <span>top share</span>
                         </div>
                     </div>
+                    <div class="cc-top-customer-summary">
+                        <span class="cc-top-customer-kicker">Leading customer</span>
+                        <strong id="ccTopCustomerName">No customer data</strong>
+                        <span class="cc-top-customer-amount" id="ccTopCustomerAmount">USD 0.00</span>
+                        <small id="ccTopCustomerMeta">0 invoices | 0 total</small>
+                        <div class="cc-top-customer-legend" id="ccTopCustomerLegend" aria-label="Customer chart legend"></div>
+                    </div>
                 </div>
+            </article>
+
+            <article class="cc-panel cc-alerts-panel">
+                <header class="cc-panel-heading">
+                    <h2>Business Signals</h2>
+                    <i class="bi bi-broadcast" aria-hidden="true"></i>
+                </header>
+                <div class="cc-business-list">
+                    <?php foreach ($businessAlerts as $alert): ?>
+                        <div><i class="bi <?= esc($alert['icon'] ?? 'bi-info-circle') ?>" aria-hidden="true"></i><span><strong><?= esc($alert['title'] ?? 'Signal') ?></strong><small><?= esc($alert['text'] ?? '') ?></small></span></div>
+                    <?php endforeach; ?>
+                    <?php foreach (array_slice($workOrders, 0, 3) as $workOrder): ?>
+                        <div>
+                            <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                            <span>
+                                <strong><a href="<?= base_url('/work-orders/view/' . ($workOrder['id'] ?? '')) ?>"><?= esc($workOrder['wo_number'] ?? ('WO-' . ($workOrder['id'] ?? ''))) ?></a></strong>
+                                <small><?= esc($workOrder['status'] ?? 'Open') ?> / <?= esc($workOrder['customer_name'] ?? 'Customer') ?></small>
+                            </span>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php if ($businessAlerts === [] && $workOrders === []): ?>
+                        <div class="cc-empty">No business alerts require attention.</div>
+                    <?php endif; ?>
+                </div>
+            </article>
+        </aside>
+    </div>
+
+    <section class="cc-panel cc-activity-panel" id="activityCenterCard" aria-labelledby="activityCenterTitle">
+        <header class="cc-panel-heading">
+            <div>
+                <h2 id="activityCenterTitle">Activity Center</h2>
+                <p>Latest active and ready-to-ship sales orders</p>
+            </div>
+            <div class="cc-activity-actions">
+                <span class="cc-unread-badge" id="activityUnreadBadge" hidden>0 unread</span>
+                <button class="cc-button cc-button-quiet" type="button" id="activityMarkAllBtn">Mark all read</button>
+            </div>
+        </header>
+        <div class="cc-activity-grid">
+            <div>
+                <h3>Active Sales Orders</h3>
+                <div id="activityActiveOrders" class="cc-activity-list"><div class="cc-empty">Loading activity...</div></div>
+            </div>
+            <div>
+                <h3>Ready to Ship</h3>
+                <div id="activityReadyOrders" class="cc-activity-list"><div class="cc-empty">Loading activity...</div></div>
             </div>
         </div>
-    </div>
-</div>
+    </section>
 
+    <section class="cc-panel cc-system-panel" aria-labelledby="systemContextTitle">
+        <header class="cc-panel-heading">
+            <div>
+                <h2 id="systemContextTitle">System Context</h2>
+                <p>Exchange-rate and timezone utilities</p>
+            </div>
+        </header>
+        <div class="cc-system-grid">
+            <div class="cc-fx-block">
+                <span>Market rates</span>
+                <strong id="usdPkr">USD: Loading...</strong>
+                <small id="fxSub">EUR: Loading... / GBP: Loading...</small>
+                <small id="fxUpdated">Updating</small>
+            </div>
+            <label class="cc-timezone-field" for="tzCountrySelect">
+                <span>Timezone</span>
+                <select id="tzCountrySelect">
+                    <option value="Asia/Karachi" selected>Pakistan (Karachi)</option>
+                    <option value="America/New_York">USA (New York)</option>
+                    <option value="Europe/Berlin">Germany (Berlin)</option>
+                    <option value="Europe/London">UK (London)</option>
+                    <option value="Australia/Sydney">Australia (Sydney)</option>
+                    <option value="Asia/Riyadh">Saudi Arabia (Riyadh)</option>
+                    <option value="Asia/Dubai">UAE (Dubai)</option>
+                    <option value="Asia/Jakarta">Indonesia (Jakarta)</option>
+                    <option value="America/Sao_Paulo">Brazil (Sao Paulo)</option>
+                    <option value="Europe/Warsaw">Poland (Warsaw)</option>
+                    <option value="Africa/Algiers">Algeria (Algiers)</option>
+                    <option value="Europe/Rome">Italy (Rome)</option>
+                    <option value="Europe/Paris">France (Paris)</option>
+                    <option value="Europe/Athens">Greece (Athens)</option>
+                    <option value="America/Santiago">Chile (Santiago)</option>
+                    <option value="Asia/Beirut">Lebanon (Beirut)</option>
+                    <option value="Asia/Tbilisi">Georgia (Tbilisi)</option>
+                    <option value="Asia/Shanghai">China (Shanghai)</option>
+                    <option value="Africa/Johannesburg">South Africa (Johannesburg)</option>
+                    <option value="Asia/Baghdad">Iraq (Baghdad)</option>
+                    <option value="Africa/Cairo">Egypt (Cairo)</option>
+                </select>
+            </label>
+            <div class="cc-clock-block">
+                <span>Local time</span>
+                <strong id="tzTime">--:--:--</strong>
+                <small id="tzDate">--</small>
+            </div>
+            <div class="cc-portfolio-block">
+                <span>Inventory position</span>
+                <strong><?= esc($stock_value_display ?? 'USD 0.00') ?></strong>
+                <small><?= number_format((int) ($open_pos ?? 0)) ?> active POs / <?= esc($open_pos_value_display ?? 'PKR 0.00') ?></small>
+            </div>
+        </div>
+    </section>
+</section>
 <?= $this->endSection() ?>
 
 <?= $this->section('js') ?>
-<style>
-    .dashboard-compact .section-title { font-size: 1.05rem; }
-    .dashboard-compact .section-sub { font-size: 0.76rem; }
-    .dashboard-compact .card h6,
-    .dashboard-compact .card-title { font-size: 0.9rem; }
-    .dashboard-compact .small { font-size: 0.74rem !important; }
-    .dashboard-compact .table,
-    .dashboard-compact .table td,
-    .dashboard-compact .table th { font-size: 0.76rem; }
-    .dashboard-compact .row-cols-xl-4 > .col .card .fs-3 { font-size: 1.45rem !important; }
-
-    /* DARK MODE — Dashboard KPI Cards HARD FIX */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card {
-        background: linear-gradient(180deg, #111827, #0F172A) !important;
-    }
-
-    /* Reset inheritance */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card *,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card * {
-        opacity: 1 !important;
-        filter: none !important;
-    }
-
-    /* KPI labels */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card .text-uppercase,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card .text-uppercase,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card .stat-label,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card .stat-label {
-        color: #9CA3AF !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.05em !important;
-        text-transform: uppercase !important;
-    }
-
-    /* KPI values */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card .fs-3,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card .fs-3,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card .stat-value,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card .stat-value {
-        color: #F9FAFB !important;
-        font-weight: 700 !important;
-        font-size: 1.35rem !important;
-    }
-
-    /* Links inside cards */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card a,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card a {
-        color: #E5E7EB !important;
-        font-weight: 500 !important;
-    }
-
-    /* SVG ICON FIX (CRITICAL) */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card svg,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card svg {
-        stroke: #E5E7EB !important;
-        fill: none !important;
-        opacity: 1 !important;
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card svg path,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card svg path {
-        stroke: #E5E7EB !important;
-        opacity: 1 !important;
-    }
-
-    /* Remove any card overlays */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card::before,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card::after {
-        display: none !important;
-    }
-
-    /* HARDEST OVERRIDE: Force pure white text and icons in KPI cards (dark mode) */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"],
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        text-shadow: none !important;
-        -webkit-text-stroke: 0px transparent !important;
-        mix-blend-mode: normal !important;
-        isolation: isolate !important;
-    }
-
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] *,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] * {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        opacity: 1 !important;
-        filter: none !important;
-        text-shadow: none !important;
-        -webkit-text-stroke: 0px transparent !important;
-        mix-blend-mode: normal !important;
-    }
-
-    /* Ensure numeric values, labels, and links are white */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-value,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-value,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-    }
-
-    /* Links, small text */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] a,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] a,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-    }
-
-    /* SVGs & icons: force white stroke/fill */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] svg,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] svg {
-        stroke: #ffffff !important;
-        fill: #ffffff !important;
-        opacity: 1 !important;
-        vector-effect: non-scaling-stroke !important;
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] svg path,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] svg path {
-        stroke: #ffffff !important;
-        fill: #ffffff !important;
-        opacity: 1 !important;
-    }
-
-    /* Extra HARD overrides: catch any remaining outline/text-stroke or blend-mode effects */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .p-3,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .p-3 {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        -webkit-text-stroke-width: 0px !important;
-        -webkit-text-stroke-color: transparent !important;
-        text-shadow: none !important;
-        mix-blend-mode: normal !important;
-        background-clip: border-box !important;
-        opacity: 1 !important;
-    }
-
-    /* ensure icon fonts (bootstrap icons) are filled white and not stroked */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] i[class^="bi"],
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] i[class*="bi-"] {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        -webkit-text-stroke-width: 0 !important;
-        opacity: 1 !important;
-    }
-
-    /* If any pseudo elements are painting outlines, hide them */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] *::before,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] *::after,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] *::before,
-    body[data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] *::after {
-        display: none !important;
-        content: none !important;
-    }
-
-    /* BROAD OVERRIDES: target the actual dashboard DOM path used by the view */
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] *,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] * {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        -webkit-text-stroke-width: 0 !important;
-        -webkit-text-stroke-color: transparent !important;
-        opacity: 1 !important;
-        filter: none !important;
-        mix-blend-mode: normal !important;
-        text-shadow: none !important;
-    }
-
-    /* Specifically target the label/value/link/icon elements in KPI cards */
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .text-uppercase,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .text-uppercase,
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .fs-3,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .fs-3,
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .small,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] .small,
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] a,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] a,
-    body.theme-dark .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] i,
-    body[data-theme="dark"] .container-fluid .card .card-body .row-cols-xl-4 > .col > .card[style*="background"] i {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        -webkit-text-stroke-width: 0 !important;
-        opacity: 1 !important;
-    }
-    /* DASHBOARD METRIC CARDS — DARK MODE ONLY (UI/UX ENHANCED) */
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"],
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] {
-        /* Card container: do not change background, only text */
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .fs-3,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-value,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-value {
-        color: #F1F5F9 !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.01em;
-        text-shadow: 0 1px 2px rgba(0,0,0,.10);
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .text-uppercase,
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-label,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .stat-label {
-        color: #94A3B8 !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.04em !important;
-        text-transform: uppercase !important;
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] .small {
-        color: #94A3B8 !important;
-        font-weight: 400 !important;
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] a,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] a {
-        color: #F1F5F9 !important;
-        font-weight: 500 !important;
-        text-decoration-color: #94A3B8 !important;
-    }
-    body.theme-dark .dashboard .row-cols-xl-4 > .col .card[style*="background"] i,
-    [data-theme="dark"] .dashboard .row-cols-xl-4 > .col .card[style*="background"] i {
-        color: #F1F5F9 !important;
-        opacity: 0.95 !important;
-        text-shadow: 0 1px 2px rgba(0,0,0,.10);
-    }
-    /* Dashboard header widgets: keep FX + timezone + clock aligned and readable */
-    .dashboard-topbar { flex-wrap: wrap; align-items: center; }
-    .dashboard-fx { min-width: 220px; font-size: .9rem; line-height: 1.15; }
-    .dashboard-tz-select { width: 210px; }
-    .dashboard-clock { min-width: 150px; }
-
-    /* Make the update label less prominent */
-    #fxUpdated { font-weight: 500; }
-
-    /* Dark theme: ensure header widget text stays readable (do not touch light theme) */
-    body.theme-dark #fxSmall,
-    [data-theme="dark"] #fxSmall {
-        color: #e2e8f0;
-    }
-    body.theme-dark #fxSmall .text-muted,
-    [data-theme="dark"] #fxSmall .text-muted,
-    body.theme-dark #tzDate.text-muted,
-    [data-theme="dark"] #tzDate.text-muted {
-        color: #94a3b8 !important;
-    }
-    body.theme-dark #tzTime,
-    [data-theme="dark"] #tzTime {
-        color: #f1f5f9;
-    }
-    body.theme-dark #tzCountrySelect,
-    [data-theme="dark"] #tzCountrySelect,
-    body.theme-dark .dashboard-tz-select,
-    [data-theme="dark"] .dashboard-tz-select {
-        background-color: #0f172a;
-        color: #e2e8f0;
-        border-color: #334155;
-    }
-    body.theme-dark #tzCountrySelect:focus,
-    [data-theme="dark"] #tzCountrySelect:focus {
-        border-color: #64748b;
-        box-shadow: 0 0 0 .2rem rgba(100, 116, 139, .25);
-    }
-
-    /* Dark theme: KPI cards use bright gradients; force readable text inside those cards */
-    body.theme-dark .row-cols-xl-4 > .col .card[style*="background"],
-    [data-theme="dark"] .row-cols-xl-4 > .col .card[style*="background"] {
-        color: #18181b !important;
-        text-shadow: 0 1px 2px rgba(255,255,255,.18), 0 0 1px #fff;
-    }
-    body.theme-dark .row-cols-xl-4 > .col .card[style*="background"] *,
-    [data-theme="dark"] .row-cols-xl-4 > .col .card[style*="background"] * {
-        color: #18181b !important;
-        opacity: 1 !important;
-        text-shadow: 0 1px 2px rgba(255,255,255,.18), 0 0 1px #fff;
-        -webkit-text-fill-color: #18181b !important;
-        background-clip: border-box !important;
-    }
-    @media (max-width: 576px) {
-        .dashboard-topbar { gap: .5rem !important; }
-        .dashboard-fx { min-width: 100% !important; }
-        #tzCountrySelect,
-        .dashboard-tz-select { width: 100% !important; }
-        .dashboard-clock { width: 100%; text-align: left !important; }
-        #tzTime { letter-spacing: 1px !important; }
-    }
-
-    .activity-item {
-        border: 1px solid transparent;
-        border-radius: .5rem;
-        padding: .55rem .65rem;
-        margin-bottom: .35rem;
-        transition: border-color .2s ease, background-color .2s ease;
-    }
-
-    .activity-item.is-unread {
-        background: rgba(245, 158, 11, 0.10);
-        border-color: rgba(245, 158, 11, 0.45);
-        animation: activityBlink 1.2s step-end infinite;
-    }
-
-    .activity-item .activity-meta {
-        font-size: .72rem;
-        color: #6b7280;
-    }
-
-    @keyframes activityBlink {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
-        50% { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.40); }
-    }
-
-    body.theme-dark .activity-item.is-unread,
-    [data-theme="dark"] .activity-item.is-unread {
-        background: rgba(251, 191, 36, 0.16);
-        border-color: rgba(251, 191, 36, 0.60);
-    }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    // Timezone clock: updates `#tzTime` and `#tzDate` based on selected timezone (static separators, 12-hour AM/PM)
-    (function(){
-        const sel = document.getElementById('tzCountrySelect');
-        const timeEl = document.getElementById('tzTime');
-        const dateEl = document.getElementById('tzDate');
-        function formatTimeForTZ(now, tz){
-            try{
-                const opts = { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: tz };
-                return new Intl.DateTimeFormat('en-US', opts).format(now);
-            }catch(e){ return '--:--:--'; }
-        }
-        function formatDateForTZ(now, tz){
-            try{
-                const opts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', timeZone: tz };
-                return new Intl.DateTimeFormat('en-GB', opts).format(now) + ' • ' + tz.split('/').pop();
-            }catch(e){ return '--'; }
-        }
-        function updateClock(){
-            const tz = (sel && sel.value) ? sel.value : 'Asia/Karachi';
-            const now = new Date();
-            if (timeEl) timeEl.textContent = formatTimeForTZ(now, tz);
-            if (dateEl) dateEl.textContent = formatDateForTZ(now, tz);
-        }
-        // persist selection
-        try{ const saved = localStorage.getItem('selected_tz'); if (saved && sel) sel.value = saved; }catch(e){}
-        sel?.addEventListener('change', function(){ try{ localStorage.setItem('selected_tz', sel.value); }catch(e){} updateClock(); });
-        updateClock();
-        setInterval(updateClock, 1000);
-    })();
-    // FX rates fetch (show USD/EUR/GBP -> PKR; compact display USD in header)
-    // Uses local endpoint to avoid browser CORS/network blocks.
-    (function(){
-        const usdEl = document.getElementById('usdPkr');
-        const fxSub = document.getElementById('fxSub');
-        const upd = document.getElementById('fxUpdated');
-
-        function setFxLoading(){
-            if (usdEl) usdEl.textContent = 'USD: Loading…';
-            if (fxSub) fxSub.textContent = 'EUR: Loading… · GBP: Loading…';
-            if (upd) upd.textContent = '—';
-        }
-
-        function setFxError(){
-            if (usdEl) usdEl.textContent = 'USD: —';
-            if (fxSub) fxSub.textContent = 'FX rate unavailable';
-            if (upd) upd.textContent = 'offline';
-        }
-
-        async function fetchFx(){
-            try{
-                const url = <?= json_encode(site_url('corelynk/fx-rates?base=USD&symbols=PKR,EUR,GBP')) ?>;
-                const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-                const j = await res.json();
-                if (!res.ok || !j || !j.success || !j.rates) {
-                    setFxError();
-                    return;
-                }
-
-                const usd_pkr = j.rates.PKR;
-                const usd_eur = j.rates.EUR;
-                const usd_gbp = j.rates.GBP;
-                const eur_pkr = (usd_pkr && usd_eur) ? (usd_pkr / usd_eur) : null;
-                const gbp_pkr = (usd_pkr && usd_gbp) ? (usd_pkr / usd_gbp) : null;
-
-                if (usdEl) usdEl.textContent = 'USD: ' + (usd_pkr ? usd_pkr.toFixed(2) + ' PKR' : '--');
-                if (fxSub) fxSub.textContent = 'EUR: ' + (eur_pkr ? eur_pkr.toFixed(2) + ' PKR' : '--') + ' · GBP: ' + (gbp_pkr ? gbp_pkr.toFixed(2) + ' PKR' : '--');
-
-                const when = j.fetched_at ? new Date(j.fetched_at) : new Date();
-                const label = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                if (upd) upd.textContent = label + (j.provider ? ' · ' + j.provider : '');
-            }catch(e){
-                console.warn('FX fetch failed', e);
-                setFxError();
-            }
-        }
-
-        setFxLoading();
-        fetchFx();
-        setInterval(fetchFx, 1000*60*15);
-    })();
-    document.addEventListener('DOMContentLoaded', function(){
-        const chartLabels = <?= json_encode($chart_labels ?? [], JSON_HEX_TAG) ?>;
-        const salesSeries = <?= json_encode($sales_timeline ?? [], JSON_HEX_TAG) ?>;
-        const paymentsSeries = <?= json_encode($payments_timeline ?? [], JSON_HEX_TAG) ?>;
-        const purchaseSeries = <?= json_encode($purchase_timeline ?? [], JSON_HEX_TAG) ?>;
-
-        const salesEl = document.getElementById('salesTimelineChart');
-        if (salesEl) {
-            new Chart(salesEl, {
-                type: 'line',
-                data: { labels: chartLabels, datasets: [{ label: 'Sales', data: salesSeries, borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.12)', fill: true, tension: 0.35 }] },
-                options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            });
-        }
-
-        const expEl = document.getElementById('expensesPaymentsChart');
-        if (expEl) {
-            new Chart(expEl, {
-                data: {
-                    labels: chartLabels,
-                    datasets: [
-                        { type: 'bar', label: 'Purchase Orders', data: purchaseSeries, backgroundColor: '#f59e0b' },
-                        { type: 'line', label: 'Vendor Payments', data: paymentsSeries, borderColor: '#10b981', tension: 0.35, fill: false }
-                    ]
-                },
-                options: { plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true } } }
-            });
-        }
-
-        const revEl = document.getElementById('revenueYoYChart');
-        if (revEl) {
-            const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const current = labels.map(()=>Math.floor(Math.random()*300)+120);
-            const last = labels.map(()=>Math.floor(Math.random()*280)+100);
-            new Chart(revEl, {
-                type: 'line',
-                data: { labels, datasets: [
-                    { label:'This Year', data: current, borderColor:'#4f46e5', tension:0.35 },
-                    { label:'Last Year', data: last, borderColor:'#64748b', tension:0.35 }
-                ] },
-                options: { plugins:{ legend:{ display:true } }, scales:{ y:{ beginAtZero:true } } }
-            });
-        }
-
-        const pieEl = document.getElementById('expensePieChart');
-        if (pieEl) {
-            new Chart(pieEl, {
-                type: 'doughnut',
-                data: { labels:['Opex','Purchases','Salaries','Utilities'], datasets:[{ data:[25,45,20,10], backgroundColor:['#0ea5e9','#f59e0b','#10b981','#8b5cf6'] }] },
-                options: { plugins:{ legend:{ position:'bottom' } } }
-            });
-        }
-
-        // Corelynk Activity Center (AJAX + per-user read state)
-        (function initActivityCenter(){
-            const activeWrap = document.getElementById('activityActiveOrders');
-            const readyWrap = document.getElementById('activityReadyOrders');
-            const unreadBadge = document.getElementById('activityUnreadBadge');
-            const markAllBtn = document.getElementById('activityMarkAllBtn');
-            const feedUrl = <?= json_encode(site_url('corelynk/activity-center/feed?limit=10')) ?>;
-            const markReadBase = <?= json_encode(site_url('corelynk/activity-center/read')) ?>;
-            const markAllUrl = <?= json_encode(site_url('corelynk/activity-center/read-all')) ?>;
-
-            if (!activeWrap || !readyWrap || !unreadBadge || !markAllBtn) {
-                return;
-            }
-
-            const state = {
-                csrfToken: window.csrfToken || '',
-                csrfHash: window.csrfHash || '',
-                feed: null,
-            };
-
-            function updateCsrfFromPayload(payload) {
-                if (!payload || !payload.csrf) return;
-                if (payload.csrf.token) {
-                    state.csrfToken = payload.csrf.token;
-                    window.csrfToken = payload.csrf.token;
-                }
-                if (payload.csrf.hash) {
-                    state.csrfHash = payload.csrf.hash;
-                    window.csrfHash = payload.csrf.hash;
-                }
-            }
-
-            function fmtDate(value) {
-                if (!value) return 'recent';
-                const dt = new Date(value.replace(' ', 'T'));
-                if (Number.isNaN(dt.getTime())) return 'recent';
-                return dt.toLocaleString();
-            }
-
-            function rowTemplate(item) {
-                const unreadClass = item.is_read ? '' : 'is-unread';
-                const orderText = item.order_number || ('SO-' + (item.source_id || ''));
-                const customer = item.customer_name || 'Customer';
-                const viewUrl = item.view_url || '#';
-                const markBtn = item.is_read
-                    ? ''
-                    : '<button type="button" class="btn btn-xs btn-outline-danger activity-mark-read" data-id="' + item.notification_id + '">Mark read</button>';
-
-                return '' +
-                    '<div class="activity-item ' + unreadClass + '" data-id="' + item.notification_id + '">' +
-                        '<div class="d-flex justify-content-between align-items-start gap-2">' +
-                            '<div>' +
-                                '<div class="fw-semibold">' + orderText + '</div>' +
-                                '<div class="small">' + customer + '</div>' +
-                                '<div class="activity-meta">' + (item.status || 'open') + ' • ' + fmtDate(item.created_at) + '</div>' +
-                            '</div>' +
-                            '<div class="text-end">' +
-                                '<a class="btn btn-xs btn-outline-secondary mb-1" href="' + viewUrl + '">Open</a><br>' +
-                                markBtn +
-                            '</div>' +
-                        '</div>' +
-                    '</div>';
-            }
-
-            function renderList(wrap, items, emptyText) {
-                if (!Array.isArray(items) || items.length === 0) {
-                    wrap.innerHTML = '<div class="text-muted small">' + emptyText + '</div>';
-                    return;
-                }
-                wrap.innerHTML = items.map(rowTemplate).join('');
-            }
-
-            function renderFeed() {
-                const data = state.feed || { active_sales_orders: [], ready_to_ship_orders: [], unread_total: 0 };
-                renderList(activeWrap, data.active_sales_orders || [], 'No active sales order signals right now.');
-                renderList(readyWrap, data.ready_to_ship_orders || [], 'No ready-to-ship signals right now.');
-
-                const unread = Number(data.unread_total || 0);
-                if (unread > 0) {
-                    unreadBadge.style.display = 'inline-block';
-                    unreadBadge.textContent = unread + ' unread';
-                } else {
-                    unreadBadge.style.display = 'none';
-                }
-            }
-
-            function recalcUnread() {
-                const all = [];
-                if (state.feed && Array.isArray(state.feed.active_sales_orders)) {
-                    all.push(...state.feed.active_sales_orders);
-                }
-                if (state.feed && Array.isArray(state.feed.ready_to_ship_orders)) {
-                    all.push(...state.feed.ready_to_ship_orders);
-                }
-                state.feed.unread_total = all.filter((i) => !i.is_read).length;
-            }
-
-            async function loadFeed() {
-                try {
-                    const res = await fetch(feedUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                    const payload = await res.json();
-                    updateCsrfFromPayload(payload);
-                    if (!res.ok || !payload || !payload.success) {
-                        throw new Error(payload && payload.message ? payload.message : 'Failed to load activity feed');
-                    }
-                    state.feed = payload.data || {};
-                    renderFeed();
-                } catch (err) {
-                    activeWrap.innerHTML = '<div class="text-danger small">Failed to load activity data.</div>';
-                    readyWrap.innerHTML = '<div class="text-danger small">Failed to load activity data.</div>';
-                    console.error(err);
-                }
-            }
-
-            async function postJson(url, body) {
-                const payload = Object.assign({}, body || {});
-                if (state.csrfToken && state.csrfHash) {
-                    payload[state.csrfToken] = state.csrfHash;
-                }
-
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': state.csrfHash || ''
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                const json = await res.json();
-                updateCsrfFromPayload(json);
-                if (!res.ok || !json || !json.success) {
-                    throw new Error(json && json.message ? json.message : 'Request failed');
-                }
-                return json;
-            }
-
-            document.addEventListener('click', async function(e) {
-                const btn = e.target.closest('.activity-mark-read');
-                if (!btn) return;
-
-                e.preventDefault();
-                const id = Number(btn.getAttribute('data-id') || 0);
-                if (!id) return;
-
-                try {
-                    btn.disabled = true;
-                    await postJson(markReadBase + '/' + id, {});
-
-                    const sets = ['active_sales_orders', 'ready_to_ship_orders'];
-                    sets.forEach((key) => {
-                        if (!state.feed || !Array.isArray(state.feed[key])) return;
-                        state.feed[key] = state.feed[key].map((item) => {
-                            if (Number(item.notification_id) === id) {
-                                return Object.assign({}, item, { is_read: true });
-                            }
-                            return item;
-                        });
-                    });
-                    recalcUnread();
-                    renderFeed();
-                } catch (err) {
-                    btn.disabled = false;
-                    console.error(err);
-                }
-            });
-
-            markAllBtn.addEventListener('click', async function() {
-                try {
-                    markAllBtn.disabled = true;
-                    await postJson(markAllUrl, {});
-
-                    if (state.feed) {
-                        ['active_sales_orders', 'ready_to_ship_orders'].forEach((key) => {
-                            if (!Array.isArray(state.feed[key])) return;
-                            state.feed[key] = state.feed[key].map((item) => Object.assign({}, item, { is_read: true }));
-                        });
-                    }
-                    recalcUnread();
-                    renderFeed();
-                } catch (err) {
-                    console.error(err);
-                } finally {
-                    markAllBtn.disabled = false;
-                }
-            });
-
-            loadFeed();
-        })();
-    });
-</script>
+<script src="<?= base_url('assets/js/command-center.js') ?>?v=11" defer></script>
 <?= $this->endSection() ?>

@@ -89,6 +89,7 @@ class PurchaseOrderCreateApi extends BaseApiController
                 'description' => $ln['description'] ?? '',
                 'qty'         => $qty,
                 'unit_price'  => round($price, 2),
+                'line_total'  => round($qty * $price, 2),
                 'qty_received'=> 0,
                 'created_at'  => date('Y-m-d H:i:s'),
             ]);

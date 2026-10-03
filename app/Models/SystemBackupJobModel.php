@@ -33,5 +33,8 @@ class SystemBackupJobModel extends Model
         'error_message',
         'started_at',
         'completed_at',
+        'progress_percent',
+        'progress_stage',
+        'cancel_requested',
     ];
 }

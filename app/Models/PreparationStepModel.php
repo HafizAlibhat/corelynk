@@ -17,6 +17,8 @@ class PreparationStepModel extends Model
         'name',
         'description',
         'is_optional',
+        'service_product_id',
+        'service_variant_id',
         'created_at',
     ];
 

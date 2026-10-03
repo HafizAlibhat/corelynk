@@ -384,6 +384,7 @@ $scopeHint = $variantId > 0
             <form id="listingForm" class="row g-2 align-items-end">
                 <?= csrf_field() ?>
                 <input type="hidden" name="listing_id" id="listingIdInput" value="">
+                <input type="hidden" name="variant_id" id="listingVariantIdInput" value="<?= (int) $variantId ?>">
                 <div class="col-md-4">
                     <label class="form-label small" style="color: #d1d5db;">Channel</label>
                     <select name="channel_id" id="listingChannelSelect" class="form-select form-select-sm" style="background-color: #1f2937; color: #e5e7eb; border-color: #374151;" required>

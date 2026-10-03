@@ -7,7 +7,7 @@
     $action = $isEdit ? base_url('/subcontract-orders/' . $order['id'] . '/update') : base_url('/subcontract-orders/store');
 ?>
 
-<div class="container-fluid py-3">
+<div class="container-fluid py-3 cl-form-page">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h1 class="h3 mb-0">

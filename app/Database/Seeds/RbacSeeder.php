@@ -44,7 +44,7 @@ class RbacSeeder extends Seeder
             'dashboard', 'invoices', 'orders', 'sales_orders', 'quotations',
             'purchase_orders', 'rfq', 'inventory', 'products', 'product_assets', 'customers',
             'vendors', 'grn', 'delivery_orders', 'work_orders', 'accounting',
-            'reports', 'settings', 'users', 'pos', 'employees',
+            'reports', 'settings', 'users', 'pos', 'employees', 'tags',
         ];
         $actions = ['read', 'write', 'edit', 'delete'];
         $permMap = []; // slug => id
@@ -63,6 +63,21 @@ class RbacSeeder extends Seeder
                     $permMap[$mod . '.' . $act] = $existing['id'];
                 }
             }
+        }
+
+        // Extra fine-grained permission: allow saving a quotation line whose
+        // price doesn't match the customer's price list / product master price.
+        $existing = $db->table('permissions')->where('module', 'quotations')->where('action', 'override_price')->get()->getRowArray();
+        if (!$existing) {
+            $db->table('permissions')->insert([
+                'module'      => 'quotations',
+                'action'      => 'override_price',
+                'description' => 'Override price-list/master price on quotation lines',
+                'created_at'  => date('Y-m-d H:i:s'),
+            ]);
+            $permMap['quotations.override_price'] = $db->insertID();
+        } else {
+            $permMap['quotations.override_price'] = $existing['id'];
         }
 
         /* ================================================================

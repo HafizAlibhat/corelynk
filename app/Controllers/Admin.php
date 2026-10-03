@@ -53,10 +53,21 @@ class Admin extends BaseController
         $users = $builder->paginate(20);
         $pager = $userModel->pager;
 
-        // Attach roles to each user
-        foreach ($users as &$u) {
-            $u['roles'] = $userModel->getRoles((int) $u['id']);
+        // Attach roles, and the employee this login belongs to (if any).
+        $employees = [];
+        if ($userModel->db->tableExists('employees')) {
+            foreach ($userModel->db->table('employees')
+                        ->select('id, user_id, first_name, last_name, employee_code')
+                        ->where('user_id IS NOT NULL')->get()->getResultArray() as $e) {
+                $employees[(int) $e['user_id']] = $e;
+            }
         }
+
+        foreach ($users as &$u) {
+            $u['roles']    = $userModel->getRoles((int) $u['id']);
+            $u['employee'] = $employees[(int) $u['id']] ?? null;
+        }
+        unset($u);
 
         return view('admin/users', $this->setPageData([
             'page_title' => 'User Management – CoreLynk',
@@ -126,6 +137,20 @@ class Admin extends BaseController
 
         if ($newId && !empty($roleIds)) {
             $userModel->syncRoles($newId, $roleIds);
+        }
+        if ($newId && (int) $this->session->get('organization_id') > 0) {
+            try {
+                $createdUser = $userModel->find((int) $newId);
+                (new \App\Services\OrganizationAccessService())->linkLocalUser(
+                    (int) $this->session->get('organization_id'),
+                    $createdUser,
+                    $legacySlug === 'admin' ? 'admin' : 'member'
+                );
+            } catch (\Throwable $e) {
+                $userModel->skipValidation(true)->update((int) $newId, ['is_active' => 0]);
+                log_message('error', 'New user company-link failed: {message}', ['message' => $e->getMessage()]);
+                return redirect()->to('/admin/users')->with('error', 'The user was saved but disabled because company access could not be linked. Please retry or contact support.');
+            }
         }
 
         AuditLogModel::record('user_created', (int) $this->session->get('user_id'), 'users', $newId, [

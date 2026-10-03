@@ -11,7 +11,7 @@
   $prefNotes = trim((string)($req->getGet('notes') ?? ''));
   if ($prefDate === '') { $prefDate = date('Y-m-d'); }
 ?>
-<div class="container-fluid">
+<div class="container-fluid cl-form-page">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">New Cheque</h5>
     <a href="<?= base_url('/accounting/cheques') ?>" class="btn btn-secondary btn-sm">Back</a>

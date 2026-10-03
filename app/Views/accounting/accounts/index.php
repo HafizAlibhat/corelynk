@@ -189,7 +189,7 @@
                   <div class="coa-drop-top-level mb-2" data-type="<?= esc($key) ?>">Drag an account here to make it top-level in <?= esc($label) ?>.</div>
                   <div class="coa-dnd-help">Drag a row onto another (same type) to make it a child. Drop into the shaded bar to remove parent.</div>
                   <div class="table-responsive">
-                    <table class="table table-sm table-striped mb-0 coa-hier-table table-compact" data-type="<?= esc($key) ?>">
+                    <table class="cl-table table table-sm table-striped mb-0 coa-hier-table table-compact" data-type="<?= esc($key) ?>">
                       <thead>
                         <tr>
                           <th style="width: 140px;">Code</th>

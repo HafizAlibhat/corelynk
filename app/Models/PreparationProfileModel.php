@@ -38,6 +38,23 @@ class PreparationProfileModel extends Model
         return $builder->orderBy('id', 'DESC')->findAll();
     }
 
+    /** Prefer a variant profile, then fall back to the product profile. */
+    public function getForProductOrVariant(int $productId, int $variantId = 0, bool $activeOnly = true): array
+    {
+        if ($variantId > 0 && $this->db->fieldExists('variant_id', $this->table)) {
+            $variantBuilder = $this->where('product_id', $productId)->where('variant_id', $variantId);
+            if ($activeOnly) {
+                $variantBuilder->where('is_active', 1);
+            }
+            $variantProfiles = $variantBuilder->orderBy('id', 'DESC')->findAll();
+            if (! empty($variantProfiles)) {
+                return $variantProfiles;
+            }
+        }
+
+        return $this->getByProduct($productId, $activeOnly);
+    }
+
     public function getWithCountsByProduct(int $productId, bool $activeOnly = true): array
     {
         $builder = $this->db->table($this->table . ' pp')

@@ -1212,94 +1212,147 @@ class OdooController extends BaseController
             try { $db->query($q); } catch (\Throwable $e) { log_message('error', 'ImportCustomers schema change error: '.$e->getMessage()); }
         }
 
-        // Remove all existing customers and addresses per user request, then paginate through Odoo partners
-        try {
-            // delete addresses first
-            $db->query("DELETE FROM customer_addresses");
-            // delete customers
-            $db->query("DELETE FROM customers");
-        } catch (\Throwable $e) {
-            log_message('error', 'Odoo import cleanup error: ' . $e->getMessage());
-        }
+        // -------------------------------------------------------------------
+        // P0-2 CONTAINMENT (Batch 2A).
+        //
+        // This method previously ran, at this exact point and BEFORE contacting
+        // Odoo at all:
+        //
+        //     DELETE FROM customer_addresses;
+        //     DELETE FROM customers;
+        //
+        // outside any transaction, with the failure swallowed into log_message().
+        // If Odoo was unreachable or the credentials were stale, all 412 customers
+        // and their addresses were destroyed and the method then returned
+        // 'login_failed'. There is no soft delete on customers, no FK referencing
+        // customers, and no audit trail, so the loss was silent and irreversible.
+        // Because no document snapshots the customer name, it would also have
+        // blanked the customer on every historical quotation, order and invoice.
+        //
+        // The wholesale delete-and-reinsert design is unsafe even when it succeeds:
+        // quotations, sales orders and invoices reference the LOCAL numeric
+        // customers.id, and reinserting assigns new primary keys.
+        //
+        // Replaced with a non-destructive sync:
+        //   fetch every page first -> validate -> then write inside a transaction
+        //   -> match on the stable external key customers.odoo_id
+        //   -> UPDATE matched customers in place, preserving their local id
+        //   -> INSERT only genuinely new partners
+        //   -> upsert addresses
+        //   -> mark Odoo-sourced customers absent from the payload inactive
+        //   -> NEVER delete, and NEVER touch locally-created customers
+        // -------------------------------------------------------------------
 
-        // Paginate through Odoo partners (no filter per user request: import all partners)
-        $limit = 200;
-        $offset = 0;
-        $created = 0; $updated = 0; $skipped = 0;
+        $limit   = 200;
+        $offset  = 0;
+        $created = 0; $updated = 0; $skipped = 0; $deactivated = 0;
+
+        // ---- Phase 1: fetch everything first. No local writes in this loop. ----
+        $partners = [];
         while (true) {
-            // Prepare search_read with offset
             $loginPayload = [
                 'jsonrpc' => '2.0', 'method' => 'call', 'params' => ['service' => 'common', 'method' => 'login', 'args' => [$this->dbName, $this->username, $this->password]], 'id' => uniqid()
             ];
             $res = $this->postJson($this->odooUrl . '/jsonrpc', $loginPayload);
-            if (!isset($res['result'])) return $this->response->setJSON(['ok'=>false,'error'=>'login_failed','response'=>$res]);
+            if (!isset($res['result']) || empty($res['result'])) {
+                // No local data has been touched at this point.
+                return $this->response->setJSON(['ok' => false, 'error' => 'login_failed', 'changed' => false, 'response' => $res]);
+            }
             $uid = $res['result'];
 
             $fields = ['id','name','ref','email','phone','mobile','street','street2','city','zip','state_id','country_id','website','is_company','child_ids','company_id'];
             $args = [$this->dbName, $uid, $this->password, 'res.partner', 'search_read', [[], $fields], ['limit' => $limit, 'offset' => $offset]];
             $callPayload = ['jsonrpc'=>'2.0','method'=>'call','params'=>['service'=>'object','method'=>'execute_kw','args'=>$args],'id'=>uniqid()];
             $res2 = $this->postJson($this->odooUrl . '/jsonrpc', $callPayload);
-            if (!isset($res2['result'])) break;
+
+            // A malformed page used to break out of the loop and still report ok,
+            // silently producing a partial sync. Now it aborts with nothing written.
+            if (!isset($res2['result']) || !is_array($res2['result'])) {
+                return $this->response->setJSON(['ok' => false, 'error' => 'fetch_failed', 'changed' => false, 'offset' => $offset, 'response' => $res2]);
+            }
+
             $rows = $res2['result'];
             if (empty($rows)) break;
-
             foreach ($rows as $p) {
-                // normalize partner row
-                $odooId = $p['id'] ?? null;
-                $name = $p['name'] ?? null;
-                $ref = $p['ref'] ?? null;
-                $email = $p['email'] ?? null;
-                $phone = $p['phone'] ?? null;
-                $mobile = $p['mobile'] ?? null;
+                if (is_array($p)) $partners[] = $p;
+            }
+            $offset += $limit;
+            if (count($rows) < $limit) break;
+        }
+
+        // ---- Validate the payload before writing anything. ----
+        // An empty partner list is treated as a failed fetch rather than as
+        // "Odoo has no customers", because acting on it would deactivate every
+        // Odoo-sourced customer we hold.
+        if (empty($partners)) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'empty_payload', 'changed' => false]);
+        }
+
+        $seenOdooIds = [];
+        foreach ($partners as $p) {
+            $oid = isset($p['id']) ? (int) $p['id'] : 0;
+            // odoo_id 0 is a sentinel already present in local data and is not a
+            // usable external key, so it is never matched on.
+            if ($oid > 0) $seenOdooIds[$oid] = true;
+        }
+        if (empty($seenOdooIds)) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'no_usable_odoo_ids', 'changed' => false]);
+        }
+
+        // ---- Phase 2: apply locally, transactionally. ----
+        $db->transBegin();
+        try {
+            foreach ($partners as $p) {
+                $odooId  = isset($p['id']) ? (int) $p['id'] : 0;
+                $name    = $p['name'] ?? null;
+                $ref     = $p['ref'] ?? null;
+                $email   = $p['email'] ?? null;
+                $phone   = $p['phone'] ?? null;
+                $mobile  = $p['mobile'] ?? null;
                 $website = $p['website'] ?? null;
 
-                // Try to find existing customer by odoo_id first
+                // Match on the stable external key first.
                 $cust = null;
-                if ($odooId) {
+                if ($odooId > 0) {
                     $cust = $db->table('customers')->where('odoo_id', $odooId)->get()->getRowArray();
                 }
-                // if not found, try by email
+                // Fall back to email only for adopting an existing local record.
+                // This is still an in-place UPDATE, so the local id is preserved.
+                // Name is deliberately NOT used as a matching key.
                 if (!$cust && !empty($email)) {
                     $cust = $db->table('customers')->where('email', $email)->get()->getRowArray();
                 }
 
-                $customerData = [];
-                // If ref present use as customer_code else generate new code
-                if (!empty($ref)) $customerData['customer_code'] = $ref; else $customerData['customer_code'] = (new \App\Models\CustomerModel())->generateCustomerCode();
-                $customerData['name'] = $name ?: 'Unknown';
-                $customerData['company_name'] = $p['company_id'] ?? null;
-                $customerData['email'] = $email;
-                $customerData['phone'] = $phone;
-                $customerData['mobile'] = $mobile;
-                $customerData['website'] = $website;
-                $customerData['odoo_id'] = $odooId;
-                $customerData['status'] = 'active';
-                // metadata: include raw odoo partner for later reference and child contacts
-                $meta = ['odoo_raw' => $p];
-                $customerData['metadata'] = json_encode($meta);
+                $customerData = [
+                    'name'         => $name ?: 'Unknown',
+                    'company_name' => $p['company_id'] ?? null,
+                    'email'        => $email,
+                    'phone'        => $phone,
+                    'mobile'       => $mobile,
+                    'website'      => $website,
+                    'status'       => 'active',
+                    'metadata'     => json_encode(['odoo_raw' => $p]),
+                ];
+                if ($odooId > 0) $customerData['odoo_id'] = $odooId;
 
                 if ($cust) {
-                    // update existing (user requested overwrite)
-                    try {
-                        $db->table('customers')->where('id', $cust['id'])->update($customerData);
-                        $updated++;
-                        $localId = $cust['id'];
-                    } catch (\Throwable $e) {
-                        log_message('error', 'Odoo import update failed for odoo_id '.$odooId.': '.$e->getMessage());
-                        $skipped++; continue;
-                    }
+                    // Never rewrite the primary key, and never regenerate an
+                    // existing customer_code -- documents and users reference both.
+                    unset($customerData['id']);
+                    $db->table('customers')->where('id', $cust['id'])->update($customerData);
+                    $localId = (int) $cust['id'];
+                    $updated++;
                 } else {
-                    try {
-                        $db->table('customers')->insert($customerData);
-                        $localId = $db->insertID();
-                        $created++;
-                    } catch (\Throwable $e) {
-                        log_message('error', 'Odoo import insert failed for odoo_id '.$odooId.': '.$e->getMessage());
-                        $skipped++; continue;
-                    }
+                    $customerData['customer_code'] = !empty($ref)
+                        ? $ref
+                        : (new \App\Models\CustomerModel())->generateCustomerCode();
+                    $db->table('customers')->insert($customerData);
+                    $localId = (int) $db->insertID();
+                    if ($localId <= 0) { $skipped++; continue; }
+                    $created++;
                 }
 
-                // Insert primary address if street/city provided. Store country as name only (do NOT attempt to match local country_id).
+                // Address upsert. Never deletes an existing address.
                 if (!empty($p['street']) || !empty($p['city']) || !empty($p['zip'])) {
                     $countryNameToSave = null;
                     if (!empty($p['country_id']) && is_array($p['country_id'])) {
@@ -1307,42 +1360,62 @@ class OdooController extends BaseController
                     } elseif (!empty($p['country']) && is_string($p['country'])) {
                         $countryNameToSave = $p['country'];
                     }
-                    // Put country name into address line2 so it's visible on the customer view.
-                    $street2 = isset($p['street2']) ? trim($p['street2']) : '';
+                    $street2     = isset($p['street2']) ? trim($p['street2']) : '';
                     $countryPart = $countryNameToSave ? trim($countryNameToSave) : '';
-                    $line2 = $street2;
+                    $line2       = $street2;
                     if ($countryPart) {
                         $line2 = $line2 ? ($line2 . ' | ' . $countryPart) : $countryPart;
                     }
                     $addr = [
-                        'customer_id' => $localId,
-                        'line1' => $p['street'] ?? null,
-                        'line2' => $line2 ?: null,
-                        'city_name' => $p['city'] ?? null,
-                        'state_name' => is_array($p['state_id']) ? ($p['state_id'][1] ?? null) : ($p['state_id'] ?? null),
-                        'postal_code' => $p['zip'] ?? null,
-                        'country_id' => null,
+                        'customer_id'  => $localId,
+                        'line1'        => $p['street'] ?? null,
+                        'line2'        => $line2 ?: null,
+                        'city_name'    => $p['city'] ?? null,
+                        'state_name'   => is_array($p['state_id'] ?? null) ? ($p['state_id'][1] ?? null) : ($p['state_id'] ?? null),
+                        'postal_code'  => $p['zip'] ?? null,
+                        'country_id'   => null,
                         'country_name' => $countryNameToSave,
-                        'created_at' => date('Y-m-d H:i:s'),
-                        'updated_at' => date('Y-m-d H:i:s')
+                        'updated_at'   => date('Y-m-d H:i:s'),
                     ];
-                    try {
-                        // Upsert: if a similar address exists for this customer (by line1+city+postal) skip insert
-                        $exists = $db->table('customer_addresses')->where('customer_id', $localId)->where('line1', $addr['line1'])->where('city_name', $addr['city_name'])->get()->getRowArray();
-                        if (!$exists) $db->table('customer_addresses')->insert($addr);
-                    } catch (\Throwable $e) {
-                        log_message('error', 'Odoo import address insert failed for customer '.$localId.': '.$e->getMessage());
+                    $exists = $db->table('customer_addresses')
+                        ->where('customer_id', $localId)
+                        ->where('line1', $addr['line1'])
+                        ->where('city_name', $addr['city_name'])
+                        ->get()->getRowArray();
+                    if ($exists) {
+                        $db->table('customer_addresses')->where('id', $exists['id'])->update($addr);
+                    } else {
+                        $addr['created_at'] = date('Y-m-d H:i:s');
+                        $db->table('customer_addresses')->insert($addr);
                     }
                 }
             }
 
-            // advance
-            $offset += $limit;
-            // safety: break if less than limit returned
-            if (count($rows) < $limit) break;
+            // Customers that came from Odoo but are no longer in the payload are
+            // deactivated, never deleted. Locally-created customers (odoo_id NULL
+            // or the 0 sentinel) are excluded and are never touched by the sync.
+            $db->table('customers')
+                ->where('status !=', 'inactive')
+                ->where('odoo_id >', 0)
+                ->whereNotIn('odoo_id', array_keys($seenOdooIds))
+                ->update(['status' => 'inactive']);
+            $deactivated = $db->affectedRows();
+
+            if ($db->transStatus() === false) {
+                $db->transRollback();
+                return $this->response->setJSON(['ok' => false, 'error' => 'transaction_failed', 'changed' => false]);
+            }
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'Odoo customer sync failed, rolled back: ' . $e->getMessage());
+            return $this->response->setJSON(['ok' => false, 'error' => 'sync_failed', 'changed' => false, 'message' => $e->getMessage()]);
         }
 
-        return $this->response->setJSON(['ok' => true, 'created' => $created, 'updated' => $updated, 'skipped' => $skipped]);
+        return $this->response->setJSON([
+            'ok' => true, 'created' => $created, 'updated' => $updated,
+            'skipped' => $skipped, 'deactivated' => $deactivated, 'deleted' => 0,
+        ]);
     }
 
     public function apiPurchases()

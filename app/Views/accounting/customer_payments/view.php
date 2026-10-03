@@ -45,19 +45,44 @@
   .cpv-amt { font-size:1.3rem; font-weight:800; font-family:'Courier New',monospace; color:var(--gray-800,#0f172a); }
   .cpv-amt .cur { font-size:.7rem; color:var(--gray-400,#94a3b8); vertical-align:top; margin-right:2px; font-weight:600; }
   .cpv-sec { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--gray-400,#94a3b8); }
-  .cpv-btn { padding:.25rem .6rem; font-size:.72rem; font-weight:600; border-radius:.3rem; }
+  .cpv-btn { padding:.25rem .6rem; font-size:.72rem; font-weight:600; border-radius:.3rem; display:inline-flex; align-items:center; justify-content:center; line-height:1.4; white-space:nowrap; }
+  .cpv-btn i { line-height:1; }
   .cpv-alloc th { font-size:.68rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600; padding:.4rem .65rem; background:var(--gray-50,#f8fafc); color:var(--gray-500,#64748b); border-bottom:2px solid var(--gray-200,#e2e8f0); }
   .cpv-alloc td { padding:.4rem .65rem; font-size:.82rem; border-bottom:1px solid var(--gray-100,#f1f5f9); color:var(--gray-600,#475569); }
   .cpv-att-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; border-radius:4px; border:1px solid var(--gray-200,#e2e8f0); background:var(--gray-50,#f8fafc); margin-bottom:6px; font-size:.75rem; }
   .cpv-payment-title { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.55px; color:var(--gray-400,#94a3b8); }
   .cpv-this-amount { font-size:1.5rem; font-weight:900; font-family:'Courier New',monospace; color:var(--gray-800,#0f172a); letter-spacing:-.01em; }
   .cpv-this-amount .cur { font-size:.72rem; color:var(--gray-400,#94a3b8); vertical-align:top; margin-right:2px; font-weight:600; }
+  .cpv-amount-hero { font-size:1.7rem; padding:.15rem .5rem; border-radius:.4rem; background:rgba(37,99,235,.08); display:inline-block; }
+  body.theme-dark .cpv-amount-hero { background:rgba(59,130,246,.15); }
   .cpv-field-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.1rem 0; }
   .cpv-field { padding:.35rem .65rem; }
   .cpv-field .cpv-field-lbl { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--gray-400,#94a3b8); display:block; margin-bottom:1px; }
   .cpv-field .cpv-field-val { font-size:.82rem; font-weight:600; color:var(--gray-700,#1e293b); }
   .cpv-single-view { border-left:4px solid #2563eb; background:linear-gradient(90deg,rgba(37,99,235,.08),transparent); }
   body.theme-dark .cpv-field .cpv-field-val { color:var(--gray-700,#e2e8f0) !important; }
+
+  /* === Complete Transaction Breakdown === */
+  .cpv-txn-card { border-left:3px solid #2563eb; }
+  .cpv-txn-hdr { background:rgba(37,99,235,.06); }
+  body.theme-dark .cpv-txn-hdr { background:rgba(59,130,246,.12); }
+  .cpv-stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.5rem; padding:.65rem 1rem; }
+  .cpv-stat { display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; border-radius:.4rem; border:1px solid transparent; }
+  .cpv-stat-ico { width:28px; height:28px; min-width:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.85rem; }
+  .cpv-stat-lbl { display:block; font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; opacity:.75; }
+  .cpv-stat-val { display:block; font-size:.85rem; font-weight:700; margin-top:1px; }
+  .cpv-stat-blue { background:rgba(37,99,235,.07); border-color:rgba(37,99,235,.15); } .cpv-stat-blue .cpv-stat-ico { background:rgba(37,99,235,.15); color:#2563eb; } .cpv-stat-blue .cpv-stat-val { color:#2563eb; }
+  .cpv-stat-amber { background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.18); } .cpv-stat-amber .cpv-stat-ico { background:rgba(245,158,11,.18); color:#b45309; } .cpv-stat-amber .cpv-stat-val { color:#b45309; }
+  .cpv-stat-purple { background:rgba(139,92,246,.08); border-color:rgba(139,92,246,.18); } .cpv-stat-purple .cpv-stat-ico { background:rgba(139,92,246,.18); color:#7c3aed; } .cpv-stat-purple .cpv-stat-val { color:#7c3aed; }
+  .cpv-stat-green { background:rgba(34,197,94,.08); border-color:rgba(34,197,94,.2); } .cpv-stat-green .cpv-stat-ico { background:rgba(34,197,94,.18); color:#16a34a; } .cpv-stat-green .cpv-stat-val { color:#16a34a; }
+  .cpv-stat-red { background:rgba(239,68,68,.08); border-color:rgba(239,68,68,.2); } .cpv-stat-red .cpv-stat-ico { background:rgba(239,68,68,.18); color:#ef4444; } .cpv-stat-red .cpv-stat-val { color:#ef4444; }
+  body.theme-dark .cpv-stat-lbl { opacity:.9; }
+  .cpv-jtable .cpv-dr { color:#2563eb; font-weight:600; }
+  .cpv-jtable .cpv-cr { color:#16a34a; font-weight:600; }
+  .cpv-jtable tbody tr:not(.cpv-jtotal):hover { background:var(--gray-50,#f8fafc); }
+  .cpv-jtotal { font-weight:800; background:var(--gray-50,#f8fafc); border-top:2px solid var(--gray-200,#e2e8f0); }
+  .cpv-jtotal .cpv-dr, .cpv-jtotal .cpv-cr { font-size:.88rem; }
+  body.theme-dark .cpv-jtable tbody tr:not(.cpv-jtotal):hover { background:var(--gray-100,#1e293b); }
 
   /* === INVOICE PAYMENT JOURNEY === */
   .ipj { border:1px solid var(--gray-200,#e2e8f0); border-radius:.5rem; background:var(--white,#fff); margin-bottom:.5rem; overflow:hidden; }
@@ -93,6 +118,7 @@
   body.theme-dark .cpv-info td { border-bottom-color:var(--gray-200,#334155); }
   body.theme-dark .cpv-info .val { color:var(--gray-700,#e2e8f0); }
   body.theme-dark .cpv-amt { color:var(--gray-800,#f1f5f9); }
+  body.theme-dark .cpv-this-amount { color:var(--gray-800,#f1f5f9); }
 </style>
 
 <div class="container-fluid px-3 py-2 cpv">
@@ -112,7 +138,7 @@
         <span class="cpv-badge" style="background:rgba(100,116,139,.08);color:#64748b;border:1px solid rgba(100,116,139,.15)"><i class="bi bi-paperclip me-1"></i><?= $attCount ?></span>
         <?php endif; ?>
       </div>
-    <div class="d-flex gap-1">
+    <div class="d-flex gap-1 align-items-center flex-wrap">
       <a class="btn btn-outline-secondary cpv-btn" href="<?= base_url('accounting/customer-payments') ?>"><i class="bi bi-arrow-left me-1"></i>All Payments</a>
       <?php if ($postedEntryId > 0): ?>
         <a class="btn btn-outline-secondary cpv-btn" href="<?= base_url('accounting/journals/view/' . $postedEntryId) ?>"><i class="bi bi-journal-text me-1"></i>Journal</a>
@@ -164,7 +190,25 @@
           </div>
           <div style="text-align:right;">
             <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-400,#94a3b8);margin-bottom:1px;">Amount Received in This Payment</div>
-            <div class="cpv-this-amount"><span class="cur"><?= esc($currency) ?></span><?= number_format($amount, 2) ?></div>
+            <div class="cpv-this-amount cpv-amount-hero"><span class="cur"><?= esc($currency) ?></span><?= number_format($amount, 2) ?></div>
+            <?php if (($standardConversion ?? null) !== null): ?>
+            <div style="font-size:.74rem;color:var(--gray-500,#64748b);margin-top:2px;">
+              @ <strong>1 <?= esc($currency) ?> = PKR <?= number_format((float) $standardConversion['rate'], 2) ?></strong>
+              &nbsp;≈&nbsp; <strong style="color:var(--gray-700,#334155);">PKR <?= number_format((float) $standardConversion['base_amount'], 2) ?></strong>
+            </div>
+            <?php
+              // Real gain/loss is only knowable once the actual bank-settled figures are
+              // entered (fxPreview); the booked-rate line above is just a reference, not a result.
+              if ($fxPreview !== null && abs((float) $fxPreview['gain_loss']) > 0.004):
+                $glAmt = abs((float) $fxPreview['gain_loss']);
+                $isGl = $fxPreview['gain_loss'] > 0;
+            ?>
+            <div style="font-size:.76rem;margin-top:3px;font-weight:700;color:<?= $isGl ? '#16a34a' : '#ef4444' ?>">
+              <i class="bi <?= $isGl ? 'bi-arrow-up-circle-fill' : 'bi-arrow-down-circle-fill' ?> me-1"></i>
+              You <?= $isGl ? 'gained' : 'lost' ?> PKR <?= number_format($glAmt, 2) ?> on this transaction
+            </div>
+            <?php endif; ?>
+            <?php endif; ?>
           </div>
         </div>
         <div class="cpv-field-grid" style="border-bottom:1px solid var(--gray-100,#f1f5f9);">
@@ -342,6 +386,82 @@
       </div>
       <?php endforeach; ?>
 
+      <?php if (!empty($journalPreview)): ?>
+      <div class="cpv-card mb-2 cpv-txn-card" id="txn-breakdown-card">
+        <div class="cpv-hdr cpv-txn-hdr">
+          <span class="cpv-sec" style="color:#2563eb;"><i class="bi bi-receipt-cutoff me-1"></i>Complete Transaction Breakdown</span>
+          <span style="font-size:.7rem;color:var(--gray-400,#94a3b8)">What will be recorded once posted</span>
+        </div>
+        <?php if ($fxPreview !== null): ?>
+        <div class="cpv-stat-row">
+          <div class="cpv-stat cpv-stat-blue">
+            <div class="cpv-stat-ico"><i class="bi bi-currency-exchange"></i></div>
+            <div><span class="cpv-stat-lbl">Conversion Rate Used</span><span class="cpv-stat-val">1 <?= esc($currency) ?> = PKR <?= number_format((float) $fxPreview['implied_rate'], 4) ?></span></div>
+          </div>
+          <div class="cpv-stat cpv-stat-amber">
+            <div class="cpv-stat-ico"><i class="bi bi-bank"></i></div>
+            <div>
+              <span class="cpv-stat-lbl">Bank / Transfer Charges</span>
+              <span class="cpv-stat-val"><?= $fxPreview['bank_charges_base'] > 0 ? 'PKR ' . number_format((float) $fxPreview['bank_charges_base'], 2) : '—' ?></span>
+              <?php if ($fxPreview['bank_charges_base'] > 0 && !empty($fxPreview['bank_charges_already_base']) === false && (float) ($fxPreview['bank_charges_fc'] ?? 0) > 0): ?>
+                <div style="font-size:.68rem;color:var(--gray-400,#94a3b8);margin-top:2px;">
+                  <?= esc($fxPreview['bank_charges_currency']) ?> <?= number_format((float) $fxPreview['bank_charges_fc'], 2) ?>
+                  @ 1 <?= esc($fxPreview['bank_charges_currency']) ?> = PKR <?= number_format((float) $fxPreview['implied_rate'], 4) ?>
+                </div>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div class="cpv-stat cpv-stat-purple">
+            <div class="cpv-stat-ico"><i class="bi bi-receipt"></i></div>
+            <div><span class="cpv-stat-lbl">Withholding Tax</span><span class="cpv-stat-val"><?= $fxPreview['wht_base'] > 0 ? 'PKR ' . number_format((float) $fxPreview['wht_base'], 2) : '—' ?></span></div>
+          </div>
+          <div class="cpv-stat <?= $fxPreview['gain_loss'] >= 0 ? 'cpv-stat-green' : 'cpv-stat-red' ?>">
+            <div class="cpv-stat-ico"><i class="bi <?= $fxPreview['gain_loss'] >= 0 ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow' ?>"></i></div>
+            <div><span class="cpv-stat-lbl">Exchange Gain / Loss</span><span class="cpv-stat-val">
+              <?= abs((float) $fxPreview['gain_loss']) > 0.004 ? ($fxPreview['gain_loss'] >= 0 ? '+' : '−') . 'PKR ' . number_format(abs((float) $fxPreview['gain_loss']), 2) : '—' ?>
+            </span></div>
+          </div>
+        </div>
+        <?php elseif (($standardConversion ?? null) !== null): ?>
+        <div class="cpv-stat-row">
+          <div class="cpv-stat cpv-stat-blue">
+            <div class="cpv-stat-ico"><i class="bi bi-currency-exchange"></i></div>
+            <div><span class="cpv-stat-lbl">Conversion Rate (Booked)</span><span class="cpv-stat-val">1 <?= esc($currency) ?> = PKR <?= number_format((float) $standardConversion['rate'], 2) ?></span></div>
+          </div>
+          <div class="cpv-stat cpv-stat-blue">
+            <div class="cpv-stat-ico"><i class="bi bi-cash-stack"></i></div>
+            <div><span class="cpv-stat-lbl">PKR Base Amount</span><span class="cpv-stat-val">PKR <?= number_format((float) $standardConversion['base_amount'], 2) ?></span></div>
+          </div>
+        </div>
+        <div style="padding:0 1rem .5rem 1rem;">
+          <span style="font-size:.72rem;color:var(--gray-400,#94a3b8)"><i class="bi bi-info-circle me-1"></i>Fill in the actual bank-received amount / charges / tax on Edit Draft for the exact settled figures.</span>
+        </div>
+        <?php endif; ?>
+        <div style="padding:.6rem 1rem 0 1rem;">
+          <span class="cpv-sec" style="font-size:.68rem;"><i class="bi bi-journal-text me-1"></i>Journal Entries To Be Posted</span>
+        </div>
+        <div class="table-responsive">
+          <table class="cpv-alloc cpv-jtable" style="width:100%;border-collapse:collapse;">
+            <thead><tr><th>Account</th><th class="text-end">Debit</th><th class="text-end">Credit</th></tr></thead>
+            <tbody>
+              <?php $pvDr = 0.0; $pvCr = 0.0; foreach ($journalPreview as $jl): $pvDr += (float) $jl['debit']; $pvCr += (float) $jl['credit']; ?>
+              <tr>
+                <td><?= esc($jl['account']) ?><div style="font-size:.68rem;color:var(--gray-400,#94a3b8)"><?= esc($jl['label']) ?></div></td>
+                <td class="text-end cpv-dr"><?= $jl['debit'] > 0 ? esc($jl['ccy']) . ' ' . number_format((float) $jl['debit'], 2) : '' ?></td>
+                <td class="text-end cpv-cr"><?= $jl['credit'] > 0 ? esc($jl['ccy']) . ' ' . number_format((float) $jl['credit'], 2) : '' ?></td>
+              </tr>
+              <?php endforeach; ?>
+              <tr class="cpv-jtotal">
+                <td>Total</td>
+                <td class="text-end cpv-dr"><?= number_format($pvDr, 2) ?></td>
+                <td class="text-end cpv-cr"><?= number_format($pvCr, 2) ?></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <?php endif; ?>
+
       <?php if (empty($invoiceJourneys) && $isDraft && !empty($openInvoices)): ?>
       <div class="cpv-card mb-2">
         <div class="cpv-hdr">
@@ -466,12 +586,49 @@
 
       <?php if ($isDraft): ?>
       <div class="d-flex gap-2">
-        <a href="<?= base_url('accounting/customer-payments/' . $paymentId . '/edit') ?>" class="btn btn-outline-primary cpv-btn"><i class="bi bi-pencil-square me-1"></i>Edit Draft</a>
-        <button id="btn-delete" class="btn btn-outline-danger cpv-btn"><i class="bi bi-trash me-1"></i>Delete Draft</button>
+        <a href="<?= base_url('accounting/customer-payments/' . $paymentId . '/edit') ?>" class="btn btn-outline-primary cpv-btn flex-fill text-center"><i class="bi bi-pencil-square me-1"></i>Edit Draft</a>
+        <button id="btn-delete" class="btn btn-outline-danger cpv-btn flex-fill text-center"><i class="bi bi-trash me-1"></i>Delete Draft</button>
       </div>
       <?php endif; ?>
     </div>
   </div>
+
+  <?php if ($isDraft): ?>
+  <!-- Approval modal: shows the full breakdown one more time before the journal entry is created -->
+  <div class="modal fade" id="postPaymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-shield-check me-1"></i>Confirm &amp; Post Payment #<?= $paymentId ?></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="font-size:.85rem;">
+          <p class="mb-2">You're about to post <strong><?= esc($currency) ?> <?= number_format($amount, 2) ?></strong> received from <strong><?= esc($customerName) ?></strong>. This will create a journal entry and mark the payment as posted — it cannot be edited afterward.</p>
+          <?php if (!empty($journalPreview)): ?>
+          <div class="table-responsive">
+            <table class="cpv-alloc" style="width:100%;border-collapse:collapse;">
+              <thead><tr><th>Account</th><th class="text-end">Debit</th><th class="text-end">Credit</th></tr></thead>
+              <tbody>
+                <?php foreach ($journalPreview as $jl): ?>
+                <tr>
+                  <td><?= esc($jl['account']) ?><div style="font-size:.68rem;color:var(--gray-400,#94a3b8)"><?= esc($jl['label']) ?></div></td>
+                  <td class="text-end"><?= $jl['debit'] > 0 ? esc($jl['ccy']) . ' ' . number_format((float) $jl['debit'], 2) : '' ?></td>
+                  <td class="text-end"><?= $jl['credit'] > 0 ? esc($jl['ccy']) . ' ' . number_format((float) $jl['credit'], 2) : '' ?></td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+          <?php endif; ?>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary cpv-btn" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="btn-post-confirm" class="btn btn-success cpv-btn"><i class="bi bi-check-lg me-1"></i>Yes, Post This Payment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
 </div>
 <?= $this->endSection() ?>
 
@@ -524,37 +681,57 @@
     });
   });
 
-  if (btnPost) {
-    btnPost.addEventListener('click', async () => {
-      if (!paymentId) return;
-      if (!window.confirm('Post this customer payment? This will create journal entries.')) return;
+  const postModalEl = document.getElementById('postPaymentModal');
+  const btnPostConfirm = document.getElementById('btn-post-confirm');
+  const postModal = (postModalEl && window.bootstrap) ? new bootstrap.Modal(postModalEl) : null;
 
-      const formData = new FormData();
-      formData.append(csrfName, csrfValue);
-      formData.append('payment_id', String(paymentId));
+  const doPost = async () => {
+    if (!paymentId) return;
+    const busyBtn = btnPostConfirm || btnPost;
+    const original = busyBtn.innerHTML;
+    busyBtn.disabled = true;
+    busyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Posting...';
 
-      const original = btnPost.innerHTML;
-      btnPost.disabled = true;
-      btnPost.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Posting...';
+    const formData = new FormData();
+    formData.append(csrfName, csrfValue);
+    formData.append('payment_id', String(paymentId));
 
-      try {
-        const resp = await fetch(confirmEndpoint, {
-          method: 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          body: formData,
-        });
-        const data = await resp.json();
-        if (data && data.success) {
-          window.location.reload();
-          return;
-        }
-        alert((data && data.message) ? data.message : 'Failed to post payment.');
-      } catch (error) {
-        alert('Network error while posting payment.');
+    try {
+      const resp = await fetch(confirmEndpoint, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData,
+      });
+      const data = await resp.json();
+      if (data && data.success) {
+        window.location.reload();
+        return;
       }
+      alert((data && data.message) ? data.message : 'Failed to post payment.');
+    } catch (error) {
+      alert('Network error while posting payment.');
+    }
 
-      btnPost.disabled = false;
-      btnPost.innerHTML = original;
+    busyBtn.disabled = false;
+    busyBtn.innerHTML = original;
+  };
+
+  if (btnPost) {
+    btnPost.addEventListener('click', () => {
+      if (!paymentId) return;
+      // Show the full breakdown for a real approval step instead of a blind browser confirm().
+      if (postModal) {
+        postModal.show();
+      } else if (window.confirm('Post this customer payment? This will create journal entries.')) {
+        doPost();
+      }
+    });
+  }
+
+  if (btnPostConfirm) {
+    btnPostConfirm.addEventListener('click', () => {
+      if (postModal) postModal.hide();
+      doPost();
     });
   }
 

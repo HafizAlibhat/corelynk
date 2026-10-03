@@ -122,23 +122,25 @@ Pending Shipment Follow-up
     $avgTransitDays = $transitRows > 0 ? round($avgTransit / $transitRows, 1) : 0;
 ?>
 
-<div class="pf-hero d-flex justify-content-between align-items-center flex-wrap gap-3">
-    <div>
-        <h2><i class="bi bi-truck me-2"></i>Pending Shipment Follow-up</h2>
-        <p>Only in-transit deliveries are listed here. Once marked Delivered, they are removed from this monitor and remain in Delivery Orders history.</p>
+<div class="container-fluid cl-list-page cl-warehouse-page" data-cl-list>
+
+    <div class="cl-list-page-header">
+        <div>
+            <h2 class="mb-0"><i class="bi bi-truck me-2"></i>Pending Shipment Follow-up</h2>
+            <div class="small text-muted">Only in-transit deliveries are listed here. Once marked Delivered, they are removed from this monitor and remain in Delivery Orders history.</div>
+        </div>
+        <div class="cl-list-page-actions">
+            <a href="<?= site_url('delivery-orders/shipped') ?>" class="btn btn-outline-secondary">
+                <i class="bi bi-list me-1"></i>Shipped Orders
+            </a>
+            <a href="<?= site_url('delivery-orders') ?>" class="btn btn-outline-light">
+                <i class="bi bi-truck me-1"></i>All Delivery Orders
+            </a>
+            <a href="<?= site_url('dashboard') ?>" class="btn btn-primary">
+                <i class="bi bi-speedometer2 me-1"></i>Dashboard
+            </a>
+        </div>
     </div>
-    <div class="d-flex gap-2">
-        <a href="<?= site_url('delivery-orders/shipped') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-list me-1"></i>Shipped Orders
-        </a>
-        <a href="<?= site_url('delivery-orders') ?>" class="btn btn-outline-light">
-            <i class="bi bi-truck me-1"></i>All Delivery Orders
-        </a>
-        <a href="<?= site_url('dashboard') ?>" class="btn btn-primary">
-            <i class="bi bi-speedometer2 me-1"></i>Dashboard
-        </a>
-    </div>
-</div>
 
 <div class="pf-kpis" id="pendingKpiWrap">
     <div class="pf-kpi">
@@ -167,7 +169,7 @@ Pending Shipment Follow-up
     </div>
 <?php else: ?>
     <div class="table-responsive">
-        <table class="table table-hover align-middle" id="pendingShipmentTable">
+        <table class="cl-table table table-hover align-middle" id="pendingShipmentTable">
             <thead>
                 <tr>
                     <th>DO</th>
@@ -225,11 +227,13 @@ Pending Shipment Follow-up
                             <?= $shippedAt ? date('d M Y H:i', strtotime($shippedAt)) : '-' ?>
                         </td>
                         <td>
-                            <span class="badge <?= $isOverdue ? 'bg-danger' : 'bg-secondary' ?>">
+                            <span class="badge <?= $isOverdue ? 'bg-danger' : ($estDays > 0 ? 'bg-success' : 'bg-secondary') ?>">
                                 Day <?= $daysInTransit ?><?= $estDays > 0 ? ' / ' . $estDays : '' ?>
                             </span>
                             <?php if ($isOverdue): ?>
-                                <div><small class="text-danger">Overdue by <?= $daysInTransit - $estDays ?> day<?= ($daysInTransit - $estDays) > 1 ? 's' : '' ?></small></div>
+                                <div><small class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle me-1"></i>Overdue by <?= $daysInTransit - $estDays ?> day<?= ($daysInTransit - $estDays) > 1 ? 's' : '' ?></small></div>
+                            <?php elseif ($estDays > 0): ?>
+                                <div><small class="text-success"><i class="bi bi-check-circle me-1"></i>On track (<?= $estDays - $daysInTransit ?>d left)</small></div>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -251,6 +255,7 @@ Pending Shipment Follow-up
     </div>
 <?php endif; ?>
 </div>
+</div><!-- /.cl-list-page -->
 
 <script>
 (function() {

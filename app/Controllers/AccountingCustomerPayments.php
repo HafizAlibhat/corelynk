@@ -24,6 +24,43 @@ class AccountingCustomerPayments extends BaseController
         'advance' => 'Advance',
     ];
 
+    /**
+     * Some payment terms are milestone-based (e.g. "80% Advance / 20% Net 30 After
+     * Delivery"). When nothing (or only part of an earlier milestone) has been paid,
+     * the next amount actually due is that milestone's percentage of the invoice —
+     * not the full outstanding balance. Falls back to the full outstanding amount
+     * for plain terms (single 100% milestone or no milestone data).
+     */
+    private function computeSuggestedAmount(?int $paymentTermId, float $invoiceTotal, float $alreadyPaid, float $outstanding): float
+    {
+        $outstanding = round(max(0.0, $outstanding), 2);
+        if ($paymentTermId === null || $paymentTermId <= 0 || $invoiceTotal <= 0) {
+            return $outstanding;
+        }
+        try {
+            $db = Database::connect();
+            $term = $db->query('SELECT milestones FROM payment_terms WHERE id = ? LIMIT 1', [$paymentTermId])->getRowArray();
+            $milestones = $term ? json_decode((string) ($term['milestones'] ?? ''), true) : null;
+            if (!is_array($milestones) || count($milestones) < 2) {
+                return $outstanding;
+            }
+            $cumulativePct = 0.0;
+            foreach ($milestones as $m) {
+                $pct = (float) ($m['percentage'] ?? 0);
+                if ($pct <= 0) {
+                    continue;
+                }
+                $cumulativePct += $pct;
+                $cumulativeAmt = round($invoiceTotal * min(100.0, $cumulativePct) / 100.0, 2);
+                if ($cumulativeAmt > $alreadyPaid + 0.01) {
+                    return round(min($outstanding, $cumulativeAmt - $alreadyPaid), 2);
+                }
+            }
+        } catch (\Throwable $_) {
+        }
+        return $outstanding;
+    }
+
     public function pay()
     {
         $customerModel = new CustomerModel();
@@ -65,13 +102,23 @@ class AccountingCustomerPayments extends BaseController
                 }
                 $dueExpr = in_array('due_date', $invCols, true) ? 'due_date' : 'NULL AS due_date';
                 $curExpr = in_array('currency_code', $invCols, true) ? 'currency_code' : "'' AS currency_code";
-                // Compute balance due: total_amount minus sum of posted allocations
-                $balanceDueExpr = "GREATEST(0, COALESCE($invAmtCol, 0) - COALESCE((SELECT SUM(cpa3.allocated_amount) FROM customer_payment_allocations cpa3 INNER JOIN customer_payments cp3 ON cp3.id = cpa3.payment_id WHERE cpa3.invoice_id = customer_invoices.id AND cp3.posted_entry_id IS NOT NULL AND cp3.posted_entry_id > 0), 0))";
+                $termExpr = in_array('payment_term_id', $invCols, true) ? 'payment_term_id' : 'NULL AS payment_term_id';
+                // Amount already collected via posted payments (used to compute both balance due and the next milestone amount)
+                $paidExpr = "COALESCE((SELECT SUM(cpa3.allocated_amount) FROM customer_payment_allocations cpa3 INNER JOIN customer_payments cp3 ON cp3.id = cpa3.payment_id WHERE cpa3.invoice_id = customer_invoices.id AND cp3.customer_id = customer_invoices.customer_id AND COALESCE(cpa3.created_at, cp3.created_at, '1970-01-01 00:00:00') >= COALESCE(customer_invoices.created_at, '1970-01-01 00:00:00') AND cp3.posted_entry_id IS NOT NULL AND cp3.posted_entry_id > 0), 0)";
+                $balanceDueExpr = "GREATEST(0, COALESCE($invAmtCol, 0) - ($paidExpr))";
                 $prefill = $db->query(
-                    'SELECT id, customer_id, invoice_number, issue_date, ' . $dueExpr . ', ' . $curExpr . ', COALESCE(' . $invAmtCol . ', 0) AS invoice_total, ' . $balanceDueExpr . ' AS amount '
+                    'SELECT id, customer_id, invoice_number, issue_date, ' . $dueExpr . ', ' . $curExpr . ', ' . $termExpr . ', COALESCE(' . $invAmtCol . ', 0) AS invoice_total, ' . $paidExpr . ' AS paid_to_date, ' . $balanceDueExpr . ' AS amount '
                     . 'FROM customer_invoices WHERE id = ? LIMIT 1',
                     [$invoiceId]
                 )->getRowArray();
+                if (!empty($prefill)) {
+                    $prefill['amount'] = $this->computeSuggestedAmount(
+                        isset($prefill['payment_term_id']) ? (int) $prefill['payment_term_id'] : null,
+                        (float) ($prefill['invoice_total'] ?? 0),
+                        (float) ($prefill['paid_to_date'] ?? 0),
+                        (float) ($prefill['amount'] ?? 0)
+                    );
+                }
             } catch (\Throwable $_) {
                 $prefill = null;
             }
@@ -91,6 +138,7 @@ class AccountingCustomerPayments extends BaseController
                         'payment_date' => $p['payment_date'] ?? null,
                         'memo' => $p['memo'] ?? ($p['reference_number'] ?? null),
                         'notes' => $p['notes'] ?? ($p['memo'] ?? ''),
+                        'currency_code' => strtoupper(trim((string) ($p['currency_code'] ?? ''))),
                     ];
 
                     // payment method: prefer textual column, otherwise resolve via payment_method_id
@@ -124,6 +172,16 @@ class AccountingCustomerPayments extends BaseController
                         $prefill['source_account_id'] = (int) $p['source_account_id'];
                     }
 
+                    // Foreign-currency settlement details (actual bank credit, charges, withholding tax)
+                    foreach (['received_amount_base', 'bank_charges_fc', 'withholding_tax_base'] as $fxCol) {
+                        if (array_key_exists($fxCol, $p) && $p[$fxCol] !== null) {
+                            $prefill[$fxCol] = (float) $p[$fxCol];
+                        }
+                    }
+                    if (array_key_exists('bank_charges_currency', $p) && $p['bank_charges_currency'] !== null && $p['bank_charges_currency'] !== '') {
+                        $prefill['bank_charges_currency'] = strtoupper((string) $p['bank_charges_currency']);
+                    }
+
                     // allocations for this payment — select only columns that actually exist
                       try {
                           $cpaColsEdit = [];
@@ -140,9 +198,10 @@ class AccountingCustomerPayments extends BaseController
                           $allocRows = $db->query(
                               'SELECT cpa.invoice_id, ' . $amtColEdit . ' AS amount' . $extraEditCols . ', ' . $invNoExpr . ', ' . $invIssueExpr . ', ' . $invDueExpr . ' '
                               . 'FROM customer_payment_allocations cpa '
-                              . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+                              . 'INNER JOIN customer_invoices ci ON ci.id = cpa.invoice_id AND ci.customer_id = ? '
+                              . 'AND COALESCE(cpa.created_at, ?, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
                               . 'WHERE cpa.payment_id = ? ORDER BY cpa.id ASC',
-                              [$editingPaymentId]
+                              [(int) $p['customer_id'], $p['created_at'] ?? null, $editingPaymentId]
                           )->getResultArray();
                         $allocs = [];
                         foreach ($allocRows as $ar) {
@@ -302,7 +361,7 @@ class AccountingCustomerPayments extends BaseController
         $allocJoin = '';
 
         if ($invoiceId > 0) {
-            $where[] = 'EXISTS (SELECT 1 FROM customer_payment_allocations cpa_filter WHERE cpa_filter.payment_id = cp.id AND cpa_filter.invoice_id = ?)';
+            $where[] = 'EXISTS (SELECT 1 FROM customer_payment_allocations cpa_filter INNER JOIN customer_invoices ci_filter ON ci_filter.id = cpa_filter.invoice_id WHERE cpa_filter.payment_id = cp.id AND cpa_filter.invoice_id = ? AND cp.customer_id = ci_filter.customer_id AND COALESCE(cpa_filter.created_at, cp.created_at, "1970-01-01 00:00:00") >= COALESCE(ci_filter.created_at, "1970-01-01 00:00:00"))';
             $params[] = $invoiceId;
         }
         if ($customerId > 0) {
@@ -333,8 +392,16 @@ class AccountingCustomerPayments extends BaseController
             try {
                 $invCols = $db->getFieldNames('customer_invoices');
                 $invNumExpr = in_array('invoice_number', $invCols, true) ? 'invoice_number' : "CONCAT('INV-', id)";
+                $invTotalExpr = in_array('total_amount', $invCols, true)
+                    ? 'total_amount'
+                    : (in_array('total', $invCols, true) ? 'total' : '0');
+                $invCurrencyExpr = in_array('currency_code', $invCols, true)
+                    ? 'currency_code'
+                    : "''";
                 $filteredInvoice = $db->query(
-                    'SELECT id, customer_id, ' . $invNumExpr . ' AS invoice_number FROM customer_invoices WHERE id = ? LIMIT 1',
+                    'SELECT id, customer_id, ' . $invNumExpr . ' AS invoice_number, '
+                    . $invTotalExpr . ' AS total_amount, ' . $invCurrencyExpr . ' AS currency_code '
+                    . 'FROM customer_invoices WHERE id = ? LIMIT 1',
                     [$invoiceId]
                 )->getRowArray();
             } catch (\Throwable $_) {
@@ -605,6 +672,35 @@ class AccountingCustomerPayments extends BaseController
             if (in_array('amount', $cols, true)) { $paymentPayload['amount'] = $paymentAmount; }
             if (in_array('advance_amount', $cols, true)) { $paymentPayload['advance_amount'] = $effectiveAdvance; }
             if (in_array('source_account_id', $cols, true)) { $paymentPayload['source_account_id'] = $sourceAccountId; }
+            if ($currency !== '' && $currency !== 'PKR') {
+                $receivedBase = $this->normalizeAmount($this->request->getPost('received_amount_base') ?? 0);
+                $bankChargesFc = $this->normalizeAmount($this->request->getPost('bank_charges_fc') ?? 0);
+                $whtBase = $this->normalizeAmount($this->request->getPost('withholding_tax_base') ?? 0);
+                $chargesCurrency = strtoupper(trim((string) ($this->request->getPost('bank_charges_currency') ?? '')));
+                if (in_array('received_amount_base', $cols, true)) { $paymentPayload['received_amount_base'] = $receivedBase > 0 ? $receivedBase : null; }
+                if (in_array('bank_charges_fc', $cols, true)) { $paymentPayload['bank_charges_fc'] = $bankChargesFc > 0 ? $bankChargesFc : null; }
+                if (in_array('withholding_tax_base', $cols, true)) { $paymentPayload['withholding_tax_base'] = $whtBase > 0 ? $whtBase : null; }
+                if (in_array('bank_charges_currency', $cols, true)) { $paymentPayload['bank_charges_currency'] = in_array($chargesCurrency, ['PKR', $currency], true) ? $chargesCurrency : null; }
+            }
+            // Optional GL account overrides (bank charges / WHT / gain-loss) — user may pick a
+            // specific account on the draft instead of relying on auto-detection at posting time.
+            $accountOverrideFields = [
+                'bank_charges_account_id' => 'bank_charges_account_id',
+                'wht_account_id' => 'wht_account_id',
+                'gain_loss_account_id' => 'gain_loss_account_id',
+            ];
+            if (!empty($accountOverrideFields)) {
+                $accountModel = new \App\Models\Accounting\AccountModel();
+                foreach ($accountOverrideFields as $postKey => $col) {
+                    if (!in_array($col, $cols, true)) { continue; }
+                    $val = (int) ($this->request->getPost($postKey) ?? 0);
+                    if ($val > 0 && $accountModel->find($val)) {
+                        $paymentPayload[$col] = $val;
+                    } else {
+                        $paymentPayload[$col] = null;
+                    }
+                }
+            }
             if (in_array('memo', $cols, true)) { $paymentPayload['memo'] = $memo ?: null; }
             if (in_array('notes', $cols, true)) { $paymentPayload['notes'] = $notes ?: null; }
             if (in_array('status', $cols, true)) { $paymentPayload['status'] = 'draft'; }
@@ -815,7 +911,7 @@ class AccountingCustomerPayments extends BaseController
 
         // invoice_balance: compute as total_amount minus sum of all posted allocations for that invoice
         if ($totalField) {
-            $invoiceBalanceExpr = "GREATEST(0, COALESCE(ci.$totalField, 0) - COALESCE((SELECT SUM(cpa2.allocated_amount) FROM customer_payment_allocations cpa2 INNER JOIN customer_payments cp2 ON cp2.id = cpa2.payment_id WHERE cpa2.invoice_id = ci.id AND cp2.posted_entry_id IS NOT NULL AND cp2.posted_entry_id > 0), 0)) AS invoice_balance";
+            $invoiceBalanceExpr = "GREATEST(0, COALESCE(ci.$totalField, 0) - COALESCE((SELECT SUM(cpa2.allocated_amount) FROM customer_payment_allocations cpa2 INNER JOIN customer_payments cp2 ON cp2.id = cpa2.payment_id WHERE cpa2.invoice_id = ci.id AND cp2.customer_id = ci.customer_id AND COALESCE(cpa2.created_at, cp2.created_at, '1970-01-01 00:00:00') >= COALESCE(ci.created_at, '1970-01-01 00:00:00') AND cp2.posted_entry_id IS NOT NULL AND cp2.posted_entry_id > 0), 0)) AS invoice_balance";
         } else {
             $invoiceBalanceExpr = "0 AS invoice_balance";
         }
@@ -825,10 +921,11 @@ class AccountingCustomerPayments extends BaseController
         $allocations = $db->query(
               'SELECT cpa.*, ' . $invoiceNumberExpr . ', ' . $issueDateExpr . ', ' . $currencyExpr . ', ' . $invoiceTotalExpr . ', ' . $invoiceBalanceExpr . ', ' . $invoiceStatusExpr . ' '
             . 'FROM customer_payment_allocations cpa '
-            . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+            . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id AND ci.customer_id = ? '
+            . 'AND COALESCE(cpa.created_at, ?, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
             . 'WHERE cpa.payment_id = ? '
             . 'ORDER BY cpa.id ASC',
-            [$paymentId]
+            [(int) ($payment['customer_id'] ?? 0), $payment['created_at'] ?? null, $paymentId]
         )->getResultArray();
 
         $attachments = [];
@@ -881,12 +978,77 @@ class AccountingCustomerPayments extends BaseController
             $displayCurrency = 'PKR';
         }
 
+        // Complete transaction breakdown (rate used, bank charges, withholding tax, exchange gain/loss)
+        // for foreign-currency settlements — same math the posting engine uses, shown here read-only
+        // so the user can review it before confirming ("Post This Payment").
+        $fxPreview = null;
+        $standardConversion = null;
+        $paymentCurrency = strtoupper(trim((string) ($payment['currency_code'] ?? '')));
+        if ($paymentCurrency !== '' && $paymentCurrency !== 'PKR') {
+            $postingService = new AccountingPostingService($db);
+            try {
+                $fxPreview = $postingService->previewFxSettlement(
+                    $payment,
+                    $paymentCurrency,
+                    (float) ($payment['amount'] ?? 0)
+                );
+            } catch (\Throwable $_) {
+                $fxPreview = null;
+            }
+            // Booked/"normal" rate — shown next to the amount even before actual bank
+            // settlement figures (received_amount_base etc.) have been entered.
+            try {
+                $standardConversion = $postingService->previewStandardConversion(
+                    $paymentCurrency,
+                    (string) ($payment['payment_date'] ?? date('Y-m-d')),
+                    (float) ($payment['amount'] ?? 0)
+                );
+            } catch (\Throwable $_) {
+                $standardConversion = null;
+            }
+        }
+
+        // What will actually be posted to the ledger — shown to the user for approval before
+        // they click "Post This Payment", instead of asking them to trust a blind confirm dialog.
+        $journalPreview = [];
+        if ($paymentStatus === 'draft') {
+            $arAccount = (new AccountModel())->where('code', '1200')->first();
+            $arName = $arAccount['name'] ?? 'Accounts Receivable';
+            $cashTotal = (float) ($payment['amount'] ?? 0);
+            if ($fxPreview !== null) {
+                $journalPreview[] = ['label' => 'Bank / Cash received', 'account' => (string) ($payment['source_account_name'] ?? 'Bank'), 'debit' => $fxPreview['net_bank_cash'], 'credit' => 0, 'ccy' => 'PKR'];
+                if ($fxPreview['bank_charges_base'] > 0) {
+                    $journalPreview[] = ['label' => 'Bank / transfer charges', 'account' => $fxPreview['bank_charges_account_name'] ?: 'Bank Charges', 'debit' => $fxPreview['bank_charges_base'], 'credit' => 0, 'ccy' => 'PKR'];
+                }
+                if ($fxPreview['wht_base'] > 0) {
+                    $journalPreview[] = ['label' => 'Withholding tax (Sec. 154)', 'account' => $fxPreview['wht_account_name'] ?: 'WHT Receivable', 'debit' => $fxPreview['wht_base'], 'credit' => 0, 'ccy' => 'PKR'];
+                }
+                if (abs($fxPreview['gain_loss']) > 0.004) {
+                    $isGain = $fxPreview['gain_loss'] > 0;
+                    $journalPreview[] = [
+                        'label' => $isGain ? 'Exchange gain' : 'Exchange loss',
+                        'account' => $fxPreview['gain_loss_account_name'] ?: ($isGain ? 'Exchange Gain' : 'Exchange Loss'),
+                        'debit' => $isGain ? 0 : abs($fxPreview['gain_loss']),
+                        'credit' => $isGain ? abs($fxPreview['gain_loss']) : 0,
+                        'ccy' => 'PKR',
+                    ];
+                }
+                $journalPreview[] = ['label' => 'Accounts Receivable settled', 'account' => $arName, 'debit' => 0, 'credit' => $fxPreview['ar_expected_base'], 'ccy' => 'PKR'];
+            } elseif ($cashTotal > 0) {
+                $journalPreview[] = ['label' => 'Bank / Cash received', 'account' => (string) ($payment['source_account_name'] ?? 'Bank'), 'debit' => $cashTotal, 'credit' => 0, 'ccy' => $paymentCurrency ?: $displayCurrency];
+                $journalPreview[] = ['label' => 'Accounts Receivable settled', 'account' => $arName, 'debit' => 0, 'credit' => $cashTotal, 'ccy' => $paymentCurrency ?: $displayCurrency];
+            }
+        }
+
         return view('accounting/customer_payments/view', [
               'payment'         => $payment,
               'allocations'     => $allocations,
               'attachments'     => $attachments,
               'openInvoices'    => $openInvoices,
               'displayCurrency' => $displayCurrency,
+              'fxPreview'       => $fxPreview,
+              'standardConversion' => $standardConversion,
+              'journalPreview'  => $journalPreview,
           ]);
     }
 
@@ -978,6 +1140,8 @@ class AccountingCustomerPayments extends BaseController
                 . "JOIN customer_invoices ci ON ci.id = cpa.invoice_id "
                 . "SET cp.currency_code = UPPER(TRIM(ci.currency_code)) "
                 . "WHERE (cp.currency_code IS NULL OR cp.currency_code = '') "
+                . "AND cp.customer_id = ci.customer_id "
+                . "AND COALESCE(cpa.created_at, cp.created_at, '1970-01-01 00:00:00') >= COALESCE(ci.created_at, '1970-01-01 00:00:00') "
                 . "AND COALESCE(ci.currency_code, '') <> ''"
             );
         } catch (\Throwable $_) {
@@ -1020,6 +1184,7 @@ class AccountingCustomerPayments extends BaseController
         $hasSalesOrder = in_array('sales_order_id', $invCols, true);
         $hasInvoiceNumber = in_array('invoice_number', $invCols, true);
         $salesOrderExpr = 'NULL AS sales_order_id';
+        $termExpr = in_array('payment_term_id', $invCols, true) ? 'ci.payment_term_id' : 'NULL AS payment_term_id';
 
         $soCols = [];
         if ($hasSalesOrder && $db->tableExists('sales_orders')) {
@@ -1082,7 +1247,9 @@ class AccountingCustomerPayments extends BaseController
             '(SELECT COALESCE(SUM(' . $allocExpr . '),0) '
             . 'FROM customer_payment_allocations cpa '
             . 'INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
-            . 'WHERE cpa.invoice_id = ci.id' . $statusCheck;
+            . 'WHERE cpa.invoice_id = ci.id AND cp.customer_id = ci.customer_id '
+            . 'AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00")'
+            . $statusCheck;
         if ($excludePaymentId > 0) {
             $paidQuery .= ' AND cp.id <> ' . (int)$excludePaymentId;
         }
@@ -1106,6 +1273,7 @@ class AccountingCustomerPayments extends BaseController
             . 'ci.' . $totalField . ' AS total_amount, '
             . $salesOrderExpr . ', '
             . $soNumExpr . ', '
+            . $termExpr . ', '
             . $paidQuery . ' AS paid_amount '
             . 'FROM customer_invoices ci '
             . $soJoin
@@ -1125,6 +1293,12 @@ class AccountingCustomerPayments extends BaseController
 
             $row['paid_amount'] = $paid;
             $row['outstanding'] = $outstanding;
+            $row['suggested_amount'] = $this->computeSuggestedAmount(
+                isset($row['payment_term_id']) ? (int) $row['payment_term_id'] : null,
+                $total,
+                $paid,
+                $outstanding
+            );
             $out[] = $row;
         }
 

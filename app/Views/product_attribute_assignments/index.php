@@ -1,3 +1,8 @@
+<?= $this->extend('layouts/main') ?>
+
+<?= $this->section('title') ?>Attribute Assignments<?= $this->endSection() ?>
+
+<?= $this->section('content') ?>
 <?php /** @var array $rows */ ?>
 
 <div class="container-fluid py-3">
@@ -13,7 +18,7 @@
   <div class="card">
     <div class="card-body p-2">
       <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
+        <table class="cl-table table table-sm table-hover align-middle mb-0">
           <thead class="table-light">
             <tr>
               <th style="width:40%">Product</th>
@@ -51,3 +56,4 @@
     </div>
   </div>
 </div>
+<?= $this->endSection() ?>

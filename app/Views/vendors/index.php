@@ -1,70 +1,74 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('content') ?>
-<div class="container-fluid py-3 cl-list-page">
+<div class="container-fluid cl-list-page cl-vendor-list" data-cl-list>
+
     <!-- Page Header -->
-    <div class="cl-list-header">
+    <div class="cl-list-page-header">
         <div>
-            <h2 class="mb-0">Vendors Management</h2>
-            <small class="text-muted">Manage your vendor list and contacts</small>
+            <h2 class="mb-0"><i class="bi bi-truck me-2"></i>Vendors</h2>
+            <div class="small text-muted">Manage suppliers, contacts, and purchasing relationships</div>
         </div>
         <?php if ($can_create): ?>
-            <a href="<?= base_url('vendors/create') ?>" class="btn btn-primary">
-                <i class="bi bi-plus-circle me-2"></i>New Vendor
-            </a>
+            <div class="cl-list-page-actions">
+                <a href="<?= base_url('vendors/create') ?>" class="btn btn-primary cl-vendors-new-btn"><i class="bi bi-plus-circle me-2"></i>New Vendor</a>
+            </div>
         <?php endif; ?>
     </div>
 
     <!-- Filters -->
-    <div class="card cl-list-filters mb-3">
-        <div class="card-body">
-                <?= form_open('', ['method' => 'GET', 'class' => 'row g-3']) ?>
-                <div class="col-md-4">
-                    <label class="form-label">Search</label>
-                    <input type="text" 
-                           class="form-control" 
-                           name="search" 
-                           value="<?= esc($current_search) ?>" 
-                           placeholder="Vendor name, contact...">
+    <?= form_open('', ['method' => 'GET', 'class' => 'pl-filter-form cl-list-toolbar cl-vendors-toolbar']) ?>
+        <div class="pl-filter-toolbar">
+            <div class="pl-filter-toolbar-search cl-list-search-group">
+                <div class="pl-filter-search-label">
+                    <label for="vendorSearch">Search vendors</label>
+                    <span>Press Enter to search</span>
                 </div>
-                
-                <div class="col-md-3">
-                    <label class="form-label">Status</label>
-                    <select class="form-select" name="status">
-                        <option value="">All Status</option>
-                        <option value="1" <?= $current_status === '1' ? 'selected' : '' ?>>Active</option>
-                        <option value="0" <?= $current_status === '0' ? 'selected' : '' ?>>Inactive</option>
-                    </select>
+                <div class="pl-search-shell">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search"
+                           class="form-control pl-filter-control pl-filter-control-search"
+                           id="vendorSearch"
+                           name="search"
+                           value="<?= esc($current_search) ?>"
+                           placeholder="Search vendor name, contact, phone, or email">
                 </div>
-                
-                <div class="col-md-2">
-                    <label class="form-label">Per Page</label>
-                    <select class="form-select" name="per_page">
-                        <option value="20" <?= $per_page == 20 ? 'selected' : '' ?>>20</option>
-                        <option value="50" <?= $per_page == 50 ? 'selected' : '' ?>>50</option>
-                        <option value="100" <?= $per_page == 100 ? 'selected' : '' ?>>100</option>
-                    </select>
-                </div>
-                
-                <div class="col-md-3 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary me-2">
-                        <i class="bi bi-search me-1"></i>Search
-                    </button>
-                    <a href="<?= base_url('vendors') ?>" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-clockwise me-1"></i>Reset
-                    </a>
-                </div>
-            <?= form_close() ?>
+            </div>
+            <div class="pl-filter-toolbar-actions">
+                <button type="submit" class="btn btn-primary pl-filter-btn pl-filter-btn-primary">
+                    <i class="bi bi-search me-1"></i>Search
+                </button>
+                <a href="<?= base_url('vendors') ?>" class="btn btn-outline-secondary pl-filter-btn pl-filter-btn-soft">Reset</a>
+            </div>
         </div>
-    </div>
+
+        <div class="pl-filter-chipbar cl-list-toolbar-controls" aria-label="Vendor filters">
+            <div class="pl-chip-field pl-chip-field-md">
+                <label class="pl-chip-label" for="vendorStatus">Status</label>
+                <select class="form-select pl-filter-control" id="vendorStatus" name="status">
+                    <option value="">All Statuses</option>
+                    <option value="1" <?= $current_status === '1' ? 'selected' : '' ?>>Active</option>
+                    <option value="0" <?= $current_status === '0' ? 'selected' : '' ?>>Inactive</option>
+                </select>
+            </div>
+            <div class="pl-chip-field pl-chip-field-sm">
+                <label class="pl-chip-label" for="vendorPerPage">Per Page</label>
+                <select class="form-select pl-filter-control" id="vendorPerPage" name="per_page">
+                    <option value="20" <?= $per_page == 20 ? 'selected' : '' ?>>20</option>
+                    <option value="50" <?= $per_page == 50 ? 'selected' : '' ?>>50</option>
+                    <option value="100" <?= $per_page == 100 ? 'selected' : '' ?>>100</option>
+                </select>
+            </div>
+        </div>
+    <?= form_close() ?>
 
     <!-- Vendors List -->
-    <div class="card cl-list-table-card">
-        <div class="card-body p-0">
             <?php if (!empty($vendors['data'])): ?>
+                <div class="card border-0 shadow-sm cl-list-table-card">
+                <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
+                    <table class="cl-table table table-hover pl-table pl-vendors-table data-table-table mb-0">
+                        <thead>
                             <tr>
                                 <th width="40">
                                     <input type="checkbox" class="form-check-input" id="selectAll">
@@ -117,29 +121,29 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-info"><?= $vendor['process_count'] ?? 0 ?></span>
+                                        <span class="cl-count-badge"><?= (int)($vendor['process_count'] ?? 0) ?></span>
                                     </td>
                                     <td>
                                         <?php if ($vendor['is_active']): ?>
-                                            <span class="badge bg-success">Active</span>
+                                            <span class="cl-status-badge cl-status-badge--success"><span class="cl-status-badge__dot"></span>Active</span>
                                         <?php else: ?>
-                                            <span class="badge bg-danger">Inactive</span>
+                                            <span class="cl-status-badge cl-status-badge--neutral"><span class="cl-status-badge__dot"></span>Inactive</span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="actions-col">
                                         <div class="btn-group btn-group-sm" role="group">
                                             <a href="<?= base_url('vendors/' . $vendorIdentifier) ?>" 
-                                               class="btn btn-sm btn-outline-primary btn-icon" title="View" aria-label="View">
+                                               class="btn btn-sm btn-outline-primary btn-icon cl-icon-action" title="View" aria-label="View">
                                                 <i class="bi bi-eye"></i>
                                             </a>
                                             <?php if ($can_edit): ?>
                                                 <a href="<?= base_url('vendors/' . $vendorIdentifier . '/edit') ?>" 
-                                                   class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit">
+                                                   class="btn btn-sm btn-outline-secondary btn-icon cl-icon-action" title="Edit" aria-label="Edit">
                                                     <i class="bi bi-pencil"></i>
                                                 </a>
                                             <?php endif; ?>
                                             <?php if ($can_delete): ?>
-                                                <button class="btn btn-sm btn-outline-danger btn-icon" 
+                                                <button class="btn btn-sm btn-outline-danger btn-icon cl-icon-action"
                                                         onclick="deleteVendor(<?= $vendor['id'] ?>)" title="Delete" aria-label="Delete">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
@@ -151,19 +155,21 @@
                         </tbody>
                     </table>
                 </div>
-                
+                </div>
+                </div>
+
                 <!-- Pagination -->
-                <?php if (isset($vendors['pager'])): ?>
-                    <div class="d-flex justify-content-center mt-3">
+                <?php if (isset($vendors['pager']) && $vendors['pager']->getPageCount() > 1): ?>
+                    <div class="pl-footer justify-content-center">
                         <?= $vendors['pager']->links() ?>
                     </div>
                 <?php endif ?>
-                
+
             <?php else: ?>
-                <div class="text-center py-5">
-                    <i class="bi bi-building fs-1 text-muted"></i>
-                    <h5 class="mt-3 text-muted">No Vendors Found</h5>
-                    <p class="text-muted">No vendors match your current filters.</p>
+                <div class="cl-list-empty">
+                    <span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-building"></i></span>
+                    <h6>No Vendors Found</h6>
+                    <p>No vendors match your current filters.</p>
                     <?php if ($can_create): ?>
                         <a href="<?= base_url('vendors/create') ?>" class="btn btn-primary">
                             <i class="bi bi-plus-circle me-2"></i>Add First Vendor
@@ -171,9 +177,7 @@
                     <?php endif; ?>
                 </div>
             <?php endif ?>
-        </div>
-    </div>
-</div>
+</div><!-- /.cl-list-page -->
 
 <script>
 function deleteVendor(vendorId) {

@@ -136,6 +136,24 @@ class InventoryService
      */
     public function receiveFromGrn(int $product_id, int $warehouse_id, int $location_id, float $quantity, int $grn_id, int $user_id, ?int $variant_id = null): bool
     {
+        return $this->receiveStock($product_id, $warehouse_id, $location_id, $quantity, $grn_id, $user_id, $variant_id);
+    }
+
+    /**
+     * Book stock into a location. Defaults to a GRN receipt; preparation output
+     * and any other producer passes its own movement/reference type.
+     */
+    public function receiveStock(
+        int $product_id,
+        int $warehouse_id,
+        int $location_id,
+        float $quantity,
+        int $reference_id,
+        int $user_id,
+        ?int $variant_id = null,
+        string $movement_type = 'grn',
+        string $reference_type = 'grn'
+    ): bool {
         if ($warehouse_id <= 0) throw new InvalidArgumentException('Warehouse is required.');
         if ($location_id <= 0) throw new InvalidArgumentException('Location is required.');
         if ($product_id <= 0) {
@@ -171,9 +189,9 @@ class InventoryService
             'warehouse_id'   => $warehouse_id,
             'location_id'    => $location_id,
             'qty_change'     => $quantity, // positive for receipt
-            'movement_type'  => 'grn',
-            'reference_type' => 'grn',
-            'reference_id'   => $grn_id,
+            'movement_type'  => $movement_type,
+            'reference_type' => $reference_type,
+            'reference_id'   => $reference_id,
             'created_by'     => $user_id,
             'created_at'     => $now,
         ];
@@ -633,14 +651,22 @@ class InventoryService
     }
 
     /**
-     * Create the stock_adjustment_batches table if it does not exist yet.
-     * Called lazily so no migration file is required.
+     * Prepare legacy adjustment tables before a caller opens its business transaction.
+     * MySQL DDL implicitly commits, so this must never be deferred into a stock write.
      */
+    public function ensureAdjustmentInfrastructure(): void
+    {
+        $this->ensureAdjustmentBatchTable();
+        $this->ensureAdjustmentAuditTable();
+    }
+
+    /** Create the stock_adjustment_batches table if it does not exist yet. */
     private function ensureAdjustmentBatchTable(): void
     {
         $db = Database::connect();
-        try {
-            $db->query("CREATE TABLE IF NOT EXISTS `stock_adjustment_batches` (
+        if (! $db->tableExists('stock_adjustment_batches')) {
+            try {
+                $db->query("CREATE TABLE `stock_adjustment_batches` (
                 `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `adjustment_type`       VARCHAR(50)  NOT NULL DEFAULT 'adjustment',
                 `mode`                  VARCHAR(20)  NOT NULL DEFAULT 'add',
@@ -652,9 +678,10 @@ class InventoryService
                 `created_by`            INT          DEFAULT NULL,
                 `created_at`            DATETIME     DEFAULT NULL,
                 PRIMARY KEY (`id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (\Throwable $e) {
-            log_message('warning', 'ensureAdjustmentBatchTable create: ' . $e->getMessage());
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (\Throwable $e) {
+                log_message('warning', 'ensureAdjustmentBatchTable create: ' . $e->getMessage());
+            }
         }
         // Ensure total_estimated_value column exists on pre-existing tables
         try {
@@ -673,8 +700,9 @@ class InventoryService
     private function ensureAdjustmentAuditTable(): void
     {
         $db = Database::connect();
-        try {
-            $db->query("CREATE TABLE IF NOT EXISTS `stock_adjustment_audit` (
+        if (! $db->tableExists('stock_adjustment_audit')) {
+            try {
+                $db->query("CREATE TABLE `stock_adjustment_audit` (
                 `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `batch_id` INT UNSIGNED NOT NULL,
                 `movement_id` INT UNSIGNED NULL,
@@ -696,9 +724,10 @@ class InventoryService
                 KEY `idx_saa_movement` (`movement_id`),
                 KEY `idx_saa_product` (`product_id`),
                 KEY `idx_saa_created` (`created_at`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (\Throwable $e) {
-            log_message('warning', 'ensureAdjustmentAuditTable create: ' . $e->getMessage());
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (\Throwable $e) {
+                log_message('warning', 'ensureAdjustmentAuditTable create: ' . $e->getMessage());
+            }
         }
     }
 
@@ -788,8 +817,7 @@ class InventoryService
             throw new InvalidArgumentException('Location does not belong to the selected warehouse.');
         }
 
-        $this->ensureAdjustmentBatchTable();
-        $this->ensureAdjustmentAuditTable();
+        $this->ensureAdjustmentInfrastructure();
 
         // ── Phase 1: Resolve and validate all lines BEFORE opening any transaction ──
         $resolved = [];

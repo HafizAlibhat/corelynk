@@ -70,7 +70,7 @@
             <div class="card-body p-0">
                 <?php if (!empty($categories)): ?>
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="cl-table table table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th width="5%">#</th>

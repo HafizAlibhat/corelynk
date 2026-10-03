@@ -12,6 +12,19 @@ class Documents extends BaseController
     /**
      * Unified list of sales documents (Quotations + Sales Orders)
      */
+    /**
+     * Line label for list views: product (template) name plus the line's
+     * variant/attribute detail, e.g. "Winkelmann Clamp - Size: 14mm".
+     */
+    private function composeProductLabel(string $productName, string $detail): string
+    {
+        $productName = trim($productName);
+        $detail = trim($detail);
+        if ($productName === '') return $detail;
+        if ($detail === '' || stripos($detail, $productName) !== false) return $productName;
+        return $productName . ' - ' . $detail;
+    }
+
     public function index()
     {
         $quotationModel = new QuotationModel();
@@ -25,7 +38,10 @@ class Documents extends BaseController
         $qCols = [];
         try { $qCols = $db->getFieldNames('quotations'); } catch (\Throwable $_) { $qCols = []; }
 
-        if (in_array('converted_to_sales_order_id', $qCols, true)) {
+        // Converted quotations are hidden by default to keep the working list short.
+        // They are NOT deleted -- ?show_converted=1 brings them back into view.
+        $showConverted = filter_var($this->request->getGet('show_converted'), FILTER_VALIDATE_BOOLEAN);
+        if (!$showConverted && in_array('converted_to_sales_order_id', $qCols, true)) {
             $quotationModel->where('converted_to_sales_order_id IS NULL', null, false);
         }
 
@@ -36,12 +52,20 @@ class Documents extends BaseController
         if (!empty($privateUserIds)) {
             try {
                 if (in_array('created_by', $db->getFieldNames('quotations') ?: [], true)) {
-                    $quotationModel->whereNotIn('created_by', $privateUserIds);
+                    // NOT IN yields NULL for rows with a NULL creator, which silently
+                    // drops them from the list; keep those rows visible.
+                    $quotationModel->groupStart()
+                        ->whereNotIn('created_by', $privateUserIds)
+                        ->orWhere('created_by IS NULL', null, false)
+                        ->groupEnd();
                 }
             } catch (\Throwable $_) {}
             try {
                 if (in_array('created_by', $db->getFieldNames('sales_orders') ?: [], true)) {
-                    $salesOrderModel->whereNotIn('created_by', $privateUserIds);
+                    $salesOrderModel->groupStart()
+                        ->whereNotIn('created_by', $privateUserIds)
+                        ->orWhere('created_by IS NULL', null, false)
+                        ->groupEnd();
                 }
             } catch (\Throwable $_) {}
         }
@@ -198,8 +222,8 @@ class Documents extends BaseController
                         $productIds[] = $pid;
                         if (empty($orderProductMap[$soId])) $orderProductMap[$soId] = $pid;
                     }
-                    if ($lineDetail !== '') {
-                        $orderProductNamesByDoc[$soId][] = $lineDetail;
+                    if ($lineDetail !== '' || $pid > 0) {
+                        $orderProductNamesByDoc[$soId][] = ['pid' => $pid, 'text' => $lineDetail];
                     }
                 }
             }
@@ -218,8 +242,8 @@ class Documents extends BaseController
                         $productIds[] = $pid;
                         if (empty($quoteProductMap[$qId])) $quoteProductMap[$qId] = $pid;
                     }
-                    if ($lineDetail !== '') {
-                        $quoteProductNamesByDoc[$qId][] = $lineDetail;
+                    if ($lineDetail !== '' || $pid > 0) {
+                        $quoteProductNamesByDoc[$qId][] = ['pid' => $pid, 'text' => $lineDetail];
                     }
                 }
             }
@@ -240,7 +264,10 @@ class Documents extends BaseController
             $oid = (int)$oid;
             $names = [];
             if (!empty($orderProductNamesByDoc[$oid])) {
-                foreach ($orderProductNamesByDoc[$oid] as $txt) { if ($txt !== '') $names[] = $txt; }
+                foreach ($orderProductNamesByDoc[$oid] as $line) {
+                    $label = $this->composeProductLabel($productMap[(int)($line['pid'] ?? 0)] ?? '', (string)($line['text'] ?? ''));
+                    if ($label !== '') $names[] = $label;
+                }
             }
             // Only fall back to master product names when line-level labels are unavailable.
             if (empty($names) && !empty($orderProductIdsByDoc[$oid])) {
@@ -257,7 +284,10 @@ class Documents extends BaseController
             $qid = (int)$qid;
             $names = [];
             if (!empty($quoteProductNamesByDoc[$qid])) {
-                foreach ($quoteProductNamesByDoc[$qid] as $txt) { if ($txt !== '') $names[] = $txt; }
+                foreach ($quoteProductNamesByDoc[$qid] as $line) {
+                    $label = $this->composeProductLabel($productMap[(int)($line['pid'] ?? 0)] ?? '', (string)($line['text'] ?? ''));
+                    if ($label !== '') $names[] = $label;
+                }
             }
             // Only fall back to master product names when line-level labels are unavailable.
             if (empty($names) && !empty($quoteProductIdsByDoc[$qid])) {
@@ -445,12 +475,8 @@ class Documents extends BaseController
 
         // Fetch all docs
         $db = \Config\Database::connect();
-        $qCols = [];
-        try { $qCols = $db->getFieldNames('quotations'); } catch (\Throwable $_) { $qCols = []; }
-
-        if (in_array('converted_to_sales_order_id', $qCols, true)) {
-            $quotationModel->where('converted_to_sales_order_id IS NULL', null, false);
-        }
+        // Search deliberately does NOT exclude converted quotations: looking up a
+        // quote number must find it whether or not it became a sales order.
 
         // Privacy filtering: exclude documents from users who have hidden their docs
         $currentUserId = (int) (session()->get('user_id') ?? 0);
@@ -459,12 +485,20 @@ class Documents extends BaseController
         if (!empty($privateUserIds)) {
             try {
                 if (in_array('created_by', $db->getFieldNames('quotations') ?: [], true)) {
-                    $quotationModel->whereNotIn('created_by', $privateUserIds);
+                    // NOT IN yields NULL for rows with a NULL creator, which silently
+                    // drops them from the list; keep those rows visible.
+                    $quotationModel->groupStart()
+                        ->whereNotIn('created_by', $privateUserIds)
+                        ->orWhere('created_by IS NULL', null, false)
+                        ->groupEnd();
                 }
             } catch (\Throwable $_) {}
             try {
                 if (in_array('created_by', $db->getFieldNames('sales_orders') ?: [], true)) {
-                    $salesOrderModel->whereNotIn('created_by', $privateUserIds);
+                    $salesOrderModel->groupStart()
+                        ->whereNotIn('created_by', $privateUserIds)
+                        ->orWhere('created_by IS NULL', null, false)
+                        ->groupEnd();
                 }
             } catch (\Throwable $_) {}
         }

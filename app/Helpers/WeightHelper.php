@@ -55,4 +55,24 @@ class WeightHelper
             default => $weight, // assume kg if unknown
         };
     }
+
+    /**
+     * Display a weight in kg-or-grams form: 1 kg and above reads in kg,
+     * anything lighter reads in grams. The unit the user picked on the
+     * product only decides how the value is stored/converted, never how it
+     * is displayed, so documents never show huge gram figures.
+     *
+     * @param float       $kg   Weight already converted to kilograms
+     * @param string|null $unit Ignored, kept for existing callers
+     */
+    public static function formatShipment(float $kg, ?string $unit = null): string
+    {
+        $kg = max(0.0, $kg);
+
+        if ($kg >= 1) {
+            return rtrim(rtrim(number_format($kg, 3, '.', ','), '0'), '.') . ' kg';
+        }
+
+        return number_format($kg * 1000, 0) . ' g';
+    }
 }

@@ -13,7 +13,7 @@ Quotation <?= esc($quote['quote_number']) ?>
     $statusLabel = $isConvertedToSalesOrder ? 'converted' : $quoteStatusRaw;
     $statusClass = ($quoteStatus === 'draft' && !$isConvertedToSalesOrder) ? 'bg-secondary' : 'bg-success';
 ?>
-<div class="card">
+<div class="card cl-detail-page">
     <?php 
         $candidateDates = [
             $quote['issue_date'] ?? '',
@@ -43,6 +43,14 @@ Quotation <?= esc($quote['quote_number']) ?>
         } else {
             $customerLabel = '';
         }
+        // The address is frozen on the quotation; it can be refreshed from the
+        // customer profile until the quotation becomes a sales order.
+        $canRefreshAddress = !$isConvertedToSalesOrder && in_array($quoteStatus, ['', 'draft', 'sent'], true);
+        // Deep-link to the customer profile from the address panel.
+        helper('security');
+        $customerRouteId = function_exists('entityRouteIdentifier')
+            ? entityRouteIdentifier(is_array($customer ?? null) ? $customer : null)
+            : (string)($customer['id'] ?? '');
     ?>
     <div class="card-header section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
@@ -50,12 +58,32 @@ Quotation <?= esc($quote['quote_number']) ?>
             <div class="section-sub"></div>
         </div>
         <div class="d-flex flex-column align-items-end gap-1 ms-auto">
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center justify-content-end flex-wrap gap-2">
                 <span class="badge <?= $statusClass ?>" style="text-transform:uppercase; min-width:120px; text-align:center;">Status: <?= esc($statusLabel) ?></span>
+                <?= view('partials/record_nav', [
+                    'table'   => 'quotations',
+                    'id'      => $quote['public_id'] ?? $quote['id'],
+                    'pattern' => 'quotations/view/{id}',
+                    'list'    => 'quotations',
+                ]) ?>
                 <?php if (!$isConvertedToSalesOrder): ?>
-                    <a href="<?= site_url('quotations/pdf/' . (int)$quote['id']) ?>" class="btn btn-outline-danger btn-sm" title="Download Quotation PDF"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
+                    <div class="btn-group">
+                        <a href="<?= site_url('quotations/pdf/' . (int)$quote['id']) ?>" class="btn btn-outline-danger btn-sm" title="Download original quotation PDF"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
+                        <button type="button" class="btn btn-outline-danger btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="Choose PDF template">
+                            <span class="visually-hidden">Choose PDF template</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="<?= site_url('quotations/pdf/' . (int)$quote['id']) ?>">Original template</a></li>
+                            <li><a class="dropdown-item" href="<?= site_url('quotations/pdf/' . (int)$quote['id'] . '?template=odoo_boxed') ?>">Odoo boxed layout</a></li>
+                        </ul>
+                    </div>
                     <a href="<?= site_url('quotations/print/' . (!empty($quote['public_id']) ? $quote['public_id'] : (int)$quote['id'])) ?>" class="btn btn-outline-light btn-sm" title="Print Quotation" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Print</a>
                     <a href="<?= site_url('quotations/warehouse-document/' . (int)$quote['id']) ?>" class="btn btn-outline-warning btn-sm" title="Open Warehouse Pick Slip" target="_blank" rel="noopener"><i class="bi bi-box-seam me-1"></i>Warehouse Pick Slip</a>
+                    <a href="<?= site_url('quotations/edit/' . (int)$quote['id']) ?>" class="btn btn-outline-primary btn-sm" title="Edit Quotation"><i class="bi bi-pencil-square me-1"></i>Edit</a>
+                    <form method="post" action="<?= site_url('quotations/duplicate/' . (int)$quote['id']) ?>" class="d-inline" onsubmit="return confirm('Create a copy of this quotation as a new draft?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="btn btn-outline-info btn-sm" title="Duplicate Quotation"><i class="bi bi-files me-1"></i>Duplicate</button>
+                    </form>
                     <a href="<?= site_url('document-studio?edit=quotation&id='.(int)$quote['id']) ?>" class="btn btn-outline-primary btn-sm" title="Edit in Document Studio"><i class="bi bi-easel me-1"></i>Edit in Studio</a>
                 <?php endif; ?>
                 <a href="<?= site_url('quotations') ?>" class="btn btn-outline-secondary btn-sm">Back</a>
@@ -188,58 +216,333 @@ Quotation <?= esc($quote['quote_number']) ?>
                 transform: translateY(-1px);
                 box-shadow: 0 8px 18px rgba(2, 6, 23, 0.45);
             }
+            /* --- Lines table: modern, non-overlapping, mobile-friendly --- */
+            [data-doc-lines-root] {
+                border-radius: 10px;
+                border: 1px solid rgba(148, 163, 184, 0.16);
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+            }
+            [data-doc-lines-root]::-webkit-scrollbar {
+                height: 8px;
+            }
+            [data-doc-lines-root]::-webkit-scrollbar-thumb {
+                background: rgba(148, 163, 184, 0.35);
+                border-radius: 8px;
+            }
+            .so-lines-table {
+                table-layout: auto;
+                width: 100%;
+                min-width: 1180px; /* forces horizontal scroll instead of squeezing/overlapping columns on narrow screens */
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+            .so-lines-table th {
+                background: rgba(15, 23, 42, 0.55);
+                font-size: 0.74rem;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                color: #94a3b8;
+                padding: 10px 8px;
+            }
+            .so-lines-table th {
+                padding: 7px 8px;
+                font-size: .76rem;
+            }
+            .so-lines-table td {
+                padding: 5px 8px;
+                font-size: .82rem;
+                line-height: 1.18;
+            }
+            .so-lines-table .quote-line-image,
+            .so-lines-table .quote-image-thumb,
+            .so-lines-table .product-thumb-wrap,
+            .so-lines-table .product-thumb {
+                width: 28px !important;
+                height: 28px !important;
+            }
+            .so-lines-table .line-desc .fw-semibold {
+                line-height: 1.08 !important;
+            }
+            .so-lines-table .line-desc .text-muted {
+                font-size: .72rem !important;
+                line-height: 1.12 !important;
+            }
+            .so-lines-table .btn-sm {
+                padding: .18rem .45rem;
+                font-size: .75rem;
+            }
+            .so-lines-table .doc-section-row > td {
+                padding: 0 !important;
+                position: static !important;
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+            .so-lines-table .doc-section-title {
+                display: flex;
+                align-items: center;
+                gap: .35rem;
+                min-height: 30px;
+                padding: 5px 10px;
+                background: linear-gradient(90deg, #47505b 0, #384252 100%);
+                color: #fff;
+                font-weight: 700;
+                line-height: 1.15;
+                border-left: 4px solid #6d5dfc;
+            }
+            .so-lines-table .doc-section-input {
+                height: 24px !important;
+                min-height: 24px !important;
+                padding: 2px 7px !important;
+            }
+            .so-lines-table .doc-section-title .btn {
+                border-color: rgba(255,255,255,.45);
+                color: #fff;
+            }
+            .so-lines-table .doc-section-subtotal-row td {
+                padding: 3px 6px !important;
+                line-height: 1.08 !important;
+                background: rgba(15, 23, 42, 0.72) !important;
+                border-top: 1px solid rgba(148, 163, 184, 0.18);
+                border-bottom: 6px solid #0f172a;
+                color: #cbd5e1;
+            }
+            .so-lines-table .doc-section-subtotal-row td:last-child {
+                background: #0f172a !important;
+            }
+            .so-lines-table .col-disc,
+            .so-lines-table .col-tax {
+                white-space: nowrap;
+            }
+            /* Merge the type-select + value-input pair into a single "pill" control
+               instead of two separate boxes crammed together (was the cause of the
+               overlapping/duplicated-box look). */
+            .so-lines-table .line-discount-editor,
+            .so-lines-table .line-tax-editor {
+                display: flex;
+                align-items: stretch;
+                justify-content: flex-end;
+                gap: 0;
+                margin-left: auto;
+                width: fit-content;
+                border: 1px solid rgba(148, 163, 184, 0.35);
+                border-radius: 8px;
+                overflow: hidden;
+                background: rgba(15, 23, 42, 0.4);
+            }
+            .so-lines-table .line-discount-editor > select,
+            .so-lines-table .line-tax-editor > select,
+            .so-lines-table .line-discount-editor > input,
+            .so-lines-table .line-tax-editor > input {
+                border: none !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+            .so-lines-table .line-discount-editor > input,
+            .so-lines-table .line-tax-editor > input {
+                border-left: 1px solid rgba(148, 163, 184, 0.25) !important;
+            }
+            .so-lines-table .inline-disc-type,
+            .so-lines-table .inline-tax-type,
+            .so-lines-table .inline-disc,
+            .so-lines-table .inline-tax,
+            .so-lines-table .new-line-disc-type,
+            .so-lines-table .new-line-tax-type,
+            .so-lines-table .new-line-disc,
+            .so-lines-table .new-line-tax {
+                box-sizing: border-box;
+                width: 60px !important;
+                min-width: 60px !important;
+                max-width: 60px !important;
+            }
+            .so-lines-table .inline-disc,
+            .so-lines-table .inline-tax,
+            .so-lines-table .new-line-disc,
+            .so-lines-table .new-line-tax {
+                width: 84px !important;
+                min-width: 84px !important;
+                max-width: 84px !important;
+            }
+            /* Clean, modern number inputs: no native OS spinner clutter (tiny,
+               hard to tap on mobile, and the cause of the input box appearing to
+               render a second overlapping box inside a tight column). */
+            .so-lines-table input[type="number"] {
+                -moz-appearance: textfield;
+            }
+            .so-lines-table input[type="number"]::-webkit-outer-spin-button,
+            .so-lines-table input[type="number"]::-webkit-inner-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
+            /* Actions column stays visible on the right without needing to
+               scroll the whole table over. */
+            .so-lines-table th:last-child,
+            .so-lines-table td:last-child {
+                position: sticky;
+                right: 0;
+                background: #0f172a;
+                z-index: 2;
+                box-shadow: -6px 0 10px -6px rgba(0, 0, 0, 0.45);
+            }
+            .so-lines-table th:last-child {
+                z-index: 3;
+            }
+            .so-lines-table .btn-group {
+                flex-wrap: nowrap;
+            }
+            @media (max-width: 767px) {
+                [data-doc-lines-root] {
+                    border-radius: 8px;
+                }
+                .so-lines-table th,
+                .so-lines-table td {
+                    padding: 5px 6px;
+                    font-size: 0.82rem;
+                }
+            }
         </style>
         <?php
             $customer = $customer ?? null;
             $customerAddress = $customerAddress ?? null;
             $addrLines = [];
-            if (!empty($customer['name'])) $addrLines[] = $customer['name'];
             if (!empty($customerAddress['line1'])) $addrLines[] = $customerAddress['line1'];
             if (!empty($customerAddress['line2'])) $addrLines[] = $customerAddress['line2'];
             $cityState = trim(($customerAddress['city_name'] ?? '') . ' ' . ($customerAddress['state_name'] ?? ''));
             if ($cityState !== '') $addrLines[] = $cityState;
-            if (!empty($customerAddress['postal_code'])) $addrLines[] = 'Postal: ' . $customerAddress['postal_code'];
-            if (!empty($customer['phone'])) $addrLines[] = 'Phone: ' . $customer['phone'];
-            if (!empty($customer['mobile'])) $addrLines[] = 'Mobile: ' . $customer['mobile'];
-            if (!empty($customer['email'])) $addrLines[] = 'Email: ' . $customer['email'];
-            $addrText = implode("\n", array_filter($addrLines));
-            $addrRows = max(2, min(6, count(array_filter($addrLines)) + 1));
+            if (!empty($customerAddress['postal_code'])) $addrLines[] = $customerAddress['postal_code'];
+            $contactRows = array_filter([
+                'Phone'  => $customer['phone'] ?? '',
+                'Mobile' => $customer['mobile'] ?? '',
+                'Email'  => $customer['email'] ?? '',
+            ]);
         ?>
+        <style>
+            .so-address-card { padding: 14px 16px; }
+            .so-address-card .addr-title {
+                font-size: 0.72rem;
+                letter-spacing: .06em;
+                text-transform: uppercase;
+                color: #94a3b8;
+                margin-bottom: 8px;
+            }
+            .so-address-card .addr-name { font-weight: 600; line-height: 1.35; }
+            .so-address-card .addr-lines { color: #cbd5e1; font-size: 0.88rem; line-height: 1.5; }
+            /* label column fixed so every value starts on the same x */
+            .so-address-card .addr-grid {
+                display: grid;
+                grid-template-columns: 64px 1fr;
+                gap: 2px 10px;
+                margin-top: 8px;
+                font-size: 0.85rem;
+                align-items: baseline;
+            }
+            .so-address-card .addr-grid dt { color: #94a3b8; font-weight: 500; }
+            .so-address-card .addr-grid dd { margin: 0; color: #e2e8f0; word-break: break-word; }
+            /* compact date chip - sized to its content, not stretched to the address card */
+            .so-date-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                align-self: flex-start;
+                padding: 8px 14px;
+                border-radius: 10px;
+                background: var(--cl-color-surface-2, #16202e);
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                white-space: nowrap;
+                line-height: 1.2;
+            }
+            .so-date-chip .chip-label {
+                font-size: 0.7rem;
+                letter-spacing: .06em;
+                text-transform: uppercase;
+                color: #94a3b8;
+            }
+            .so-date-chip .chip-value { font-weight: 600; color: #e2e8f0; font-size: 0.92rem; }
+        </style>
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-            <div class="so-address-card shadow-sm" style="min-width:450px;max-width:520px;border-radius:10px;">
-                <div class="fw-semibold mb-2">Address &amp; Contact</div>
-                <?php $addrRows = max(3, min(8, count(array_filter($addrLines)) + 1)); ?>
-                <textarea class="form-control" rows="<?= $addrRows ?>" readonly style="border-radius:8px;min-width:450px;max-width:520px;overflow:hidden;resize:none;"><?= esc($addrText) ?></textarea>
-            </div>
-            <div class="text-muted" style="font-size:0.9rem;align-self:flex-start;">Date: <span style="font-weight:600;color:#e2e8f0;"><?= esc($fmtDate ?: '-') ?></span></div>
-        </div>
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" data-doc-line-toolbar>
-            <h5 class="mb-0" style="font-size:1rem;">Lines</h5>
-            <div class="d-flex align-items-center gap-2">
-                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-line">Add Product Line</button>
-                <div class="form-check form-switch mb-0">
-                    <input class="form-check-input" type="checkbox" id="toggle-discount-tax">
-                    <label class="form-check-label" for="toggle-discount-tax" style="font-size:0.9rem;">Show Discount &amp; Tax</label>
+            <div class="so-address-card shadow-sm" style="width:min(100%,520px);">
+                <div class="addr-title d-flex align-items-center gap-2">
+                    <span>Address &amp; Contact</span>
+                    <?php if ($customerRouteId !== ''): ?>
+                        <a href="<?= site_url('customers/' . $customerRouteId) ?>" class="cl-action-icon ms-auto"
+                           title="Open customer profile" aria-label="Open customer profile">
+                            <i class="bi bi-person-lines-fill"></i>
+                        </a>
+                    <?php endif; ?>
+                    <?php if ($canRefreshAddress): ?>
+                        <button type="button" class="cl-action-icon<?= $customerRouteId === '' ? ' ms-auto' : '' ?>" id="refreshCustomerAddressBtn"
+                                data-url="<?= site_url('quotations/refresh-customer-address/' . (!empty($quote['public_id']) ? $quote['public_id'] : (int)$quote['id'])) ?>"
+                                title="Update address &amp; contact from the customer profile"
+                                aria-label="Update address and contact from the customer profile">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    <?php endif; ?>
                 </div>
+                <?php if (!empty($customer['name'])): ?>
+                    <div class="addr-name"><?= esc($customer['name']) ?></div>
+                <?php endif; ?>
+                <?php if ($addrLines): ?>
+                    <div class="addr-lines"><?= esc(implode(', ', $addrLines)) ?></div>
+                <?php endif; ?>
+                <?php if ($contactRows): ?>
+                    <dl class="addr-grid mb-0">
+                        <?php foreach ($contactRows as $label => $value): ?>
+                            <dt><?= esc($label) ?></dt>
+                            <dd><?= esc($value) ?></dd>
+                        <?php endforeach; ?>
+                    </dl>
+                <?php endif; ?>
+                <?php if (empty($customer['name']) && !$addrLines && !$contactRows): ?>
+                    <div class="text-muted" style="font-size:0.85rem;">No address on file</div>
+                <?php endif; ?>
+            </div>
+            <div class="so-date-chip">
+                <i class="bi bi-calendar-event" style="color:#94a3b8;"></i>
+                <span class="chip-label">Date</span>
+                <span class="chip-value"><?= esc($fmtDate ?: '-') ?></span>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2" data-doc-line-toolbar>
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="mb-0" style="font-size:1rem;">Lines</h5>
+                <?php $productLineCount = count(array_filter($lines, static fn($ln) => strtolower((string)($ln['display_type'] ?? 'line')) !== 'section')); ?>
+                <span class="badge rounded-pill text-bg-secondary" style="font-weight:600;"><?= $productLineCount ?></span>
+            </div>
+            <!-- right cluster: view option first, then actions, primary action last -->
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="form-check form-switch mb-0 me-1">
+                    <input class="form-check-input" type="checkbox" id="toggle-discount-tax">
+                    <label class="form-check-label text-muted" for="toggle-discount-tax" style="font-size:0.85rem;">Show Discount &amp; Tax</label>
+                </div>
+                <span class="vr d-none d-sm-block" style="opacity:.25;"></span>
+                <!-- pre-rendered so document_line_tools.js binds this one instead of
+                     appending its own Sort button at the end of the toolbar -->
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-doc-sort-btn="1" title="Reorder lines"><i class="bi bi-sort-down me-1"></i>Sort Lines</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-add-section-btn="1" title="Add a section heading"><i class="bi bi-type-bold me-1"></i>Add Heading</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btn-add-line" data-add-line-btn="1" title="Add a product line"><i class="bi bi-plus-lg me-1"></i>Add Product Line</button>
             </div>
         </div>
         <div class="table-responsive" data-doc-lines-root>
             <table class="table table-sm align-middle so-lines-table" style="font-size:0.9rem;" data-doc-line-type="quotation" data-doc-id="<?= esc((string)($quote['public_id'] ?? ($quote['id'] ?? ''))) ?>">
                 <thead>
                     <tr style="white-space:nowrap;">
-                        <th style="width:4%" class="text-center">No.</th>
-                        <th style="width:8%">Code</th>
-                        <th style="width:5%">Image</th>
-                        <th style="width:28%">Product / Description</th>
-                        <th style="width:5%">Unit</th>
-                        <th style="width:6%" class="text-end">Qty</th>
-                        <th style="width:9%" class="text-end">Unit Price</th>
-                        <th style="width:11%" class="text-end col-disc">Disc Type / Value</th>
-                        <th style="width:7%" class="text-end col-disc">Disc Amt</th>
-                        <th style="width:6%" class="text-end col-tax">Tax %</th>
-                        <th style="width:7%" class="text-end col-tax">Tax Amt</th>
-                        <th style="width:9%" class="text-end">Line Total</th>
-                        <th style="width:7%">Actions</th>
+                        <th style="width:44px" class="text-center">No.</th>
+                        <th style="width:110px">Code</th>
+                        <th style="width:56px">Image</th>
+                        <th style="width:260px">Product / Description</th>
+                        <th style="width:70px">Unit</th>
+                        <th style="width:90px" class="text-end">Qty</th>
+                        <th style="width:100px" class="text-end">Unit Price</th>
+                        <th style="width:150px" class="text-end col-disc">Disc Type / Value</th>
+                        <th style="width:90px" class="text-end col-disc">Disc Amt</th>
+                        <th style="width:150px" class="text-end col-tax">Tax Type / Value</th>
+                        <th style="width:90px" class="text-end col-tax">Tax Amt</th>
+                        <th style="width:100px" class="text-end">Line Total</th>
+                        <th style="width:150px">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -253,15 +556,8 @@ Quotation <?= esc($quote['quote_number']) ?>
                     $discountExcludeShipping = ((int)($quote['discount_exclude_shipping'] ?? 1) === 1);
                     $hasQuote = !empty($quote['id']);
                     $totalWeight = $hasQuote ? (float)($quote['total_weight'] ?? 0) : 0;
-                    $formatShipmentWeight = static function (float $kg): string {
-                        $kg = max(0.0, $kg);
-                        if ($kg >= 1) {
-                            return number_format($kg, 3) . ' kg';
-                        }
-                        $grams = $kg * 1000;
-                        return number_format($grams, 0) . ' g';
-                    };
-                    $displayShipmentWeight = $formatShipmentWeight($totalWeight);
+                    // 1 kg and above reads in kg, lighter reads in grams.
+                    $displayShipmentWeight = \App\Helpers\WeightHelper::formatShipment($totalWeight);
                     $showDiscCols = false;
                     $showTaxCols = false;
                     foreach ($lines as $ln) {
@@ -295,6 +591,12 @@ Quotation <?= esc($quote['quote_number']) ?>
                 </tbody>
             </table>
         </div>
+        <?php if (!$isConvertedToSalesOrder): ?>
+        <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap mt-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" data-add-section-btn="1" title="Add a section heading"><i class="bi bi-type-bold me-1"></i>Add Heading</button>
+            <button type="button" class="btn btn-sm btn-primary" data-add-line-btn="1" title="Add a product line"><i class="bi bi-plus-lg me-1"></i>Add Product Line</button>
+        </div>
+        <?php endif; ?>
         <div class="mt-3 d-flex justify-content-end">
             <div class="quote-summary-card">
                 <div class="summary-row" id="row-subtotal">
@@ -373,6 +675,139 @@ Quotation <?= esc($quote['quote_number']) ?>
     </div>
 </div>
 
+<!-- Payment Terms / instalment plan proposed with this quotation -->
+<?php
+    helper('invoice_terms');
+    $qSchedule = $paymentSchedule ?? ['has_schedule' => false, 'rows' => []];
+    $qTermName = trim((string)($qSchedule['term']['name'] ?? ''));
+    $qTermNote = invoice_short_note((string)($qSchedule['term']['description'] ?? ''));
+    $qCurrency = trim((string)($quote['quote_currency'] ?? ($quote['currency'] ?? '')));
+    $qMoney = static function ($v) use ($qCurrency) {
+        return number_format((float)$v, 2) . ($qCurrency !== '' ? ' ' . $qCurrency : '');
+    };
+    $qTermsAction = site_url('quotations/payment-terms/' . (!empty($quote['public_id']) ? $quote['public_id'] : (int)($quote['id'] ?? 0)));
+?>
+<div class="card mt-3 cl-detail-card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h5 class="mb-0" style="font-size:1rem;">
+                Payment Terms<?= $qTermName !== '' ? ' - ' . esc($qTermName) : '' ?>
+                <?php if ($qTermNote !== ''): ?>
+                    <span class="text-muted fw-normal" style="font-size:.8rem;">(<?= esc($qTermNote) ?>)</span>
+                <?php endif; ?>
+            </h5>
+            <?php if (!$isConvertedToSalesOrder): ?>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quotePaymentTermsModal">
+                    <i class="bi bi-calendar2-check me-1"></i><?= $qTermName !== '' ? 'Change Payment Terms' : 'Set Payment Terms' ?>
+                </button>
+            <?php endif; ?>
+        </div>
+
+        <?php if (empty($qSchedule['has_schedule'])): ?>
+            <div class="text-muted" style="font-size:0.9rem;">
+                No payment terms selected. The full amount falls due on a single date, and the invoice raised
+                after approval carries no instalment plan.
+            </div>
+        <?php else: ?>
+            <div class="table-responsive mb-2">
+                <table class="table table-sm align-middle" style="font-size:0.9rem;">
+                    <thead>
+                        <tr>
+                            <th style="width:4%;">#</th>
+                            <th>Instalment</th>
+                            <th class="text-end" style="width:8%;">%</th>
+                            <th style="width:26%;">Due</th>
+                            <th class="text-end" style="width:18%;">Amount</th>
+                            <th class="text-end" style="width:14%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($qSchedule['rows'] as $qRow): ?>
+                            <tr>
+                                <td><?= (int)$qRow['seq'] ?></td>
+                                <td class="fw-semibold"><?= esc($qRow['label']) ?></td>
+                                <td class="text-end"><?= esc(rtrim(rtrim(number_format((float)$qRow['percentage'], 2), '0'), '.')) ?>%</td>
+                                <td><?= esc($qRow['due_label']) ?></td>
+                                <td class="text-end"><?= esc($qMoney($qRow['amount'])) ?></td>
+                                <td class="text-end"><span class="badge bg-secondary">PAYABLE</span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end">
+                <table style="min-width:280px;font-size:.9rem;">
+                    <tr>
+                        <td class="text-muted py-1">Quotation Total</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($qMoney($qSchedule['total'])) ?></td>
+                    </tr>
+                    <tr style="border-top:1px solid #334155;">
+                        <td class="fw-bold pt-2">
+                            Payable On Approval<?= trim((string)($qSchedule['now_due_label'] ?? '')) !== '' ? ' - ' . esc($qSchedule['now_due_label']) : '' ?>
+                        </td>
+                        <td class="text-end fw-bold pt-2" style="font-size:1.05rem;"><?= esc($qMoney($qSchedule['now_due'])) ?></td>
+                    </tr>
+                    <?php if ((float)$qSchedule['due'] - (float)$qSchedule['now_due'] > 0.005): ?>
+                    <tr>
+                        <td class="text-muted py-1">Payable Later</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($qMoney((float)$qSchedule['due'] - (float)$qSchedule['now_due'])) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+            <div class="text-muted mt-2" style="font-size:.8rem;">
+                Instalment dates are set from the invoice date once the quotation is approved and invoiced.
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php if (!$isConvertedToSalesOrder): ?>
+<div class="modal fade" id="quotePaymentTermsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="<?= $qTermsAction ?>">
+            <?= csrf_field() ?>
+            <div class="modal-header">
+                <h5 class="modal-title">Payment Terms</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Payment Terms</label>
+                <select name="payment_term_id" class="form-select">
+                    <option value="">No payment terms (single due date)</option>
+                    <?php foreach (($paymentTermOptions ?? []) as $qTerm): ?>
+                        <option value="<?= (int)$qTerm['id'] ?>" <?= (int)($quote['payment_term_id'] ?? 0) === (int)$qTerm['id'] ? 'selected' : '' ?>>
+                            <?= esc($qTerm['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-text">
+                    Shown on the quotation and its PDF so the customer approves the payment plan with the quote.
+                    Amounts and lines are not affected. Manage the available terms under Settings &rarr; Payment Terms.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Payment Terms</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Tags Section -->
+<div class="card mt-3 cl-detail-card">
+    <div class="card-body">
+        <?php
+            $this->setVar('document_type', 'quotation');
+            $this->setVar('document_id', (int)$quote['id']);
+            $this->setVar('existing_tags', $tags ?? []);
+            $this->setVar('readonly', false);
+        ?>
+        <?= $this->include('components/tag_input') ?>
+    </div>
+</div>
+
     <script src="<?= base_url('assets/js/corelynk_autocomplete.js') ?>"></script>
     <script src="<?= base_url('assets/js/quotation_view_inline.js') ?>"></script>
     <script src="<?= base_url('assets/js/document_line_tools.js') ?>"></script>
@@ -405,9 +840,11 @@ Quotation <?= esc($quote['quote_number']) ?>
 
         function updateTotalsFromResponse(totals){
             if (!totals) return;
+            // Mirrors WeightHelper::formatShipment() so the live AJAX total reads
+            // the same as the server-rendered one.
             function formatShipmentWeight(kg){
-                var val = parseFloat(kg || 0) || 0;
-                if (val >= 1) return val.toFixed(3) + ' kg';
+                var val = Math.max(0, parseFloat(kg || 0) || 0);
+                if (val >= 1) return val.toFixed(3).replace(/\.?0+$/, '') + ' kg';
                 return Math.round(val * 1000) + ' g';
             }
             var elSub = document.getElementById('view-subtotal');
@@ -642,4 +1079,22 @@ Quotation <?= esc($quote['quote_number']) ?>
 
 <?= $this->include('partials/_document_log') ?>
 
+
+<script>
+// Pull the customer's current primary address/contact onto this quotation. The
+// endpoint refuses once the quotation has become a sales order.
+document.getElementById('refreshCustomerAddressBtn')?.addEventListener('click', function () {
+    const btn = this;
+    if (!confirm('Update this quotation's address & contact from the customer profile?')) return;
+    btn.disabled = true;
+    fetch(btn.dataset.url, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.json().catch(() => ({ success: false, error: 'Unexpected response' })))
+        .then(resp => {
+            if (resp.success) { location.reload(); return; }
+            alert(resp.error || 'Could not update the address.');
+            btn.disabled = false;
+        })
+        .catch(() => { alert('Could not update the address.'); btn.disabled = false; });
+});
+</script>
 <?= $this->endSection() ?>

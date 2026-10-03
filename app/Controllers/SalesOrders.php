@@ -13,9 +13,7 @@ use App\Models\CustomerInvoiceModel;
 use App\Models\CompanySettingsModel;
 use App\Models\Accounting\CurrencyModel;
 use App\Models\FeatureFlagModel;
-use App\Libraries\DocumentLogger;
 use App\Libraries\InvoicePdfGenerator;
-use App\Libraries\RoleDataAccess;
 
 class SalesOrders extends BaseController
 {
@@ -25,6 +23,81 @@ class SalesOrders extends BaseController
     protected $customerModel;
     protected $invoiceService;
     protected $invoiceModel;
+
+    /**
+     * Keep the quotation's richer product-line snapshot while including headings
+     * added directly to the sales order after conversion. Matching heading titles
+     * are consumed by occurrence count so converted headings are not duplicated.
+     */
+    private function mergeSalesOrderOnlySections(array $preferredLines, array $salesOrderLines): array
+    {
+        $preferredSectionCounts = [];
+        foreach ($preferredLines as $line) {
+            if (strtolower((string)($line['display_type'] ?? 'line')) !== 'section') {
+                continue;
+            }
+            $titleKey = strtolower(trim((string)($line['section_title'] ?? $line['description'] ?? '')));
+            $preferredSectionCounts[$titleKey] = ($preferredSectionCounts[$titleKey] ?? 0) + 1;
+        }
+
+        $customBlocks = [];
+        $activeCustomBlock = null;
+        foreach ($salesOrderLines as $line) {
+            if (strtolower((string)($line['display_type'] ?? 'line')) !== 'section') {
+                if ($activeCustomBlock !== null) {
+                    $customBlocks[$activeCustomBlock]['products'][] = $line;
+                }
+                continue;
+            }
+            $titleKey = strtolower(trim((string)($line['section_title'] ?? $line['description'] ?? '')));
+            if (($preferredSectionCounts[$titleKey] ?? 0) > 0) {
+                $preferredSectionCounts[$titleKey]--;
+                $activeCustomBlock = null;
+                continue;
+            }
+            $customBlocks[] = ['section' => $line, 'products' => []];
+            $activeCustomBlock = count($customBlocks) - 1;
+        }
+
+        if (empty($customBlocks)) {
+            return $preferredLines;
+        }
+
+        $preferredProductBuckets = [];
+        foreach ($preferredLines as $index => $line) {
+            if (strtolower((string)($line['display_type'] ?? 'line')) === 'section') continue;
+            $key = (int)($line['product_id'] ?? 0) . ':' . (int)($line['product_variant_id'] ?? ($line['variant_id'] ?? 0));
+            $preferredProductBuckets[$key][] = $index;
+        }
+
+        $movedPreferredIndexes = [];
+        foreach ($customBlocks as &$block) {
+            $resolvedProducts = [];
+            foreach ($block['products'] as $salesLine) {
+                $key = (int)($salesLine['product_id'] ?? 0) . ':' . (int)($salesLine['product_variant_id'] ?? ($salesLine['variant_id'] ?? 0));
+                if (!empty($preferredProductBuckets[$key])) {
+                    $preferredIndex = array_shift($preferredProductBuckets[$key]);
+                    $movedPreferredIndexes[$preferredIndex] = true;
+                    $resolvedProducts[] = $preferredLines[$preferredIndex];
+                } else {
+                    $resolvedProducts[] = $salesLine;
+                }
+            }
+            $block['products'] = $resolvedProducts;
+        }
+        unset($block);
+
+        $merged = [];
+        foreach ($preferredLines as $index => $line) {
+            if (!isset($movedPreferredIndexes[$index])) $merged[] = $line;
+        }
+        foreach ($customBlocks as $block) {
+            $merged[] = $block['section'];
+            foreach ($block['products'] as $line) $merged[] = $line;
+        }
+
+        return $merged;
+    }
 
     /**
      * Accepts DD-MM-YYYY or YYYY-MM-DD and returns YYYY-MM-DD
@@ -200,13 +273,10 @@ class SalesOrders extends BaseController
         try { $customer = $this->customerModel->find((int)($order['customer_id'] ?? 0)); } catch (\Throwable $_) { $customer = null; }
         $address = null;
         try {
-            $addrModel = new CustomerAddressModel();
-            $addr = $addrModel->where('customer_id', (int)($order['customer_id'] ?? 0))
-                ->orderBy('is_billing', 'DESC')
-                ->orderBy('is_shipping', 'DESC')
-                ->orderBy('id', 'ASC')
-                ->first();
-            $address = $addr ?: null;
+            // Render what this order was issued with, not the live customer.
+            helper('customer_snapshot');
+            $address = customer_snapshot_address($order, (int)($order['customer_id'] ?? 0)) ?: null;
+            $customer = customer_snapshot_contact($order, $customer);
             // Load country name if country_id exists
             if (!empty($address) && !empty($address['country_id'])) {
                 try {
@@ -223,8 +293,40 @@ class SalesOrders extends BaseController
         $data['customer'] = $customer;
         $data['customerAddress'] = $address;
 
-        // Prefer quotation lines when available (carry discount/tax/product metadata)
-        $lines = $quoteWithLines['lines'] ?? $this->lineModel->where('sales_order_id', $orderId)->findAll();
+        $realLines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
+        $data['movableSections'] = array_values(array_filter($realLines, static function ($line) {
+            return strtolower((string)($line['display_type'] ?? 'line')) === 'section';
+        }));
+
+        // Prefer quotation product metadata, but retain headings added directly
+        // to this sales order after it was converted.
+        $lines = !empty($quoteWithLines['lines'])
+            ? $this->mergeSalesOrderOnlySections($quoteWithLines['lines'], $realLines)
+            : $realLines;
+
+        // Quotation lines carry quotation_lines.id, not sales_order_lines.id. Stock
+        // reservation (exclude_sales_order_line_id) and the preparation panel both
+        // key off the real sales order line — with the wrong id, this order's own
+        // demand never gets excluded from itself and "available" collapses to 0.
+        if (!empty($quoteWithLines['lines'])) {
+            $realIdsByProduct = [];
+            foreach ($realLines as $rl) {
+                if (strtolower((string)($rl['display_type'] ?? 'line')) === 'section') {
+                    continue;
+                }
+                $key = (int) ($rl['product_id'] ?? 0) . ':' . (int) ($rl['product_variant_id'] ?? 0);
+                $realIdsByProduct[$key][] = (int) $rl['id'];
+            }
+            foreach ($lines as &$ln) {
+                if (strtolower((string)($ln['display_type'] ?? 'line')) === 'section') {
+                    continue;
+                }
+                $key = (int) ($ln['product_id'] ?? 0) . ':' . (int) ($ln['product_variant_id'] ?? 0);
+                $ln['quotation_line_id'] = $ln['id'] ?? null;
+                $ln['id'] = (int) (! empty($realIdsByProduct[$key]) ? array_shift($realIdsByProduct[$key]) : 0);
+            }
+            unset($ln);
+        }
 
         // Enrich lines with product metadata and calculated discount/tax similar to quotation view
         try {
@@ -594,10 +696,21 @@ class SalesOrders extends BaseController
                 
                 if ($isStockable && $productId) {
                     $pType = isset($fullProduct) ? strtolower((string)($fullProduct['product_type'] ?? '')) : '';
-                    $availability = $inventoryService->getAvailability($productId, $variantId, $pType);
+                    $availability = $inventoryService->getAvailability($productId, $variantId, $pType, [
+                        'exclude_sales_order_line_id' => $lineId,
+                    ]);
                     $line['on_hand'] = $availability['on_hand'] ?? 0;
                     $line['reserved'] = $availability['reserved'] ?? 0;
                     $line['available'] = $availability['available'] ?? 0;
+                    $line['stock_locations'] = [];
+                    $line['reserved_for_line'] = 0.0;
+                    try {
+                        $resSvc = new \App\Services\StockReservationService();
+                        $line['reserved_for_line'] = $resSvc->lineReserved($lineId, $productId, $variantId);
+                        if ($line['available'] > 0) {
+                            $line['stock_locations'] = $resSvc->locationAvailability($productId, $variantId, $lineId);
+                        }
+                    } catch (\Throwable $_) {}
                     $shippedQty = (float)($readyMap[$lineId]['shipped_qty'] ?? 0);
                     $remainingQty = (float)($readyMap[$lineId]['remaining_qty'] ?? $orderedQty);
                     $remainingQty = max(0, $remainingQty);
@@ -710,15 +823,73 @@ class SalesOrders extends BaseController
             return $weightValue;
         };
 
+        // sales_order_lines stores no unit_weight column, so resolve it from the
+        // variant/product master or every order reports a zero shipment weight.
+        $productWeights = [];
+        $variantWeights = [];
+        try {
+            $db = \Config\Database::connect();
+            $productIds = array_values(array_unique(array_filter(array_map(static function ($l) {
+                return (int)($l['product_id'] ?? 0);
+            }, $data['lines']))));
+            $variantIds = array_values(array_unique(array_filter(array_map(static function ($l) {
+                return (int)($l['product_variant_id'] ?? 0);
+            }, $data['lines']))));
+
+            if ($productIds) {
+                $productCols = $db->getFieldNames('products');
+                $select = ['id'];
+                foreach (['unit_weight', 'weight', 'weight_unit'] as $col) {
+                    if (in_array($col, $productCols, true)) $select[] = $col;
+                }
+                foreach ($db->table('products')->select(implode(',', $select))->whereIn('id', $productIds)->get()->getResultArray() as $row) {
+                    $w = (float)($row['unit_weight'] ?? 0);
+                    if ($w <= 0) $w = (float)($row['weight'] ?? 0);
+                    $productWeights[(int)$row['id']] = ['weight' => $w, 'unit' => $row['weight_unit'] ?? 'kg'];
+                }
+            }
+
+            if ($variantIds && $db->tableExists('product_variants')) {
+                $variantCols = $db->getFieldNames('product_variants');
+                if (in_array('weight', $variantCols, true)) {
+                    $vSelect = ['id', 'weight'];
+                    if (in_array('weight_unit', $variantCols, true)) $vSelect[] = 'weight_unit';
+                    foreach ($db->table('product_variants')->select(implode(',', $vSelect))->whereIn('id', $variantIds)->get()->getResultArray() as $row) {
+                        $variantWeights[(int)$row['id']] = ['weight' => (float)($row['weight'] ?? 0), 'unit' => $row['weight_unit'] ?? null];
+                    }
+                }
+            }
+        } catch (\Throwable $_) {
+            // best effort: fall back to whatever the line itself carries
+        }
+
         $orderedWeightKg = 0.0;
         $remainingWeightKg = 0.0;
+        $weightUnitsUsed = [];
         foreach ($data['lines'] as $line) {
             $isStockable = (bool)($line['is_stockable'] ?? true);
             if (!$isStockable) {
                 continue;
             }
             $unitWeightRaw = (float)($line['unit_weight'] ?? ($line['weight'] ?? 0));
-            $unitWeightKg = $toKg($unitWeightRaw, $line['weight_unit'] ?? null);
+            $weightUnit = $line['weight_unit'] ?? null;
+            $vid = (int)($line['product_variant_id'] ?? 0);
+            $pid = (int)($line['product_id'] ?? 0);
+            if ($unitWeightRaw <= 0) {
+                if ($vid > 0 && !empty($variantWeights[$vid]['weight'])) {
+                    $unitWeightRaw = (float)$variantWeights[$vid]['weight'];
+                } elseif ($pid > 0 && !empty($productWeights[$pid]['weight'])) {
+                    $unitWeightRaw = (float)$productWeights[$pid]['weight'];
+                }
+            }
+            // The product/variant record owns the unit; a stale unit stored on the
+            // line (older documents defaulted to KG) must not inflate the weight.
+            if ($vid > 0 && !empty($variantWeights[$vid]['unit'])) {
+                $weightUnit = $variantWeights[$vid]['unit'];
+            } elseif ($pid > 0 && !empty($productWeights[$pid]['unit'])) {
+                $weightUnit = $productWeights[$pid]['unit'];
+            }
+            $unitWeightKg = $toKg($unitWeightRaw, $weightUnit);
             if ($unitWeightKg <= 0) {
                 continue;
             }
@@ -728,7 +899,11 @@ class SalesOrders extends BaseController
                 : $orderedQty;
             $orderedWeightKg += ($orderedQty * $unitWeightKg);
             $remainingWeightKg += (max(0.0, $requiredQty) * $unitWeightKg);
+            $weightUnitsUsed[strtolower(trim((string)($weightUnit ?: 'kg')))] = true;
         }
+
+        // Display in the unit picked on the products when they all agree.
+        $data['shipmentWeightUnit'] = count($weightUnitsUsed) === 1 ? (string)array_key_first($weightUnitsUsed) : null;
 
         $data['orderedWeightKg'] = round($orderedWeightKg, 2);
         $data['estimatedShipmentWeightKg'] = round($remainingWeightKg, 2);
@@ -748,7 +923,625 @@ class SalesOrders extends BaseController
             }
         } catch (\Throwable $_) {}
 
+        try {
+            $data['tags'] = (new \App\Services\TagService())->getTagsForDocument('sales_order', $orderId);
+        } catch (\Throwable $_) {
+            $data['tags'] = [];
+        }
+
+        $data['orderId'] = $orderId;
+
+        try {
+            $data['preparationExecution'] = $this->buildPreparationExecutionData($data['lines'], $orderId);
+        } catch (\Throwable $e) {
+            log_message('error', 'buildPreparationExecutionData failed for SO ' . $orderId . ': ' . $e->getMessage());
+            $data['preparationExecution'] = [];
+        }
+
+        try {
+            $data['vendorJobPos'] = \Config\Database::connect()->table('purchase_order_lines pol')
+                ->select('po.id, po.po_number, po.status, po.total, v.name AS vendor_name, COUNT(pol.id) AS lot_count')
+                ->join('purchase_orders po', 'po.id = pol.po_id', 'inner')
+                ->join('vendors v', 'v.id = po.vendor_id', 'left')
+                ->join('vendor_send_notes vsn', 'vsn.id = pol.vendor_send_note_id', 'inner')
+                ->where('vsn.sales_order_id', $orderId)
+                ->groupBy('po.id, po.po_number, po.status, po.total, v.name')
+                ->orderBy('po.id', 'DESC')
+                ->get()->getResultArray();
+        } catch (\Throwable $_) {
+            $data['vendorJobPos'] = [];
+        }
+
+        // The "Create Job PO(s)" action only has something to do once a lot has been
+        // sent/completed at a vendor, priced, and not already turned into a PO line
+        // (mirrors VendorJobPoService::createForSalesOrder's own selection query).
+        // Without this check the button stayed visible forever, inviting a second,
+        // empty "no un-invoiced lots" click even after everything was already billed.
+        try {
+            $data['hasUninvoicedVendorLots'] = \Config\Database::connect()->table('vendor_send_notes vsn')
+                ->join('vendor_send_note_items vsni', 'vsni.send_note_id = vsn.id', 'inner')
+                ->where('vsn.sales_order_id', $orderId)
+                ->whereIn('vsn.status', ['sent', 'completed'])
+                ->where('vsni.unit_price >', 0)
+                ->where('NOT EXISTS (SELECT 1 FROM purchase_order_lines pol WHERE pol.vendor_send_note_id = vsn.id)', null, false)
+                ->countAllResults() > 0;
+        } catch (\Throwable $_) {
+            $data['hasUninvoicedVendorLots'] = true;
+        }
+
+        try {
+            $data['relatedDocuments'] = $this->buildRelatedDocuments($orderId);
+        } catch (\Throwable $e) {
+            log_message('error', 'buildRelatedDocuments failed for SO ' . $orderId . ': ' . $e->getMessage());
+            $data['relatedDocuments'] = [];
+        }
+
+        $policy = service('policy');
+        $data['canQuickStock'] = $policy->isAdmin()
+            || (
+                $policy->can('inventory', 'read')
+                && $policy->can('inventory', 'edit')
+                && $policy->can('sales_orders', 'read')
+            );
+
+        if ($this->request->getGet('tab') === 'prep' || $this->request->getHeaderLine('X-CoreLynk-Partial') === 'prep') {
+            return view('sales_orders/partials/preparation_execution', $data);
+        }
+
         return view('sales_orders/view', $data);
+    }
+
+    /**
+     * Every document this sales order fanned out to, in one flat timeline:
+     * lots sent to vendors for job work, the receipts back, the payable POs
+     * those lots were bundled into, the bills raised against those POs, the
+     * delivery order(s) shipped to the customer, and the customer invoice(s).
+     * Read-only / best-effort: any failure here must never break the SO page.
+     */
+    private function buildRelatedDocuments(int $orderId): array
+    {
+        $db = \Config\Database::connect();
+        $docs = [];
+
+        // 1. Lots sent to vendors for job work (coloring, plasma coating, etc.)
+        $sendNotes = $db->table('vendor_send_notes vsn')
+            ->select('vsn.id, vsn.reference_no, vsn.qty, vsn.status, vsn.created_at, v.name AS vendor_name, ps.name AS step_name, p.name AS product_name')
+            ->join('vendors v', 'v.id = vsn.vendor_id', 'left')
+            ->join('preparation_steps ps', 'ps.id = vsn.step_id', 'left')
+            ->join('products p', 'p.id = vsn.product_id', 'left')
+            ->where('vsn.sales_order_id', $orderId)
+            ->orderBy('vsn.id', 'ASC')
+            ->get()->getResultArray();
+        foreach ($sendNotes as $row) {
+            $docs[] = [
+                'type' => 'Sent to Vendor',
+                'icon' => 'bi-truck',
+                'badge' => 'primary',
+                'number' => $row['reference_no'],
+                'party' => $row['vendor_name'] ?? '—',
+                'detail' => trim(($row['step_name'] ?? 'Job work') . ' — ' . ($row['product_name'] ?? '') . ' · ' . number_format((float) $row['qty'], 2) . ' pcs'),
+                'date' => $row['created_at'],
+                'status' => ucfirst($row['status']),
+                'amount' => null,
+                'url' => site_url('vendor-receive/' . (int) $row['id']),
+            ];
+        }
+
+        // 2. Lots received back from vendors (QC'd, ready to become PO lines)
+        $receiveNotes = $db->table('vendor_receive_notes vrn')
+            ->select('vrn.id, vrn.reference_no, vrn.created_at, vrn.qc_passed, vrn.bill_id, v.name AS vendor_name, vsn.reference_no AS send_reference_no')
+            ->join('vendors v', 'v.id = vrn.vendor_id', 'left')
+            ->join('vendor_send_notes vsn', 'vsn.id = vrn.send_note_id', 'left')
+            ->where('vsn.sales_order_id', $orderId)
+            ->orderBy('vrn.id', 'ASC')
+            ->get()->getResultArray();
+        foreach ($receiveNotes as $row) {
+            $qcLabel = $row['qc_passed'] === null ? 'Received' : ($row['qc_passed'] ? 'QC Passed' : 'QC Failed');
+            $docs[] = [
+                'type' => 'Received from Vendor',
+                'icon' => 'bi-box-arrow-in-down',
+                'badge' => 'info',
+                'number' => $row['reference_no'],
+                'party' => $row['vendor_name'] ?? '—',
+                'detail' => 'Against ' . ($row['send_reference_no'] ?? '—'),
+                'date' => $row['created_at'],
+                'status' => $qcLabel,
+                'amount' => null,
+                'url' => site_url('vendor-receive/note/' . (int) $row['id'] . '/slip'),
+            ];
+        }
+
+        // 3. Payable POs the vendor lots were bundled into
+        $jobPos = $db->table('purchase_order_lines pol')
+            ->select('po.id, po.po_number, po.status, po.total, po.order_date, v.name AS vendor_name, COUNT(pol.id) AS lot_count')
+            ->join('purchase_orders po', 'po.id = pol.po_id', 'inner')
+            ->join('vendors v', 'v.id = po.vendor_id', 'left')
+            ->join('vendor_send_notes vsn', 'vsn.id = pol.vendor_send_note_id', 'inner')
+            ->where('vsn.sales_order_id', $orderId)
+            ->groupBy('po.id, po.po_number, po.status, po.total, po.order_date, v.name')
+            ->orderBy('po.id', 'ASC')
+            ->get()->getResultArray();
+        $jobPoIds = [];
+        foreach ($jobPos as $row) {
+            $jobPoIds[] = (int) $row['id'];
+            $docs[] = [
+                'type' => 'Vendor Job PO',
+                'icon' => 'bi-receipt-cutoff',
+                'badge' => 'secondary',
+                'number' => $row['po_number'],
+                'party' => $row['vendor_name'] ?? '—',
+                'detail' => (int) $row['lot_count'] . ' lot(s)',
+                'date' => $row['order_date'],
+                'status' => ucfirst(str_replace('_', ' ', $row['status'])),
+                'amount' => (float) $row['total'],
+                'url' => site_url('new-purchase-orders/' . (int) $row['id']),
+            ];
+        }
+
+        // 4. Vendor bills raised against those job POs
+        if (! empty($jobPoIds)) {
+            $bills = $db->table('vendor_bills vb')
+                ->select('vb.id, vb.bill_number, vb.status, vb.total_amount, vb.balance, vb.bill_date, v.name AS vendor_name')
+                ->join('vendors v', 'v.id = vb.vendor_id', 'left')
+                ->whereIn('vb.po_id', $jobPoIds)
+                ->orderBy('vb.id', 'ASC')
+                ->get()->getResultArray();
+            foreach ($bills as $row) {
+                $docs[] = [
+                    'type' => 'Vendor Bill',
+                    'icon' => 'bi-receipt',
+                    'badge' => 'warning',
+                    'number' => $row['bill_number'] ?: ('Bill #' . $row['id']),
+                    'party' => $row['vendor_name'] ?? '—',
+                    'detail' => 'Balance ' . number_format((float) $row['balance'], 2),
+                    'date' => $row['bill_date'],
+                    'status' => ucfirst(str_replace('_', ' ', $row['status'])),
+                    'amount' => (float) $row['total_amount'],
+                    'url' => site_url('vendor-bills/' . (int) $row['id']),
+                ];
+            }
+        }
+
+        // 5. Delivery order(s) shipped to the customer
+        if ($db->tableExists('delivery_orders')) {
+            $dos = $db->table('delivery_orders')
+                ->select('id, do_number, status, created_at')
+                ->where('sales_order_id', $orderId)
+                ->orderBy('id', 'ASC')
+                ->get()->getResultArray();
+            foreach ($dos as $row) {
+                $docs[] = [
+                    'type' => 'Delivery Order',
+                    'icon' => 'bi-box-seam',
+                    'badge' => 'success',
+                    'number' => $row['do_number'],
+                    'party' => 'Customer',
+                    'detail' => '',
+                    'date' => $row['created_at'] ?? null,
+                    'status' => ucfirst($row['status']),
+                    'amount' => null,
+                    'url' => site_url('delivery-orders/view/' . (int) $row['id']),
+                ];
+            }
+        }
+
+        // 6. Customer invoice(s) raised for this order
+        if ($db->tableExists('customer_invoices')) {
+            $invoices = $db->table('customer_invoices')
+                ->select('id, invoice_number, status, total_amount, issue_date')
+                ->where('sales_order_id', $orderId)
+                ->where('deleted_at', null)
+                ->orderBy('id', 'ASC')
+                ->get()->getResultArray();
+            foreach ($invoices as $row) {
+                $docs[] = [
+                    'type' => 'Customer Invoice',
+                    'icon' => 'bi-file-earmark-text',
+                    'badge' => 'dark',
+                    'number' => $row['invoice_number'],
+                    'party' => 'Customer',
+                    'detail' => '',
+                    'date' => $row['issue_date'],
+                    'status' => ucfirst(str_replace('_', ' ', $row['status'])),
+                    'amount' => (float) $row['total_amount'],
+                    'url' => site_url('customer-invoices/view/' . (int) $row['id']),
+                ];
+            }
+        }
+
+        usort($docs, static function ($a, $b) {
+            return strtotime((string) ($a['date'] ?? '1970-01-01')) <=> strtotime((string) ($b['date'] ?? '1970-01-01'));
+        });
+
+        return $docs;
+    }
+
+    /**
+     * For each distinct product on the order that has an active Preparation Profile,
+     * build the ordered list of steps with their current execution status (from
+     * processing_records). A step can only be actioned once the base material for
+     * that product is actually in stock (uses the same availability figures the
+     * order lines table already shows) — otherwise it's shown as blocked with a
+     * pointer to the existing Auto-Create RFQ action.
+     * Read-only / best-effort: any failure here must never break the SO page.
+     */
+    private function buildPreparationExecutionData(array $lines, int $orderId): array
+    {
+        $profileModel = new \App\Models\PreparationProfileModel();
+        $stepModel = new \App\Models\PreparationStepModel();
+        $recordModel = new \App\Models\ProcessingRecordModel();
+        $componentModel = new \App\Models\PreparationComponentModel();
+        $db = \Config\Database::connect();
+        $reservationService = new \App\Services\StockReservationService($db);
+
+        $vendorModel = new \App\Models\VendorModel();
+        $vendorsById = [];
+        foreach ($vendorModel->where('is_active', 1)->orderBy('name', 'ASC')->findAll() as $v) {
+            $vendorsById[(int) $v['id']] = $v;
+        }
+
+        // "Send to vendor" destination points — only places that belong to a vendor
+        // (branch / office / working setup). Our own storage locations are never
+        // valid drop-off points, so they are excluded outright; the modal narrows
+        // this list further to the vendor picked on the form.
+        $destLocations = (new \App\Models\WarehouseLocationModel())->getVendorLocations();
+
+        $blocks = [];
+        $seenProducts = [];
+
+        foreach ($lines as $line) {
+            if (strtolower((string)($line['display_type'] ?? 'line')) === 'section') {
+                continue;
+            }
+            $productId = (int) ($line['product_id'] ?? 0);
+            $variantId = (int) ($line['product_variant_id'] ?? ($line['variant_id'] ?? 0));
+            $lineKey = (int) ($line['id'] ?? 0);
+            if ($lineKey <= 0) {
+                $lineKey = $productId . ':' . $variantId;
+            }
+            if ($productId <= 0 || isset($seenProducts[$lineKey])) {
+                continue;
+            }
+            $seenProducts[$lineKey] = true;
+
+            $profiles = $profileModel->getForProductOrVariant($productId, $variantId, true);
+            $profile = $profiles[0] ?? null;
+            if (! $profile) {
+                continue;
+            }
+
+            $steps = $stepModel->getByProfile((int) $profile['id']);
+            if (empty($steps)) {
+                continue;
+            }
+
+            $lineQty = (float) ($line['quantity'] ?? 0);
+            $components = $componentModel->getByProfileWithProduct((int) $profile['id']);
+
+            // Once a batch has entered step 1 (sent to a vendor, or done in-house),
+            // that quantity has already left the material's raw stock — it's WIP or
+            // finished, not something still waiting to be picked. Only the portion of
+            // the line that hasn't started yet can still be "short" on material.
+            $firstStepId = (int) ($steps[0]['id'] ?? 0);
+            $firstStepSummary = $firstStepId > 0
+                ? $recordModel->qtySummaryForStep($productId, $firstStepId, (int) ($line['id'] ?? 0))
+                : ['done' => 0.0, 'open' => 0.0];
+            $vendorOutstandingQty = 0.0;
+            $lineIdForVendorCheck = (int) ($line['id'] ?? 0);
+            if ($lineIdForVendorCheck > 0) {
+                $vendorOutstandingRows = $db->table('vendor_send_notes vsn')
+                    ->select('vsn.id, vsn.qty, vsn.qty_rerouted, COALESCE((SELECT SUM(vri.qty_received)
+                        FROM vendor_receive_notes vrn
+                        INNER JOIN vendor_receive_items vri ON vri.receive_note_id = vrn.id
+                        WHERE vrn.send_note_id = vsn.id), 0) AS qty_received', false)
+                    ->where('vsn.product_id', $productId)
+                    ->where('vsn.sales_order_id', $orderId)
+                    ->where('vsn.sales_order_line_id', $lineIdForVendorCheck)
+                    ->whereIn('vsn.status', ['draft', 'sent'])
+                    ->get()
+                    ->getResultArray();
+                foreach ($vendorOutstandingRows as $vendorRow) {
+                    $vendorOutstandingQty += max(0.0, (float) ($vendorRow['qty'] ?? 0) - (float) ($vendorRow['qty_received'] ?? 0) - (float) ($vendorRow['qty_rerouted'] ?? 0));
+                }
+            }
+            // Only the current sales-order line should be flagged as already sent.
+            // Other pending batches remain visible and can still be sent or rerouted.
+            $alreadyAllocated = (float) $firstStepSummary['done'] + (float) $firstStepSummary['open'] + $vendorOutstandingQty;
+            $notYetStarted = max(0.0, $lineQty - $alreadyAllocated);
+
+            // Readiness is about the MATERIAL the profile consumes, not the finished
+            // product sitting on the order line — a made-to-order item is always 0 on
+            // hand, so the line's own availability would block every step forever.
+            // Fall back to the line figures only when the profile lists no components.
+            // Non-stockable lines (services) never carry 'available'/'shortage'.
+            $available = array_key_exists('available', $line) ? (float) $line['available'] : null;
+            $shortage = array_key_exists('shortage', $line) ? (float) $line['shortage'] : 0.0;
+            $materialProductId = $productId;
+            $materialName = '';
+            $materialCode = '';
+            $materialNeeded = 0.0;
+           
+            $requiredMaterials = [];
+
+            $requiredComponents = array_values(array_filter($components, static function ($c) {
+                return empty($c['is_optional']) && (int) ($c['product_id'] ?? 0) > 0;
+            }));
+            if ($requiredComponents && $notYetStarted > 0.0001) {
+                $availabilityService = new \App\Services\InventoryAvailabilityService();
+                $shortage = 0.0;
+                $available = null;
+                foreach ($requiredComponents as $comp) {
+                    $compProductId = (int) $comp['product_id'];
+                    $compVariantId = (int) ($comp['variant_id'] ?? 0) ?: null;
+                    $needQty = (float) ($comp['qty_per_unit'] ?? 0) * $notYetStarted;
+                    $av = $availabilityService->getAvailability($compProductId, $compVariantId, '', [
+                        'exclude_sales_order_line_id' => (int) ($line['id'] ?? 0),
+                    ]);
+                    if ($av === null) {
+                        continue; // service component — nothing to hold in stock
+                    }
+                    $componentLocations = $reservationService->locationAvailability($compProductId, $compVariantId, (int) ($line['id'] ?? 0));
+                    $reservedForOrder = array_sum(array_map(
+                        static fn ($location) => (float) ($location['reserved_for_order'] ?? 0),
+                        $componentLocations
+                    ));
+                    $compAvailable = (float) ($av['available'] ?? 0);
+                    $compShortage = max(0.0, $needQty - $compAvailable);
+                    $shortage += $compShortage;
+                    $requiredMaterials[] = [
+                        'product_id' => $compProductId,
+                        'variant_id' => $compVariantId,
+                        'name' => trim(($comp['product_name'] ?? '') . ' ' . ($comp['variant_name'] ?? '')),
+                        'code' => $comp['variant_art_number'] ?? ($comp['product_code'] ?? ''),
+                        'needed' => $needQty,
+                        'available' => $compAvailable,
+                        'on_hand' => (float) ($av['on_hand'] ?? 0),
+                        'reserved' => (float) ($av['reserved'] ?? 0),
+                        'reserved_for_order' => $reservedForOrder,
+                        'stock_locations' => $componentLocations,
+                        'shortage' => $compShortage,
+                    ];
+                    if ($available === null) {
+                        // ponytail: the in-house/vendor modal picks one location, so it
+                        // follows the first required component. Split per component only
+                        // if multi-material profiles start needing separate pick lists.
+                        $available = $compAvailable;
+                        $materialProductId = $compProductId;
+                        $materialName = trim(($comp['product_name'] ?? '') . ' ' . ($comp['variant_name'] ?? ''));
+                        $materialCode = $comp['variant_art_number'] ?? ($comp['product_code'] ?? '');
+                        $materialNeeded = $needQty;
+                    }
+                }
+            } elseif ($requiredComponents) {
+                // Whole line already started/finished — nothing left to source.
+                $firstComp = $requiredComponents[0];
+                $materialProductId = (int) $firstComp['product_id'];
+                $materialName = trim(($firstComp['product_name'] ?? '') . ' ' . ($firstComp['variant_name'] ?? ''));
+                $materialCode = $firstComp['variant_art_number'] ?? ($firstComp['product_code'] ?? '');
+                $availabilityService = new \App\Services\InventoryAvailabilityService();
+                foreach ($requiredComponents as $comp) {
+                    $compProductId = (int) $comp['product_id'];
+                    $compVariantId = (int) ($comp['variant_id'] ?? 0) ?: null;
+                    $av = $availabilityService->getAvailability($compProductId, $compVariantId, '', [
+                        'exclude_sales_order_line_id' => (int) ($line['id'] ?? 0),
+                    ]);
+                    if ($av === null) {
+                        continue;
+                    }
+                    $componentLocations = $reservationService->locationAvailability($compProductId, $compVariantId, (int) ($line['id'] ?? 0));
+                    $requiredMaterials[] = [
+                        'product_id' => $compProductId,
+                        'variant_id' => $compVariantId,
+                        'name' => trim(($comp['product_name'] ?? '') . ' ' . ($comp['variant_name'] ?? '')),
+                        'code' => $comp['variant_art_number'] ?? ($comp['product_code'] ?? ''),
+                        'needed' => 0.0,
+                        'available' => (float) ($av['available'] ?? 0),
+                        'on_hand' => (float) ($av['on_hand'] ?? 0),
+                        'reserved' => (float) ($av['reserved'] ?? 0),
+                        'reserved_for_order' => array_sum(array_map(
+                            static fn ($location) => (float) ($location['reserved_for_order'] ?? 0),
+                            $componentLocations
+                        )),
+                        'stock_locations' => $componentLocations,
+                        'shortage' => 0.0,
+                    ];
+                }
+            }
+            $materialReady = $shortage <= 0.0001;
+
+            // Only the locations that actually hold stock of the material —
+            // never the full location list.
+            $stockLocations = [];
+            if ($materialReady) {
+                foreach ($requiredMaterials as $requiredMaterial) {
+                    if ((int) $requiredMaterial['product_id'] === $materialProductId) {
+                        $stockLocations = $requiredMaterial['stock_locations'] ?? [];
+                        break;
+                    }
+                }
+            }
+
+            $stepRows = [];
+            foreach ($steps as $step) {
+                $stepId = (int) $step['id'];
+
+                $latestRecordQuery = $recordModel
+                    ->where('product_id', $productId)
+                    ->where('step_id', $stepId);
+                if ((int) ($line['id'] ?? 0) > 0) {
+                    $latestRecordQuery->where('sales_order_line_id', (int) $line['id']);
+                }
+                $latestRecord = $latestRecordQuery
+                    ->orderBy('id', 'DESC')
+                    ->first();
+
+                $options = $db->table('step_execution_options')
+                    ->where('step_id', $stepId)
+                    ->where('is_active', 1)
+                    ->get()
+                    ->getResultArray();
+
+                $allowInhouse = false;
+                $vendorOptions = [];
+                foreach ($options as $opt) {
+                    if ($opt['execution_type'] === 'inhouse') {
+                        $allowInhouse = true;
+                    } elseif ($opt['execution_type'] === 'vendor') {
+                        $vid = (int) ($opt['vendor_id'] ?? 0);
+                        if ($vid > 0 && isset($vendorsById[$vid])) {
+                            $vendorOptions[$vid] = [
+                                'vendor_id' => $vid,
+                                'vendor_name' => $vendorsById[$vid]['name'],
+                                'service_price' => $opt['service_price'],
+                                'currency' => $opt['currency'] ?: 'PKR',
+                                'is_default' => ! empty($opt['is_default']),
+                            ];
+                        }
+                    }
+                }
+
+                // A step can be executed in partial batches, so "done" is measured in
+                // quantity against the line, not by the latest record's status.
+                $qtySummary = $recordModel->qtySummaryForStep($productId, $stepId, (int) ($line['id'] ?? 0));
+                $doneQty = (float) $qtySummary['done'];
+                $openQty = (float) $qtySummary['open'];
+                $remainingQty = max(0.0, $lineQty - $doneQty - $openQty);
+
+                $openRecordQuery = $recordModel
+                    ->where('product_id', $productId)
+                    ->where('step_id', $stepId)
+                    ->whereIn('status', ['in_progress', 'ready_for_qc']);
+                if ((int) ($line['id'] ?? 0) > 0) {
+                    $openRecordQuery->where('sales_order_line_id', (int) $line['id']);
+                }
+                $openRecord = $openRecordQuery
+                    ->orderBy('id', 'DESC')
+                    ->first();
+
+                $stepRows[] = [
+                    'step' => $step,
+                    'status' => $latestRecord['status'] ?? 'not_started',
+                    'record' => $openRecord ?: ($latestRecord ?: null),
+                    'allow_inhouse' => $allowInhouse,
+                    'vendor_options' => array_values($vendorOptions),
+                    'done_qty' => $doneQty,
+                    'open_qty' => $openQty,
+                    'remaining_qty' => $remainingQty,
+                    'is_done' => $lineQty > 0 && $doneQty + 0.0001 >= $lineQty,
+                ];
+            }
+
+            $shipmentQuery = $db->table('vendor_send_notes vsn')
+                ->select('vsn.id, vsn.reference_no, vsn.vendor_id, vsn.step_id, vsn.qty, vsn.qty_rerouted, vsn.to_location_id, vsn.status, vsn.created_at, v.name AS vendor_name, ps.name AS step_name')
+                ->select('COALESCE((SELECT SUM(vri.qty_received) FROM vendor_receive_notes vrn
+                            INNER JOIN vendor_receive_items vri ON vri.receive_note_id = vrn.id
+                            WHERE vrn.send_note_id = vsn.id), 0) AS qty_received', false)
+                ->join('vendors v', 'v.id = vsn.vendor_id', 'left')
+                ->join('preparation_steps ps', 'ps.id = vsn.step_id', 'left')
+                ->where('vsn.product_id', $productId)
+                ->where('vsn.sales_order_id', $orderId)
+                ->whereIn('vsn.status', ['draft', 'sent', 'cancelled']);
+
+            if ((int) ($line['id'] ?? 0) > 0) {
+                $shipmentQuery->where('vsn.sales_order_line_id', (int) $line['id']);
+            }
+
+            $rawShipments = $shipmentQuery->orderBy('vsn.id', 'ASC')->get()->getResultArray();
+            $openShipments = [];
+            $cancelledShipments = [];
+
+            foreach ($rawShipments as $shipment) {
+                if (($shipment['status'] ?? '') === 'cancelled') {
+                    $cancelledShipments[] = [
+                        'id' => (int) $shipment['id'],
+                        'reference_no' => $shipment['reference_no'],
+                        'vendor_id' => (int) $shipment['vendor_id'],
+                        'vendor_name' => $shipment['vendor_name'] ?? 'Vendor',
+                        'step_name' => $shipment['step_name'] ?? '',
+                        'qty' => (float) $shipment['qty'],
+                        'created_at' => $shipment['created_at'],
+                        'status' => 'cancelled',
+                    ];
+                    continue;
+                }
+
+                $outstanding = (float) $shipment['qty'] - (float) $shipment['qty_received'] - (float) ($shipment['qty_rerouted'] ?? 0);
+                if ($outstanding <= 0.0001) {
+                    continue;
+                }
+                $shipment['outstanding_qty'] = $outstanding;
+
+                // Reroute vendor options: step-configured vendors first, followed by all other active vendors
+                $rerouteVendorOptions = [];
+                foreach ($stepRows as $stepRow) {
+                    if ((int) $stepRow['step']['id'] === (int) $shipment['step_id']) {
+                        foreach ($stepRow['vendor_options'] as $vo) {
+                            if ((int) $vo['vendor_id'] !== (int) $shipment['vendor_id']) {
+                                $rerouteVendorOptions[(int) $vo['vendor_id']] = [
+                                    'vendor_id' => (int) $vo['vendor_id'],
+                                    'vendor_name' => $vo['vendor_name'],
+                                    'service_price' => $vo['service_price'] ?? null,
+                                    'currency' => $vo['currency'] ?? 'PKR',
+                                    'is_step_vendor' => true,
+                                ];
+                            }
+                        }
+                        break;
+                    }
+                }
+                foreach ($vendorsById as $vid => $v) {
+                    if ($vid !== (int) $shipment['vendor_id'] && ! isset($rerouteVendorOptions[$vid])) {
+                        $rerouteVendorOptions[$vid] = [
+                            'vendor_id' => $vid,
+                            'vendor_name' => $v['name'],
+                            'service_price' => null,
+                            'currency' => 'PKR',
+                            'is_step_vendor' => false,
+                        ];
+                    }
+                }
+                $shipment['vendor_options'] = array_values($rerouteVendorOptions);
+                $openShipments[] = $shipment;
+            }
+
+            $product = $db->table('products')->select('id, name, code')->where('id', $productId)->get()->getRowArray();
+
+            $blocks[] = [
+                'product_id' => $productId,
+                'product_name' => $product['name'] ?? ('Product #' . $productId),
+                'product_description' => $line['description'] ?? '',
+                'variant_name' => $line['variant_name'] ?? '',
+                'product_code' => ! empty($line['variant_code'])
+                    ? $line['variant_code']
+                    : ($line['product_code'] ?? ($product['code'] ?? '')),
+                'sales_order_line_id' => (int) ($line['id'] ?? 0),
+                'line_qty' => $lineQty,
+                'available' => $available,
+                'shortage' => max(0.0, $shortage),
+                'material_ready' => $materialReady,
+                'material_product_id' => $materialProductId,
+                'material_name' => $materialName,
+                'material_code' => $materialCode,
+                'material_needed' => $materialNeeded,
+                'required_materials' => $requiredMaterials,
+                'profile' => $profile,
+                'components' => $components,
+                'steps' => $stepRows,
+                'stock_locations' => $stockLocations,
+                'open_shipments' => $openShipments,
+                'cancelled_shipments' => $cancelledShipments,
+            ];
+        }
+
+        return [
+            'blocks' => $blocks,
+            'dest_locations' => $destLocations,
+            'all_vendors' => array_values(array_map(static fn ($v) => [
+                'vendor_id' => (int) $v['id'],
+                'vendor_name' => $v['name'],
+            ], $vendorsById)),
+            'reservations' => $reservationService->reservationsForOrder($orderId),
+        ];
     }
 
     public function pdf($id)
@@ -775,19 +1568,14 @@ class SalesOrders extends BaseController
             $customer = [];
         }
 
-        $customerAddress = [];
-        try {
-            $addrModel = new CustomerAddressModel();
-            $customerAddress = $addrModel->where('customer_id', (int)($order['customer_id'] ?? 0))
-                ->orderBy('is_billing', 'DESC')
-                ->orderBy('is_shipping', 'DESC')
-                ->orderBy('id', 'ASC')
-                ->first() ?: [];
-        } catch (\Throwable $_) {
-            $customerAddress = [];
-        }
+        helper('customer_snapshot');
+        $customerAddress = customer_snapshot_address($order, (int)($order['customer_id'] ?? 0));
+        $customer = customer_snapshot_contact($order, $customer ?? []);
 
-        $lines = $quoteWithLines['lines'] ?? $this->lineModel->where('sales_order_id', $orderId)->orderBy('id', 'ASC')->findAll();
+        $salesOrderLines = $this->lineModel->where('sales_order_id', $orderId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
+        $lines = !empty($quoteWithLines['lines'])
+            ? $this->mergeSalesOrderOnlySections($quoteWithLines['lines'], $salesOrderLines)
+            : $salesOrderLines;
         $pdfLines = [];
         foreach ($lines as $line) {
             $qty = (float)($line['quantity'] ?? 0);
@@ -795,6 +1583,8 @@ class SalesOrders extends BaseController
             $lineTotal = isset($line['line_total']) ? (float)$line['line_total'] : ($qty * $unitPrice);
             $pdfLines[] = [
                 'id' => $line['id'] ?? null,
+                'display_type' => $line['display_type'] ?? 'line',
+                'section_title' => $line['section_title'] ?? null,
                 'product_id' => $line['product_id'] ?? null,
                 'product_variant_id' => $line['product_variant_id'] ?? null,
                 'product_code' => $line['product_code'] ?? ($line['code'] ?? null),
@@ -832,15 +1622,22 @@ class SalesOrders extends BaseController
             'document_date_label' => 'Date:',
             'document_prefix' => '',
             'party_label' => 'Bill To',
+            'hide_company_logo' => (int)($company['pdf_so_hide_logo'] ?? 0),
             'pdf_show_header_address' => (int)($company['pdf_so_show_header'] ?? 1),
             'pdf_show_footer' => (int)($company['pdf_so_show_footer'] ?? 1),
         ];
 
+        $template = strtolower(trim((string)$this->request->getGet('template')));
+        if (in_array($template, ['odoo_boxed', 'odoo_style'], true)) {
+            $payload['pdf_template'] = 'odoo_boxed';
+        }
+
         $pdf = (new InvoicePdfGenerator())->generateSystemInvoice($payload);
         if (is_array($pdf) && !empty($pdf['path']) && is_file($pdf['path'])) {
             $safeNumber = preg_replace('/[^A-Za-z0-9\-_]/', '_', (string)($order['order_number'] ?? ('SO-' . $orderId))) ?: ('SO-' . $orderId);
+            $suffix = in_array($template, ['odoo_boxed', 'odoo_style'], true) ? '_odoo_boxed' : '';
             return $this->response->download($pdf['path'], null)
-                ->setFileName('sales_order_' . $safeNumber . '.pdf')
+                ->setFileName('sales_order_' . $safeNumber . $suffix . '.pdf')
                 ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
                 ->setHeader('Pragma', 'no-cache')
                 ->setHeader('Expires', '0');
@@ -1540,6 +2337,17 @@ class SalesOrders extends BaseController
                 ->with('info', 'This quotation is already converted to a sales order.');
         }
 
+        // A quotation with no real product lines (ignoring section headers) must never become a sales order.
+        $quoteLinesForGuard = $this->quotationModel->getQuotationLines((int)$quotationId);
+        $realLineCount = 0;
+        foreach ($quoteLinesForGuard as $qlg) {
+            if (($qlg['display_type'] ?? '') === 'section') continue;
+            $realLineCount++;
+        }
+        if ($realLineCount === 0) {
+            return redirect()->back()->with('error', 'This quotation has no product lines. Add at least one line item before converting it to a sales order.');
+        }
+
         // basic conversion (same logic as Quotations controller)
         $shippingAmount = isset($quote['shipping_amount']) ? (float)$quote['shipping_amount'] : 0.0;
 
@@ -1563,18 +2371,7 @@ class SalesOrders extends BaseController
         $subtotal = $quote['subtotal'] ?? 0;
         $baseTotal = isset($quote['total']) ? (float)$quote['total'] : ((float)$subtotal + (float)$taxTotal + (float)$shippingAmount);
 
-        // Conversion numbering: preserve quotation sequence RI-Q0045 -> RI-S0045 when possible.
-        $quoteNumber = trim((string)($quote['quote_number'] ?? ''));
-        $derivedFromQuote = $this->deriveSalesOrderNumberFromQuotationNumber($quoteNumber);
-        if ($derivedFromQuote !== '' && $this->model->where('order_number', $derivedFromQuote)->countAllResults() === 0) {
-            $orderNo = $derivedFromQuote;
-        } else {
-            $prefix = (string)($this->getDocPrefix('sales_order') ?? 'RI');
-            $orderNo = $this->generateNextDocNumber('sales_order', $prefix);
-        }
-
         $orderData = [
-            'order_number' => $orderNo,
             'quotation_id' => $quotationId,
             'customer_id' => $quote['customer_id'],
             'order_date' => date('Y-m-d'),
@@ -1604,56 +2401,111 @@ class SalesOrders extends BaseController
                 // legacy installs
                 $orderData['shipping_cost'] = $shippingAmount;
             }
-        }
-
-        // Insert order with graceful fallback if shipping column is still absent
-        $orderId = null;
-        try {
-            $orderId = $this->model->insert($orderData);
-        } catch (\Throwable $e) {
-            $msg = strtolower($e->getMessage());
-            if (strpos($msg, 'unknown column') !== false && (strpos($msg, 'shipping_amount') !== false || strpos($msg, 'shipping_cost') !== false)) {
-                unset($orderData['shipping_amount'], $orderData['shipping_cost']);
-                $orderId = $this->model->insert($orderData);
-            } else {
-                throw $e;
+            if (in_array('document_discount_type', $orderCols)) {
+                $orderData['document_discount_type'] = $quote['document_discount_type'] ?? 'fixed';
+            }
+            if (in_array('document_discount_value', $orderCols)) {
+                $orderData['document_discount_value'] = $quote['document_discount_value'] ?? 0;
+            }
+            if (in_array('discount_exclude_shipping', $orderCols)) {
+                $orderData['discount_exclude_shipping'] = $quote['discount_exclude_shipping'] ?? 0;
+            }
+            // Carry the quotation's frozen address/contact onto the order.
+            if (in_array('customer_snapshot', $orderCols, true)) {
+                helper('customer_snapshot');
+                $orderData['customer_snapshot'] = !empty($quote['customer_snapshot'])
+                    ? $quote['customer_snapshot']
+                    : customer_snapshot_json((int)($quote['customer_id'] ?? 0));
             }
         }
-        if ($orderId) {
+
+        // BUG-CONV-001 fix: the header insert, line copy, and quotation-flag update must all
+        // succeed or all roll back together — previously these were three independent,
+        // unguarded steps and a partial failure could leave a Sales Order with missing lines,
+        // or a converted Sales Order whose source quotation was never flagged as converted
+        // (bypassing the duplicate-conversion guard above).
+        $orderId = null;
+        try {
+            $db->transStart();
+
+            // Conversion numbering: preserve quotation sequence RI-Q0045 -> RI-S0045 when possible.
+            // Generated inside the same transaction as the insert (BUG-CONV-002) so the
+            // FOR UPDATE lock taken by generateNextDocNumber() actually serializes concurrent
+            // conversions/creates against the row it just read.
+            $quoteNumber = trim((string)($quote['quote_number'] ?? ''));
+            $derivedFromQuote = $this->deriveSalesOrderNumberFromQuotationNumber($quoteNumber);
+            if ($derivedFromQuote !== '' && $this->model->where('order_number', $derivedFromQuote)->countAllResults() === 0) {
+                $orderNo = $derivedFromQuote;
+            } else {
+                $prefix = (string)($this->getDocPrefix('sales_order') ?? 'RI');
+                $orderNo = $this->generateNextDocNumber('sales_order', $prefix, $db);
+            }
+            $orderData['order_number'] = $orderNo;
+
+            // Insert order with graceful fallback if shipping column is still absent
+            try {
+                $orderId = $this->model->insert($orderData);
+            } catch (\Throwable $e) {
+                $msg = strtolower($e->getMessage());
+                if (strpos($msg, 'unknown column') !== false && (strpos($msg, 'shipping_amount') !== false || strpos($msg, 'shipping_cost') !== false)) {
+                    unset($orderData['shipping_amount'], $orderData['shipping_cost']);
+                    $orderId = $this->model->insert($orderData);
+                } else {
+                    throw $e;
+                }
+            }
+            if (!$orderId) {
+                throw new \RuntimeException('Failed to create sales order header.');
+            }
+
             // QuotationModel does not expose a hasMany() relation; use its helper instead
             $lines = $this->quotationModel->getQuotationLines((int)$quotationId);
             foreach ($lines as $l) {
-                $this->lineModel->insert([
+                $lineId = $this->lineModel->insert([
                     'sales_order_id' => $orderId,
                     'product_id' => $l['product_id'],
                     'product_variant_id' => $l['product_variant_id'] ?? null,
                     'description' => $l['description'],
                     'quantity' => $l['quantity'],
                     'unit_price' => $l['unit_price'],
-                    'line_total' => $l['line_total']
+                    'line_total' => $l['line_total'],
+                    'discount_type' => $l['discount_type'] ?? null,
+                    'discount_value' => $l['discount_value'] ?? 0,
+                    'discount_amount' => $l['discount_amount'] ?? 0,
+                    'tax_type' => $l['tax_type'] ?? null,
+                    'tax_value' => $l['tax_value'] ?? 0,
+                    'tax_rate' => $l['tax_rate'] ?? 0,
+                    'tax_amount' => $l['tax_amount'] ?? 0,
                 ]);
-            }
-
-            // Update quotation as converted/confirmed (schema-safe)
-            try {
-                $db->transStart();
-                $qCols = [];
-                try { $qCols = $db->getFieldNames('quotations'); } catch (\Throwable $_) { $qCols = []; }
-                $upd = [];
-                // User wants: after converting, quotation should show confirmed
-                if (in_array('status', $qCols)) $upd['status'] = 'confirmed';
-                if (in_array('converted_to_sales_order_id', $qCols)) $upd['converted_to_sales_order_id'] = (int)$orderId;
-                if (!empty($upd)) {
-                    $db->table('quotations')->where('id', (int)$quotationId)->update($upd);
+                if (!$lineId) {
+                    throw new \RuntimeException('Failed to copy a quotation line to the sales order.');
                 }
-                $db->transComplete();
-            } catch (\Throwable $_) {
-                // best-effort
             }
 
-            return redirect()->to('/sales-orders/view/' . $orderId)->with('success','Sales order created');
+            // Update quotation as converted/confirmed (schema-safe) — part of the same transaction now.
+            $qCols = [];
+            try { $qCols = $db->getFieldNames('quotations'); } catch (\Throwable $_) { $qCols = []; }
+            $upd = [];
+            // 'converted' is a quotations.status ENUM value (see migration
+            // 2026-08-28-000001). Writing anything outside the ENUM silently
+            // stored '' and dropped the quotation out of every list UI.
+            if (in_array('status', $qCols)) $upd['status'] = 'converted';
+            if (in_array('converted_to_sales_order_id', $qCols)) $upd['converted_to_sales_order_id'] = (int)$orderId;
+            if (!empty($upd)) {
+                $db->table('quotations')->where('id', (int)$quotationId)->update($upd);
+            }
+
+            $committed = $db->transComplete();
+            if ($committed === false || $db->transStatus() === false) {
+                throw new \RuntimeException('Conversion transaction failed to commit.');
+            }
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'createFromQuotation failed for quotation ' . $quotationId . ': ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to convert quotation to sales order. No changes were saved.');
         }
-        return redirect()->back()->with('error','Failed to create order');
+
+        return redirect()->to('/sales-orders/view/' . $orderId)->with('success','Sales order created');
     }
 
     /**
@@ -1679,9 +2531,9 @@ class SalesOrders extends BaseController
      * Generate next sequential document number.
      * Format: <PREFIX>-S0001 for sales orders, <PREFIX>-Q0001 for quotations.
      */
-    private function generateNextDocNumber(string $type, string $prefix): string
+    private function generateNextDocNumber(string $type, string $prefix, $db = null): string
     {
-        $db = \Config\Database::connect();
+        $db = $db ?? \Config\Database::connect();
 
         // Both quotations and sales orders use S-series (RI-S0001)
         $type = $type === 'quotation' ? 'quotation' : 'sales_order';
@@ -1695,13 +2547,15 @@ class SalesOrders extends BaseController
         $fullPrefix = $prefix . '-' . $letter;
 
         try {
-            $row = $db->table($table)
-                ->select($field)
-                ->like($field, $fullPrefix . '%', 'after')
-                ->orderBy('id', 'DESC')
-                ->limit(1)
-                ->get()
-                ->getRowArray();
+            // BUG-CONV-002 fix: lock the tail row for this prefix (same FOR UPDATE pattern as
+            // QuotationModel::generateQuoteNumber()) so concurrent callers serialize instead of
+            // both reading the same "last" number and generating a duplicate. Only effective when
+            // called from inside the same transaction as the insert that consumes this number —
+            // createFromQuotation() now does this (app/Controllers/SalesOrders.php:~1592-1600).
+            $escaped = str_replace("'", "''", $fullPrefix) . '%';
+            $row = $db->query(
+                "SELECT `{$field}` FROM `{$table}` WHERE `{$field}` LIKE '{$escaped}' ORDER BY id DESC LIMIT 1 FOR UPDATE"
+            )->getRowArray();
 
             $last = (string)($row[$field] ?? '');
             $num = 0;
@@ -1777,6 +2631,19 @@ class SalesOrders extends BaseController
             $customerId = (int)($post['customer_id'] ?? 0);
             if (!$customerId) throw new \RuntimeException('Please select a customer');
 
+            $hasAtLeastOneLine = false;
+            if (isset($post['lines']) && is_array($post['lines'])) {
+                foreach ($post['lines'] as $lnCheck) {
+                    if (is_array($lnCheck) && (float)($lnCheck['quantity'] ?? 0) > 0) {
+                        $hasAtLeastOneLine = true;
+                        break;
+                    }
+                }
+            }
+            if (!$hasAtLeastOneLine) {
+                throw new \RuntimeException('At least one product line is required.');
+            }
+
             $currency = strtoupper(trim((string)($post['currency'] ?? '')));
             if ($currency === '') {
                 $currency = $this->getDefaultSalesCurrency();
@@ -1810,7 +2677,7 @@ class SalesOrders extends BaseController
             // Calculate totals from lines
             $subtotal = 0.0;
             foreach ($linesIn as $ln) {
-                $subtotal += (float)$ln['quantity'] * (float)$ln['unit_price'];
+                $subtotal += (float)($ln['quantity'] ?? 0) * (float)($ln['unit_price'] ?? 0);
             }
             $taxTotal = 0.0; // keep simple for now (tax per line is not modeled in sales_order_lines)
             $total = round($subtotal + $taxTotal + $shippingAmount, 2);
@@ -1832,6 +2699,10 @@ class SalesOrders extends BaseController
                 if (in_array('currency_code', $orderCols)) $header['currency_code'] = $currency;
                 if (in_array('shipping_amount', $orderCols)) $header['shipping_amount'] = round($shippingAmount, 2);
                 elseif (in_array('shipping_cost', $orderCols)) $header['shipping_cost'] = round($shippingAmount, 2);
+                if (in_array('customer_snapshot', $orderCols, true)) {
+                    helper('customer_snapshot');
+                    $header['customer_snapshot'] = customer_snapshot_json($customerId);
+                }
             }
 
             $orderId = $this->model->insert($header);
@@ -1905,6 +2776,14 @@ class SalesOrders extends BaseController
             if (in_array('sales_order_id', $ciCols)) {
                 $header['sales_order_id'] = (int)$orderId;
             }
+            // The invoice keeps the address/contact the order carried; an issued
+            // invoice must never re-read the live customer profile.
+            if (in_array('customer_snapshot', $ciCols, true)) {
+                helper('customer_snapshot');
+                $header['customer_snapshot'] = !empty($order['customer_snapshot'])
+                    ? $order['customer_snapshot']
+                    : customer_snapshot_json((int)($order['customer_id'] ?? 0));
+            }
         } catch (\Throwable $_) {
             // ignore
         }
@@ -1970,6 +2849,9 @@ class SalesOrders extends BaseController
             $invLines[] = [
                 'product_code' => $l['product_code'] ?? null,
                 'product_id' => $l['product_id'],
+                // Without this the invoice forgets which variant was sold, and
+                // the PDF has no art_number to print as the product code.
+                'product_variant_id' => !empty($l['product_variant_id']) ? (int)$l['product_variant_id'] : null,
                 'description' => $l['description'],
                 'unit' => $l['unit'] ?? null,
                 'quantity' => $qty,
@@ -2053,9 +2935,277 @@ class SalesOrders extends BaseController
     }
 
     /**
+     * Undo a quotation-to-sales-order conversion: deletes the sales order and its
+     * lines, and reverts the source quotation back to 'draft' with the
+     * converted_to_sales_order_id link cleared.
+     *
+     * Only allowed while the order is "unconfirmed" in the practical sense — no
+     * downstream fulfillment/finance activity exists yet (no delivery order,
+     * invoice, vendor PO/RFQ mapping, vendor advance, receive rejection, vendor
+     * send note, or service bill references this order) and it hasn't shipped
+     * or closed. This guard is what makes the undo safe: if anything downstream
+     * already happened, resetting would silently orphan those records.
+     */
+    /**
+     * POST sales-orders/{id}/refresh-customer-address
+     *
+     * Re-freezes the customer's current primary address + contact onto a sales
+     * order that has not left the draft stage. A confirmed order, or one that
+     * already has an invoice, delivery order or any other downstream record,
+     * is refused: those documents were issued to a party at an address, and
+     * restating it after the fact is exactly the exploit this guard exists for.
+     * The supported path for those is Reset to Quotation, fix the address on
+     * the quotation, then confirm again.
+     */
+    public function refreshCustomerAddress($id = null)
+    {
+        $this->requirePermission('sales_orders.edit');
+
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'POST required']);
+        }
+
+        $order = $this->model->findByPublicIdOrId($id);
+        if (!$order) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Sales order not found']);
+        }
+
+        $orderId    = (int) $order['id'];
+        $customerId = (int) ($order['customer_id'] ?? 0);
+        if ($customerId <= 0) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'This order has no customer.']);
+        }
+
+        $db = \Config\Database::connect();
+        $db->transBegin();
+        try {
+            $db->query('SELECT id FROM sales_orders WHERE id = ? FOR UPDATE', [$orderId]);
+            $fresh = $this->model->find($orderId);
+            if (!$fresh) {
+                throw new \RuntimeException('Sales order not found');
+            }
+
+            $status = strtolower(trim((string) ($fresh['status'] ?? '')));
+            if (!in_array($status, ['', 'draft'], true)) {
+                throw new \RuntimeException('This order is "' . $status . '". Reset it to quotation to change the address, then confirm again.');
+            }
+
+            // Same downstream set resetToQuotation blocks on: anything that has
+            // already consumed this order must pin its address.
+            $dependentTables = [
+                'delivery_orders'           => 'sales_order_id',
+                'customer_invoices'         => 'sales_order_id',
+                'processing_records'        => 'sales_order_id',
+                'sales_order_line_po_map'   => 'sales_order_id',
+                'vendor_advances'           => 'sales_order_id',
+                'vendor_receive_rejections' => 'sales_order_id',
+                'vendor_send_notes'         => 'sales_order_id',
+                'vendor_service_bills'      => 'sales_order_id',
+            ];
+            $blockers = [];
+            foreach ($dependentTables as $table => $col) {
+                try {
+                    if (!$db->tableExists($table)) continue;
+                    if ($db->table($table)->where($col, $orderId)->countAllResults() > 0) {
+                        $blockers[] = str_replace('_', ' ', $table);
+                    }
+                } catch (\Throwable $_) {
+                    // table/column missing on this install — nothing to block on
+                }
+            }
+            if (!empty($blockers)) {
+                throw new \RuntimeException('Cannot change the address: this order already has related records (' . implode(', ', $blockers) . ').');
+            }
+
+            helper('customer_snapshot');
+            $snapshot = customer_snapshot_capture($customerId);
+            if (empty($snapshot['line1']) && empty($snapshot['line2']) && empty($snapshot['city_name'])) {
+                throw new \RuntimeException('This customer has no address on file. Add one on the customer profile first.');
+            }
+
+            $db->table('sales_orders')->where('id', $orderId)->update([
+                'customer_snapshot' => json_encode($snapshot),
+                'updated_at'        => date('Y-m-d H:i:s'),
+            ]);
+
+            if ($db->transStatus() === false) {
+                throw new \RuntimeException('Transaction failed');
+            }
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $e->getMessage()]);
+        }
+
+        $old = customer_snapshot_decode($order);
+        DocumentLogger::log(DocumentLogger::TYPE_SALES_ORDER, $orderId, DocumentLogger::ACTION_FIELD_CHANGED, [
+            'field' => 'customer_address',
+            'from'  => trim(($old['line1'] ?? '') . ' ' . ($old['city_name'] ?? '')),
+            'to'    => trim(($snapshot['line1'] ?? '') . ' ' . ($snapshot['city_name'] ?? '')),
+            'note'  => 'Address & contact refreshed from the customer profile',
+        ]);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Address & contact updated from the customer profile.',
+        ]);
+    }
+
+    public function resetToQuotation($id = null)
+    {
+        $this->requirePermission('sales_orders.edit');
+
+        $isAjax = $this->request->isAJAX() || strpos((string)$this->request->getHeaderLine('Accept'), 'application/json') !== false;
+
+        $order = $this->model->findByPublicIdOrId($id);
+        if (!$order) {
+            if ($isAjax) return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Sales order not found']);
+            return redirect()->to('/sales-orders')->with('error', 'Sales order not found');
+        }
+        $orderId = (int) $order['id'];
+        $quotationId = (int) ($order['quotation_id'] ?? 0);
+
+        if ($quotationId <= 0) {
+            $msg = 'This sales order was not created from a quotation and cannot be reset.';
+            if ($isAjax) return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $msg]);
+            return redirect()->to('/sales-orders/view/' . $orderId)->with('error', $msg);
+        }
+
+        $status = strtolower(trim((string)($order['status'] ?? '')));
+        if (!in_array($status, ['draft', 'confirmed'], true)) {
+            $msg = 'Only unconfirmed orders can be reset to quote. This order is already "' . $status . '".';
+            if ($isAjax) return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $msg]);
+            return redirect()->to('/sales-orders/view/' . $orderId)->with('error', $msg);
+        }
+
+        $db = \Config\Database::connect();
+
+        // Guard: block if any downstream record already references this order.
+        $dependentTables = [
+            'delivery_orders'           => 'sales_order_id',
+            'customer_invoices'         => 'sales_order_id',
+            'processing_records'        => 'sales_order_id',
+            'sales_order_line_po_map'   => 'sales_order_id',
+            'vendor_advances'           => 'sales_order_id',
+            'vendor_receive_rejections' => 'sales_order_id',
+            'vendor_send_notes'         => 'sales_order_id',
+            'vendor_service_bills'      => 'sales_order_id',
+        ];
+        $blockers = [];
+        foreach ($dependentTables as $table => $col) {
+            try {
+                if (!$db->tableExists($table)) continue;
+                $cnt = $db->table($table)->where($col, $orderId)->countAllResults();
+                if ($cnt > 0) $blockers[] = str_replace('_', ' ', $table);
+            } catch (\Throwable $_) {
+                // table/column missing on this install — nothing to block on
+            }
+        }
+        if (!empty($blockers)) {
+            $msg = 'Cannot reset: this order already has related records (' . implode(', ', $blockers) . '). Cancel/remove those first.';
+            if ($isAjax) return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $msg]);
+            return redirect()->to('/sales-orders/view/' . $orderId)->with('error', $msg);
+        }
+
+        $quote = $this->quotationModel->find($quotationId);
+        if (!$quote) {
+            $msg = 'Source quotation no longer exists; cannot reset.';
+            if ($isAjax) return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $msg]);
+            return redirect()->to('/sales-orders/view/' . $orderId)->with('error', $msg);
+        }
+
+        try {
+            $db->transStart();
+
+            // Lock the order row so a concurrent reset/cancel/invoice can't race us.
+            $db->query('SELECT id FROM sales_orders WHERE id = ? FOR UPDATE', [$orderId]);
+
+            $this->lineModel->where('sales_order_id', $orderId)->delete();
+            $this->model->delete($orderId);
+
+            $qCols = [];
+            try { $qCols = $db->getFieldNames('quotations'); } catch (\Throwable $_) { $qCols = []; }
+            $qUpd = [];
+            if (in_array('status', $qCols, true)) $qUpd['status'] = 'draft';
+            if (in_array('converted_to_sales_order_id', $qCols, true)) $qUpd['converted_to_sales_order_id'] = null;
+            if (!empty($qUpd)) {
+                $db->table('quotations')->where('id', $quotationId)->update($qUpd);
+            }
+
+            $committed = $db->transComplete();
+            if ($committed === false || $db->transStatus() === false) {
+                throw new \RuntimeException('Reset transaction failed to commit.');
+            }
+        } catch (\Throwable $e) {
+            try { $db->transRollback(); } catch (\Throwable $_) {}
+            log_message('error', 'resetToQuotation failed for sales order ' . $orderId . ': ' . $e->getMessage());
+            $msg = 'Failed to reset sales order: ' . $e->getMessage();
+            if ($isAjax) return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $msg]);
+            return redirect()->to('/sales-orders/view/' . $orderId)->with('error', $msg);
+        }
+
+        DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $quotationId, DocumentLogger::ACTION_STATUS_CHANGED, [
+            'from' => $quote['status'] ?? $status,
+            'to'   => 'draft',
+            'note' => 'Reset from sales order ' . ($order['order_number'] ?? ('#' . $orderId)),
+        ]);
+
+        $quoteViewId = $quote['public_id'] ?? $quotationId;
+        if ($isAjax) {
+            return $this->response->setJSON(['success' => true, 'quotation_id' => $quotationId, 'redirect' => site_url('quotations/view/' . $quoteViewId)]);
+        }
+        return redirect()->to(site_url('quotations/view/' . $quoteViewId))->with('success', 'Sales order reset — back to quotation.');
+    }
+
+    /**
      * Phase-2: Auto-Create RFQ Drafts from Sales Order
      * Creates draft RFQs for items with stock shortages, grouped by vendor
      */
+    public function reserveLineStock()
+    {
+        $this->requireAuth();
+        $this->requirePermission('sales_orders.edit');
+
+        $salesOrderId = (int) ($this->request->getPost('sales_order_id') ?? 0);
+        $variantId = (int) ($this->request->getPost('variant_id') ?? 0);
+        $result = (new \App\Services\StockReservationService())->reserveDirectStock(
+            $salesOrderId,
+            (int) ($this->request->getPost('sales_order_line_id') ?? 0),
+            (int) ($this->request->getPost('product_id') ?? 0),
+            $variantId > 0 ? $variantId : null,
+            (int) ($this->request->getPost('location_id') ?? 0),
+            (float) ($this->request->getPost('quantity') ?? 0),
+            (int) (session()->get('user_id') ?? session()->get('id') ?? 0)
+        );
+
+        if ($result['ok']) {
+            return redirect()->to('/sales-orders/view/' . $salesOrderId)->with('success', $result['message']);
+        }
+        return redirect()->to('/sales-orders/view/' . $salesOrderId)->with('error', $result['message']);
+    }
+
+    public function releaseLineReservation()
+    {
+        $this->requireAuth();
+        $this->requirePermission('sales_orders.edit');
+
+        $salesOrderId = (int) ($this->request->getPost('sales_order_id') ?? 0);
+        $reservationId = (int) ($this->request->getPost("reservation_id") ?? 0);
+        $lineId = (int) ($this->request->getPost("sales_order_line_id") ?? 0);
+        $userId = (int) (session()->get("user_id") ?? session()->get("id") ?? 0);
+        $svc = new \App\Services\StockReservationService();
+        if ($lineId > 0 && $reservationId === 0) {
+            $result = $svc->releaseLineReservations($lineId, $salesOrderId, $userId);
+        } else {
+            $result = $svc->release($reservationId, $salesOrderId, $userId);
+        }
+
+        if ($result['ok']) {
+            return redirect()->to('/sales-orders/view/' . $salesOrderId)->with('success', $result['message']);
+        }
+        return redirect()->to('/sales-orders/view/' . $salesOrderId)->with('error', $result['message']);
+    }
+
     public function createPurchaseDrafts($id = null)
     {
         $this->requireAuth();
@@ -2109,8 +3259,9 @@ class SalesOrders extends BaseController
 
             $errorMsg = $result['message'] ?? 'Failed to create RFQ drafts';
             if ($isAjax) {
-                return $this->response->setStatusCode(422)->setJSON([
+                return $this->response->setStatusCode(empty($result['nothing_to_purchase']) ? 422 : 200)->setJSON([
                     'success' => false,
+                    'nothing_to_purchase' => ! empty($result['nothing_to_purchase']),
                     'message' => $errorMsg,
                     'missing_vendor_items' => $result['missing_vendor_items'] ?? [],
                 ]);
@@ -2342,7 +3493,7 @@ class SalesOrders extends BaseController
 
                         if ($originalMissingRefs) {
                             $lineId = (int) ($line['id'] ?? 0);
-                            if (!empty($line['product_code']) || !empty($line['variant_code'])) {
+                            if (!empty($line['product_code']) || !empty($line['variant_name']) || !empty($line['product_image_url'])) {
                                 log_message('warning', 'SalesOrders::printView recovered missing product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' using quotation/code fallback');
                             } else {
                                 log_message('warning', 'SalesOrders::printView unresolved product references for sales_order_line_id=' . $lineId . ' sales_order_id=' . $orderId . ' (missing product_id/product_variant_id)');
@@ -2540,3 +3691,5 @@ class SalesOrders extends BaseController
                 return $this->response->setBody(ob_get_clean())->setHeader('Content-Type', 'text/html; charset=utf-8');
             }
 }
+
+

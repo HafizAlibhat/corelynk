@@ -55,7 +55,7 @@
     <!-- Log Table -->
     <div class="card">
         <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="cl-table table table-hover mb-0 align-middle">
                 <thead>
                     <tr>
                         <th style="width:160px">Timestamp</th>

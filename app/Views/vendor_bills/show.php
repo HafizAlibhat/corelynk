@@ -112,9 +112,27 @@ Vendor Bill
   }
 
   .bill-lines-table tbody td {
-    padding-top: 12px;
-    padding-bottom: 12px;
+    padding-top: 6px;
+    padding-bottom: 6px;
     border-top: 1px dashed rgba(148, 163, 184, 0.2);
+  }
+
+  .bill-lines-section {
+    max-height: 520px;
+    overflow-y: auto;
+  }
+
+  .bill-num-cell {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .bill-discount-badge {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    font-weight: 600;
+    font-size: 0.76rem;
   }
 
   .bill-product-image-link {
@@ -125,8 +143,8 @@ Vendor Bill
   }
 
   .bill-line-thumb {
-    width: 40px;
-    height: 40px;
+    width: 28px;
+    height: 28px;
     object-fit: cover;
     border-radius: 6px;
     border: 1px solid rgba(148, 163, 184, 0.45);
@@ -521,7 +539,7 @@ Vendor Bill
       html += '<div class="bill-paper-meta text-end">Bill Date: ' + fmtDate(b.bill_date) + '</div>';
       html += '</div>';
       html += '</div>';
-      html += '<div class="table-responsive"><table class="table table-sm align-middle bill-lines-table" style="font-size:0.9rem;"><thead><tr style="white-space:nowrap;">';
+      html += '<div class="bill-lines-section table-responsive"><table class="table table-sm align-middle bill-lines-table" style="font-size:0.9rem;"><thead><tr style="white-space:nowrap;">';
       html += '<th style="width:10%">Code</th>';
       html += '<th style="width:60px;"></th>';
       html += '<th style="width:28%">Product</th>';
@@ -531,8 +549,9 @@ Vendor Bill
         html += '<th style="width:10%" class="text-end">Already Billed</th>';
         html += '<th style="width:10%" class="text-end">Remaining Qty</th>';
       }
-      html += '<th style="width:15%" class="text-end">Unit Price</th>';
-      html += '<th style="width:15%" class="text-end">Line Total</th>';
+      html += '<th style="width:12%" class="text-end">Unit Price</th>';
+      html += '<th style="width:10%" class="text-end">Discount</th>';
+      html += '<th style="width:13%" class="text-end">Line Total</th>';
       html += '</tr></thead><tbody>';
 
       let computedTotal = 0;
@@ -632,8 +651,13 @@ Vendor Bill
           html += '<td class="text-end">' + (alreadyBilledQty !== null && alreadyBilledQty !== undefined ? fmtQty(alreadyBilledQty) : '—') + '</td>';
           html += '<td class="text-end">' + (remainingQty !== null && remainingQty !== undefined ? fmtQty(remainingQty) : '—') + '</td>';
         }
-        html += '<td class="text-end">' + fmt(unitPrice, 2) + ' ' + currency + '</td>';
-        html += '<td class="text-end fw-semibold">' + fmt(lineTotal, 2) + ' ' + currency + '</td>';
+        const lineDiscountAmt = parseNumber(ln.discount_amount);
+        const lineDiscountPct = parseNumber(ln.discount_percent);
+        html += '<td class="text-end bill-num-cell">' + fmt(unitPrice, 2) + ' ' + currency + '</td>';
+        html += '<td class="text-end bill-num-cell">' + (lineDiscountAmt > 0
+          ? '<span class="badge bill-discount-badge">-' + fmt(lineDiscountAmt, 2) + ' (' + fmt(lineDiscountPct, 1) + '%)</span>'
+          : '<span class="text-muted">—</span>') + '</td>';
+        html += '<td class="text-end fw-semibold bill-num-cell">' + fmt(lineTotal, 2) + ' ' + currency + '</td>';
         html += '</tr>';
       });
 
@@ -692,8 +716,9 @@ Vendor Bill
       html += '<div class="col-md-6">';
       html += '<div class="d-flex flex-column align-items-end">';
       html += '<div class="bill-totals-card" style="min-width: 360px;">';
+      const subtotal = parseNumber(b.total_amount) + parseNumber(b.discount_amount) - parseNumber(b.tax_amount);
       html += '<div class="d-flex justify-content-between align-items-center py-1">';
-      html += '<span class="text-muted">Subtotal</span><span class="fw-semibold">' + fmt(parseNumber(b.total_amount)) + ' ' + currency + '</span>';
+      html += '<span class="text-muted">Subtotal</span><span class="fw-semibold">' + fmt(subtotal) + ' ' + currency + '</span>';
       html += '</div>';
       if (parseNumber(b.discount_amount) > 0) {
         html += '<div class="d-flex justify-content-between align-items-center py-1">';
@@ -789,7 +814,7 @@ Vendor Bill
 
       // Pay This Bill button
       const payBillBtn = document.getElementById('payBillBtn');
-      if (payBillBtn && (status === 'confirmed' || status === 'draft') && parseNumber(b.balance) > 0) {
+      if (payBillBtn && status === 'confirmed' && parseNumber(b.balance) > 0) {
         const payUrl = '<?= site_url("accounting/vendor-payments/pay") ?>?vendor_id=' + encodeURIComponent(b.vendor_id) + '&bill_id=' + encodeURIComponent(b.id);
         payBillBtn.style.display = 'inline-block';
         payBillBtn.addEventListener('click', function() {

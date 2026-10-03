@@ -898,6 +898,8 @@ class NewPurchaseRfqs extends BaseController
 
             $pdfLines[] = [
                 'id' => $line['id'] ?? null,
+                'display_type' => $line['display_type'] ?? 'line',
+                'section_title' => $line['section_title'] ?? null,
                 'product_id' => $pid,
                 'product_variant_id' => $vid,
                 'product_code' => $resolvedCode,
@@ -947,7 +949,7 @@ class NewPurchaseRfqs extends BaseController
             'document_date_label' => 'Date:',
             'document_prefix' => '',
             'party_label' => 'Vendor',
-            'hide_company_logo' => true,
+            'hide_company_logo' => (int)($company['pdf_rfq_hide_logo'] ?? 0),
             'hide_company_website' => true,
             'pdf_show_header_address' => (int)($company['pdf_rfq_show_header'] ?? 1),
             'pdf_show_footer' => (int)($company['pdf_rfq_show_footer'] ?? 1),
@@ -1538,6 +1540,17 @@ class NewPurchaseRfqs extends BaseController
             $poId = $existing['id'] ?? null;
 
             if (!$poId) {
+                // An RFQ with no real lines (qty > 0) must never become a purchase order.
+                $rfqLinesForGuard = (new PurchaseRfqLineModel())->where('rfq_id', $rfqId)->findAll();
+                $hasValidLine = false;
+                foreach ($rfqLinesForGuard as $lg) {
+                    $qtyGuard = isset($lg['qty']) ? (float)$lg['qty'] : (isset($lg['quantity']) ? (float)$lg['quantity'] : 0);
+                    if ($qtyGuard > 0) { $hasValidLine = true; break; }
+                }
+                if (!$hasValidLine) {
+                    throw new \RuntimeException('This RFQ has no product lines. Add at least one line item before accepting it.');
+                }
+
                 // Log the RFQ header we're converting so we can see if totals exist
                 try {
                     log_message('error', 'NewPurchaseRfqs::accept rfq: ' . json_encode($rfq));
@@ -1693,6 +1706,17 @@ class NewPurchaseRfqs extends BaseController
                 // Ensure PO status is confirmed
                 $poModel->update($poId, ['status' => 'confirmed', 'updated_at' => date('Y-m-d H:i:s')]);
             } else {
+                // An RFQ with no real lines (qty > 0) must never become a purchase order.
+                $rfqLinesForGuard = (new PurchaseRfqLineModel())->where('rfq_id', $rfqId)->findAll();
+                $hasValidLine = false;
+                foreach ($rfqLinesForGuard as $lg) {
+                    $qtyGuard = isset($lg['quantity']) ? (float)$lg['quantity'] : (isset($lg['qty']) ? (float)$lg['qty'] : 0);
+                    if ($qtyGuard > 0) { $hasValidLine = true; break; }
+                }
+                if (!$hasValidLine) {
+                    throw new \RuntimeException('This RFQ has no product lines. Add at least one line item before confirming it.');
+                }
+
                 // Read available PO columns to avoid "Unknown column" errors
                 $poCols = [];
                 try { $poCols = $db->getFieldNames('purchase_orders'); } catch (\Throwable $_) {}
@@ -1802,6 +1826,60 @@ class NewPurchaseRfqs extends BaseController
      * Delete RFQ and its lines permanently.
      * POST required.
      */
+    /**
+     * Duplicate an RFQ: exact copy of the lines and totals as a new draft.
+     */
+    public function duplicate($id = null)
+    {
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'POST required']);
+        }
+
+        $rfq = (new \App\Models\PurchaseRfqModel())->findByPublicIdOrId($id);
+        if (! $rfq) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'RFQ not found']);
+        }
+
+        $db = \Config\Database::connect();
+        try {
+            // Keep the original lead time, measured from today.
+            $deliveryDate = null;
+            if (! empty($rfq['delivery_date']) && ! empty($rfq['rfq_date'])) {
+                $days         = (int) ((strtotime($rfq['delivery_date']) - strtotime($rfq['rfq_date'])) / 86400);
+                $deliveryDate = date('Y-m-d', strtotime('+' . max(0, $days) . ' days'));
+            }
+
+            $newId = (new \App\Services\DocumentDuplicator())->duplicate('purchase_rfqs', (int) $rfq['id'], [
+                'rfq_number'    => $this->generateNextRfqNumber($db),
+                'public_id'     => null,
+                'status'        => 'draft',
+                'rfq_date'      => date('Y-m-d'),
+                'delivery_date' => $deliveryDate,
+                'cancel_reason' => null,
+                'cancelled_at'  => null,
+                'cancelled_by'  => null,
+                'created_by'    => session()->get('user_id'),
+            ], ['purchase_rfq_lines' => 'rfq_id']);
+
+            DocumentLogger::log(DocumentLogger::TYPE_PURCHASE_RFQ, $newId, DocumentLogger::ACTION_CREATED, [
+                'source'        => 'duplicate',
+                'copied_from'   => (int) $rfq['id'],
+                'copied_number' => (string) ($rfq['rfq_number'] ?? ''),
+            ]);
+
+            return $this->response->setJSON([
+                'success'    => true,
+                'id'         => $newId,
+                'rfq_number' => $db->table('purchase_rfqs')->select('rfq_number')->where('id', $newId)->get()->getRowArray()['rfq_number'] ?? '',
+                'redirect'   => site_url('purchases/rfq/' . $newId),
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'RFQ duplicate failed: ' . $e->getMessage());
+
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => 'Failed to duplicate RFQ']);
+        }
+    }
+
     public function delete($id = null)
     {
         if (strtolower($this->request->getMethod()) !== 'post') {

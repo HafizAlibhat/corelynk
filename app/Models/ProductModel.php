@@ -34,6 +34,7 @@ class ProductModel extends Model
         'vendor_price_pkr',
         'vendor_currency',
         'detailed_type',
+        'manufacturing_route',
         'service_policy',
         'product_type',
         'attributes_definitions',
@@ -61,6 +62,7 @@ class ProductModel extends Model
         'description' => 'permit_empty|max_length[1000]',
         'is_active'   => 'permit_empty|in_list[0,1]',
         'detailed_type' => 'permit_empty|in_list[storable,consumable,service]',
+        'manufacturing_route' => 'permit_empty|in_list[buy,manufacture]',
         'service_policy'=> 'permit_empty|in_list[ordered_qty,delivered_qty]',
         'product_type'=> 'permit_empty|in_list[simple,variable]',
         // Pricing and physical attributes
@@ -110,6 +112,100 @@ class ProductModel extends Model
     {
         $normalized = strtolower(trim($value));
         return preg_replace('/[^a-z0-9]+/', '', $normalized) ?? '';
+    }
+
+    /**
+     * Apply the product-list filter contract to any compatible query builder.
+     * Type is optional so tab counts can represent the same filtered universe.
+     */
+    private function applyProductListFilters(
+        $builder,
+        $searchTerm = null,
+        $categoryFilter = null,
+        $statusFilter = null,
+        $typeFilter = null,
+        array $attributeFilters = [],
+        bool $hideServices = false,
+        array $allowedCategoryIds = [],
+        $hasAssets = null
+    ) {
+        $db = $this->db;
+
+        if (!empty($searchTerm)) {
+            $tokens = preg_split('/\s+/', trim((string) $searchTerm)) ?: [];
+            $tokens = array_values(array_filter(array_map('trim', $tokens), static fn($value) => $value !== ''));
+            if (!empty($tokens)) {
+                $builder->groupStart();
+                foreach ($tokens as $token) {
+                    $like = $db->escapeLikeString($token);
+                    $builder->groupStart();
+                    $builder->like('products.name', $token)
+                        ->orLike('products.code', $token)
+                        ->orLike('products.sku', $token)
+                        ->orLike('products.barcode', $token)
+                        ->orLike('products.description', $token)
+                        ->orLike('product_categories.name', $token)
+                        ->orWhere("EXISTS (SELECT 1 FROM product_variants pvs WHERE pvs.product_id = products.id AND (pvs.art_number LIKE '%{$like}%' ESCAPE '!' OR pvs.name LIKE '%{$like}%' ESCAPE '!' OR pvs.attributes LIKE '%{$like}%' ESCAPE '!'))", null, false);
+                    $builder->groupEnd();
+                }
+                $builder->groupEnd();
+            }
+        }
+
+        if (!empty($categoryFilter)) {
+            $builder->where('products.category_id', $categoryFilter);
+        }
+
+        if (!empty($typeFilter)) {
+            $builder->where('products.detailed_type', $typeFilter);
+        }
+
+        // Every requested attribute pair must match the same variant row.
+        if (!empty($attributeFilters)) {
+            $variantConditions = [];
+            $attributeText = 'LOWER(pva.attributes)';
+            $normalizedText = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$attributeText}, ' ', ''), '-', ''), '(', ''), ')', ''), '&', ''), '/', ''), '_', ''), '.', ''), '\"', '')";
+            foreach ($attributeFilters as $filter) {
+                if (!is_array($filter)) {
+                    continue;
+                }
+                $name = trim((string) ($filter['name'] ?? ''));
+                $value = trim((string) ($filter['value'] ?? ''));
+                if ($name === '' || $value === '') {
+                    continue;
+                }
+                $nameLike = strtolower($db->escapeLikeString($name));
+                $valueLike = strtolower($db->escapeLikeString($value));
+                $normalizedName = $db->escapeLikeString($this->normalizeLooseToken($name));
+                $normalizedValue = $db->escapeLikeString($this->normalizeLooseToken($value));
+                $variantConditions[] = "(({$attributeText} LIKE '%{$nameLike}%' ESCAPE '!' AND {$attributeText} LIKE '%{$valueLike}%' ESCAPE '!') OR ({$normalizedText} LIKE '%{$normalizedName}%' ESCAPE '!' AND {$normalizedText} LIKE '%{$normalizedValue}%' ESCAPE '!'))";
+            }
+            if (!empty($variantConditions)) {
+                $combined = implode(' AND ', $variantConditions);
+                $builder->where("EXISTS (SELECT 1 FROM product_variants pva WHERE pva.product_id = products.id AND {$combined})", null, false);
+            }
+        }
+
+        if ($statusFilter !== null && $statusFilter !== '') {
+            $isActive = ($statusFilter === 'active' || $statusFilter === '1' || $statusFilter === 1);
+            $builder->where('products.is_active', $isActive ? 1 : 0);
+        } elseif (empty($searchTerm)) {
+            $builder->where('products.is_active', 1);
+        }
+
+        if ($hideServices) {
+            $builder->where('products.detailed_type !=', 'service');
+        }
+
+        if (!empty($allowedCategoryIds)) {
+            $builder->whereIn('products.category_id', $allowedCategoryIds);
+        }
+
+        if (!empty($hasAssets) && ($hasAssets === '1' || $hasAssets === 1 || $hasAssets === true || $hasAssets === 'yes')) {
+            $builder->where("EXISTS (SELECT 1 FROM product_asset_groups pag LEFT JOIN product_assets pa ON pa.asset_group_id = pag.id WHERE pag.product_id = products.id AND pa.id IS NOT NULL)", null, false);
+        }
+
+        return $builder;
     }
 
     /**
@@ -203,92 +299,17 @@ class ProductModel extends Model
                 ' . $assetCountSub . ' AS asset_count')
                         ->join('product_categories', 'product_categories.id = products.category_id', 'left');
 
-        // Apply deep search filter (includes variant code/name/attributes)
-        if (!empty($searchTerm)) {
-            $tokens = preg_split('/\s+/', trim((string)$searchTerm)) ?: [];
-            $tokens = array_values(array_filter(array_map('trim', $tokens), static fn($v) => $v !== ''));
-            if (!empty($tokens)) {
-                $builder->groupStart();
-                foreach ($tokens as $token) {
-                    $like = $db->escapeLikeString($token);
-                    $builder->groupStart();
-                    $builder->like('products.name', $token)
-                        ->orLike('products.code', $token)
-                        ->orLike('products.sku', $token)
-                        ->orLike('products.barcode', $token)
-                        ->orLike('products.description', $token)
-                        ->orLike('product_categories.name', $token)
-                        ->orWhere("EXISTS (SELECT 1 FROM product_variants pvs WHERE pvs.product_id = products.id AND (pvs.art_number LIKE '%{$like}%' ESCAPE '!' OR pvs.name LIKE '%{$like}%' ESCAPE '!' OR pvs.attributes LIKE '%{$like}%' ESCAPE '!'))", null, false);
-                    $builder->groupEnd();
-                }
-                $builder->groupEnd();
-            }
-        }
-
-        // Apply category filter
-        if (!empty($categoryFilter)) {
-            $builder->where('products.category_id', $categoryFilter);
-        }
-
-        // Apply type filter
-        if (!empty($typeFilter)) {
-            $builder->where('products.detailed_type', $typeFilter);
-        }
-
-        // Removed: Tag/keyword filter was redundant since search already does deep matching via searchTerm parameter
-
-    // Multiple attribute filters: ALL conditions must match in the SAME variant row.
-        // Build a SINGLE EXISTS subquery combining all LIKE conditions so one variant must
-        // simultaneously satisfy every attribute filter (prevents cross-variant false positives).
-        if (!empty($attributeFilters) && is_array($attributeFilters)) {
-            $variantConditions = [];
-            $attrTextExpr = 'LOWER(pva.attributes)';
-            $attrTextNormalizedExpr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$attrTextExpr}, ' ', ''), '-', ''), '(', ''), ')', ''), '&', ''), '/', ''), '_', ''), '.', ''), '\"', '')";
-            foreach ($attributeFilters as $filter) {
-                if (!is_array($filter)) continue;
-                $attrN = trim((string)($filter['name'] ?? ''));
-                $attrV = trim((string)($filter['value'] ?? ''));
-                if (empty($attrN) || empty($attrV)) continue;
-                $nl = strtolower($db->escapeLikeString($attrN));
-                $vl = strtolower($db->escapeLikeString($attrV));
-                $nlNorm = $db->escapeLikeString($this->normalizeLooseToken($attrN));
-                $vlNorm = $db->escapeLikeString($this->normalizeLooseToken($attrV));
-                // Each attribute pair must match in one variant row.
-                // Use both raw and normalized matching so punctuation differences do not break filters.
-                $variantConditions[] = "(({$attrTextExpr} LIKE '%{$nl}%' ESCAPE '!' AND {$attrTextExpr} LIKE '%{$vl}%' ESCAPE '!') OR ({$attrTextNormalizedExpr} LIKE '%{$nlNorm}%' ESCAPE '!' AND {$attrTextNormalizedExpr} LIKE '%{$vlNorm}%' ESCAPE '!'))";
-            }
-            if (!empty($variantConditions)) {
-                $combined = implode(' AND ', $variantConditions);
-                $builder->where("EXISTS (SELECT 1 FROM product_variants pva WHERE pva.product_id = products.id AND {$combined})", null, false);
-            }
-        }
-
-        // Apply status filter.
-        // Do not use empty() because '0' (inactive) is a valid filter value.
-        if ($statusFilter !== null && $statusFilter !== '') {
-            $isActive = ($statusFilter === 'active' || $statusFilter === '1' || $statusFilter === 1);
-            $builder->where('products.is_active', $isActive ? 1 : 0);
-        } else {
-            // Default to active products only when no search term is provided
-            if (empty($searchTerm)) {
-                $builder->where('products.is_active', 1);
-            }
-        }
-
-        // Role-based data access: hide service products
-        if ($hideServices) {
-            $builder->where('products.detailed_type !=', 'service');
-        }
-
-        // Role-based data access: restrict to allowed categories
-        if (!empty($allowedCategoryIds)) {
-            $builder->whereIn('products.category_id', $allowedCategoryIds);
-        }
-
-        // Filter by assets - show only products that have assets uploaded
-        if (!empty($hasAssets) && ($hasAssets === '1' || $hasAssets === 1 || $hasAssets === true || $hasAssets === 'yes')) {
-            $builder->where("EXISTS (SELECT 1 FROM product_asset_groups pag LEFT JOIN product_assets pa ON pa.asset_group_id = pag.id WHERE pag.product_id = products.id AND pa.id IS NOT NULL)", null, false);
-        }
+        $builder = $this->applyProductListFilters(
+            $builder,
+            $searchTerm,
+            $categoryFilter,
+            $statusFilter,
+            $typeFilter,
+            $attributeFilters,
+            $hideServices,
+            $allowedCategoryIds,
+            $hasAssets
+        );
 
         $sortBy = trim(strtolower($sortBy));
         switch ($sortBy) {
@@ -319,6 +340,48 @@ class ProductModel extends Model
         }
 
         return $builder->paginate($perPage);
+    }
+
+    /**
+     * Return type-tab totals for the same filtered product universe as the list.
+     * The active type is intentionally omitted so every tab remains informative.
+     */
+    public function getProductTypeCountsWithFilters(
+        $searchTerm = null,
+        $categoryFilter = null,
+        $statusFilter = null,
+        array $attributeFilters = [],
+        bool $hideServices = false,
+        array $allowedCategoryIds = [],
+        $hasAssets = null
+    ): array {
+        $counts = ['all' => 0, 'storable' => 0, 'consumable' => 0, 'service' => 0];
+        $builder = $this->db->table('products')
+            ->select('products.detailed_type, COUNT(DISTINCT products.id) AS total', false)
+            ->join('product_categories', 'product_categories.id = products.category_id', 'left');
+
+        $builder = $this->applyProductListFilters(
+            $builder,
+            $searchTerm,
+            $categoryFilter,
+            $statusFilter,
+            null,
+            $attributeFilters,
+            $hideServices,
+            $allowedCategoryIds,
+            $hasAssets
+        );
+
+        foreach ($builder->groupBy('products.detailed_type')->get()->getResultArray() as $row) {
+            $type = (string) ($row['detailed_type'] ?? '');
+            $total = (int) ($row['total'] ?? 0);
+            $counts['all'] += $total;
+            if (array_key_exists($type, $counts) && $type !== 'all') {
+                $counts[$type] = $total;
+            }
+        }
+
+        return $counts;
     }
 
     /**
@@ -645,30 +708,7 @@ class ProductModel extends Model
                 $variantCode = trim((string)($vr['art_number'] ?? ''));
                 $stockQty = $variantStockMap[$vid] ?? 0.0;
 
-                // Build an attributes summary string for the description cell.
-                $attrSummary = '';
-                if (!empty($vr['attributes'])) {
-                    $decoded = json_decode((string)$vr['attributes'], true);
-                    if (is_array($decoded)) {
-                        $pairs = [];
-                        $isList = !empty($decoded) && array_keys($decoded) === range(0, count($decoded) - 1);
-                        if ($isList) {
-                            foreach ($decoded as $item) {
-                                if (!is_array($item)) continue;
-                                $k = trim((string)($item['name'] ?? ($item['attribute'] ?? ($item['key'] ?? ''))));
-                                $v = trim((string)($item['value'] ?? ''));
-                                if ($k !== '' && $v !== '') $pairs[] = $k . ': ' . $v;
-                            }
-                        } else {
-                            foreach ($decoded as $k => $v) {
-                                $kk = trim((string)$k);
-                                $vv = is_scalar($v) ? trim((string)$v) : '';
-                                if ($kk !== '' && $vv !== '') $pairs[] = $kk . ': ' . $vv;
-                            }
-                        }
-                        $attrSummary = implode(' | ', $pairs);
-                    }
-                }
+                $attrSummary = self::attributesSummary($vr['attributes'] ?? null);
 
                 // Shape the variant row to look like a product row for the view.
                 $variantRow = $p; // inherit all parent fields (category, unit, status, dates, etc.)
@@ -690,6 +730,35 @@ class ProductModel extends Model
         }
 
         return $result;
+    }
+
+    /**
+     * "Colors & Patterns: Feather | Size: L: 12" | Thickness: 3mm" from a
+     * variant attributes JSON (object map or list of {name,value} pairs).
+     */
+    public static function attributesSummary($attributes): string
+    {
+        if (empty($attributes)) {
+            return '';
+        }
+        $decoded = is_array($attributes) ? $attributes : json_decode((string)$attributes, true);
+        if (!is_array($decoded)) {
+            return '';
+        }
+        $pairs = [];
+        $isList = !empty($decoded) && array_keys($decoded) === range(0, count($decoded) - 1);
+        foreach ($decoded as $k => $v) {
+            if ($isList) {
+                if (!is_array($v)) continue;
+                $key = trim((string)($v['name'] ?? ($v['attribute'] ?? ($v['key'] ?? ''))));
+                $val = trim((string)($v['value'] ?? ''));
+            } else {
+                $key = trim((string)$k);
+                $val = is_scalar($v) ? trim((string)$v) : '';
+            }
+            if ($key !== '' && $val !== '') $pairs[] = $key . ': ' . $val;
+        }
+        return implode(' | ', $pairs);
     }
 
     /**
@@ -783,6 +852,7 @@ class ProductModel extends Model
             'pv.name as variant_name',
             'pv.price',
             'pv.cost',
+            'pv.cost_currency',
             'pv.attributes',
             'p.code as parent_code',
             'p.name as parent_name',
@@ -803,6 +873,8 @@ class ProductModel extends Model
             'weight' => 'p.weight as parent_weight',
             'weight_unit' => 'p.weight_unit as parent_weight_unit',
             'sale_price' => 'p.sale_price as parent_sale_price',
+            'cost_price' => 'p.cost_price as parent_cost_price',
+            'cost_currency' => 'p.cost_currency as parent_cost_currency',
             'sale_currency' => 'p.sale_currency as parent_sale_currency',
             'special_price' => 'p.special_price as parent_special_price',
             'tax_rate' => 'p.tax_rate as parent_tax_rate',
@@ -924,6 +996,9 @@ class ProductModel extends Model
             'variant_name' => $variantName,
             'variant_price' => isset($variant['price']) && $variant['price'] !== '' ? (float)$variant['price'] : null,
             'attributes' => $variant['attributes'] ?? null,
+            'attributes_text' => self::attributesSummary($variant['attributes'] ?? null),
+            'cost_price' => isset($variant['cost']) && $variant['cost'] !== '' && (float)$variant['cost'] > 0 ? (float)$variant['cost'] : (float)($variant['parent_cost_price'] ?? 0),
+            'cost_currency' => isset($variant['cost']) && (float)($variant['cost'] ?? 0) > 0 ? ($variant['cost_currency'] ?? '') : ($variant['parent_cost_currency'] ?? ''),
             'variant_image' => $variant['variant_image'] ?? null,
         ];
     }
@@ -1087,4 +1162,3 @@ class ProductModel extends Model
         return ['sale_price' => (float)($p['sale_price'] ?? 0), 'sale_currency' => $p['sale_currency'] ?? 'USD', 'cost_price' => (float)($p['cost_price'] ?? 0), 'cost_currency' => $p['cost_currency'] ?? 'USD'];
     }
 }
-

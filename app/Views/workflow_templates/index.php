@@ -79,7 +79,7 @@
                         </div>
                     <?php else: ?>
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="cl-table table table-hover">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Name</th>

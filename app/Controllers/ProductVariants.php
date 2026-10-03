@@ -325,10 +325,22 @@ class ProductVariants extends BaseController
         $this->ensureSalesOrderLinesVariantColumn();
         $variantFields = $db->getFieldNames('product_variants');
         $this->ensureVariantsWeightColumn();
-        $select = 'pv.*';
-        if (in_array('image', $variantFields ?? [], true)) {
-            $select .= ', pv.image';
+        $selectPieces = [
+            'pv.id',
+            'pv.product_id',
+            'pv.art_number',
+            'pv.name',
+            'pv.price',
+            'pv.cost',
+            'pv.attributes',
+        ];
+        if (in_array('weight', $variantFields ?? [], true)) {
+            $selectPieces[] = 'pv.weight';
         }
+        if (in_array('image', $variantFields ?? [], true)) {
+            $selectPieces[] = 'pv.image';
+        }
+        $select = implode(', ', $selectPieces);
 
         $salesFields = [];
         $salesVariantCols = [];
@@ -467,7 +479,7 @@ class ProductVariants extends BaseController
 
         $offset = ($page - 1) * $perPage;
         $groupByFields = array_unique(array_merge(
-            array_map(static fn($field) => 'pv.' . $field, $variantFields ?? []),
+            $selectPieces,
             ['p.name', 'p.code']
         ));
         if ($soldSub) {
@@ -627,6 +639,10 @@ class ProductVariants extends BaseController
 
         if (in_array('weight', $variantFields ?? [], true)) {
             $insert['weight'] = ($post['weight'] ?? null) !== null && $post['weight'] !== '' ? $post['weight'] : ($prod['weight'] ?? null);
+        }
+
+        if (in_array('manufacturing_route', $variantFields ?? [], true)) {
+            $insert['manufacturing_route'] = ($prod['manufacturing_route'] ?? '') === 'manufacture' ? 'manufacture' : 'buy';
         }
 
         $this->variants->insert($insert);
@@ -1291,6 +1307,10 @@ class ProductVariants extends BaseController
                 $insert['weight'] = $prod['weight'] ?? null;
             }
 
+            if (in_array('manufacturing_route', $variantFields ?? [], true)) {
+                $insert['manufacturing_route'] = ($prod['manufacturing_route'] ?? '') === 'manufacture' ? 'manufacture' : 'buy';
+            }
+
             if (in_array('combination_key', $variantFields ?? [], true)) {
                 $insert['combination_key'] = $combKey;
             }
@@ -1346,6 +1366,11 @@ class ProductVariants extends BaseController
 
         if (in_array('weight', $variantFields ?? [], true)) {
             $data['weight'] = ($post['weight'] ?? '') !== '' ? $post['weight'] : ($variant['weight'] ?? null);
+        }
+
+        if (in_array('manufacturing_route', $variantFields ?? [], true)) {
+            $route = $post['manufacturing_route'] ?? ($variant['manufacturing_route'] ?? 'buy');
+            $data['manufacturing_route'] = $route === 'manufacture' ? 'manufacture' : 'buy';
         }
 
         // Variant-level currency and vendor pricing fields

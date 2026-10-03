@@ -174,7 +174,7 @@
 <?php endif; ?>
 
 <?= form_open_multipart(isset($product) && $product ? base_url('/products/' . $product['id'] . '/update') : base_url('/products/store'), 
-    ['class' => 'needs-validation', 'novalidate' => true, 'id' => 'productForm']) ?>
+    ['class' => 'needs-validation cl-form-page', 'novalidate' => true, 'id' => 'productForm']) ?>
 <?php if (empty($product) && !empty($form_submit_token)): ?>
     <input type="hidden" name="_form_submit_token" value="<?= esc($form_submit_token) ?>">
 <?php endif; ?>
@@ -222,7 +222,7 @@
     </li>
 </ul>
 
-<div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm p-2">
+<div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm p-2 cl-form-card">
     <div class="tab-pane fade show active" id="tab-basic" role="tabpanel" aria-labelledby="tab-basic-btn" tabindex="0">
         <div class="row g-2">
             <div class="col-lg-7">
@@ -341,6 +341,25 @@
                                     <option value="service" <?= $dtype === 'service' ? 'selected' : '' ?>>Service</option>
                                 </select>
                                 <div class="form-text small text-muted">Only <strong>Storable</strong> appears in Inventory.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">Supply Route</label>
+                                <?php $mroute = old('manufacturing_route', $product['manufacturing_route'] ?? 'buy'); ?>
+                                <select id="manufacturing_route" name="manufacturing_route" class="form-select form-select-sm">
+                                    <option value="buy" <?= $mroute === 'buy' ? 'selected' : '' ?>>Buy — purchased from a vendor</option>
+                                    <option value="manufacture" <?= $mroute === 'manufacture' ? 'selected' : '' ?>>Manufacture — produced in-house</option>
+                                </select>
+                                <div class="form-text small text-muted">
+                                    <strong>Buy</strong> products need a vendor before auto RFQ generation.
+                                    <strong>Manufacture</strong> products are produced through their preparation profile, so no vendor is required.
+                                </div>
+                                <?php if (!empty($product['id']) && isset($variants) && count($variants) > 0): ?>
+                                    <button type="button" id="copyTemplateRouteBtn" class="btn btn-sm btn-primary mt-2" data-url="<?= base_url('/products/' . $product['id'] . '/copy-route-to-variants') ?>" title="Sync supply route to all variants">
+                                        <i class="fas fa-copy me-1"></i> Copy to Variants
+                                    </button>
+                                    <div id="copyRouteFeedback" class="form-text small text-muted mt-2" aria-live="polite" style="max-width:300px; word-wrap:break-word;"></div>
+                                <?php endif; ?>
                             </div>
 
                             <!-- Service Policy (visible only for service products) -->
@@ -1241,6 +1260,60 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .finally(() => {
                 copyWeightBtn.disabled = false;
+            });
+        });
+    }
+
+    // Copy Supply Route to Variants
+    const copyRouteBtn = document.getElementById('copyTemplateRouteBtn');
+    const copyRouteFeedback = document.getElementById('copyRouteFeedback');
+    const templateRouteSelect = document.getElementById('manufacturing_route');
+
+    if (copyRouteBtn && templateRouteSelect) {
+        copyRouteBtn.addEventListener('click', function () {
+            const url = copyRouteBtn.dataset.url;
+            const routeValue = templateRouteSelect.value === 'manufacture' ? 'manufacture' : 'buy';
+
+            if (copyRouteFeedback) {
+                copyRouteFeedback.textContent = 'Syncing supply route...';
+                copyRouteFeedback.classList.remove('text-danger', 'text-success');
+            }
+            copyRouteBtn.disabled = true;
+
+            const payload = new URLSearchParams();
+            payload.append('manufacturing_route', routeValue);
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: payload
+            })
+            .then(async (response) => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    const message = data.message || 'Failed to sync supply route';
+                    if (copyRouteFeedback) {
+                        copyRouteFeedback.textContent = message;
+                        copyRouteFeedback.classList.add('text-danger');
+                    }
+                    return;
+                }
+                if (copyRouteFeedback) {
+                    copyRouteFeedback.textContent = data.message || 'Supply route updated across all variants.';
+                    copyRouteFeedback.classList.remove('text-danger');
+                    copyRouteFeedback.classList.add('text-success');
+                }
+            })
+            .catch(() => {
+                if (copyRouteFeedback) {
+                    copyRouteFeedback.textContent = 'Unable to reach the server.';
+                    copyRouteFeedback.classList.add('text-danger');
+                }
+            })
+            .finally(() => {
+                copyRouteBtn.disabled = false;
             });
         });
     }

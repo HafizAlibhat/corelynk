@@ -400,6 +400,24 @@ class AccountingPostingService
         }
 
         $allocRows = $allocationModel->where('payment_id', $paymentId)->findAll();
+        if (!empty($allocRows)) {
+            $validAllocationCount = (int) ($this->db->query(
+                'SELECT COUNT(*) AS n '
+                . 'FROM customer_payment_allocations cpa '
+                . 'INNER JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+                . 'WHERE cpa.payment_id = ? AND ci.customer_id = ? '
+                . 'AND COALESCE(cpa.created_at, ?, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
+                . 'AND ci.deleted_at IS NULL',
+                [$paymentId, (int) ($payment['customer_id'] ?? 0), $payment['created_at'] ?? null]
+            )->getRowArray()['n'] ?? 0);
+            if ($validAllocationCount !== count($allocRows)) {
+                return [
+                    'success' => false,
+                    'skipped' => false,
+                    'message' => 'One or more invoice allocations no longer belong to this customer payment. Recreate the draft allocation before posting.',
+                ];
+            }
+        }
         $allocatedTotal = 0.0;
         $advanceApplied = 0.0;
         foreach ($allocRows as $row) {
@@ -463,6 +481,10 @@ class AccountingPostingService
             ['customer advance', 'customer advances', 'unearned revenue', 'deferred revenue']
         );
 
+        // Foreign-currency settlement details (actual PKR credited, bank charges, withholding tax),
+        // captured manually on the receiving page since banks routinely credit less than face value.
+        $fx = $this->buildFxSettlementLines($payment, $currency, $cashTotal);
+
         $entryDate = $payment['payment_date'] ?? date('Y-m-d');
         $memo = trim((string)($payment['memo'] ?? ''));
         if ($memo === '') {
@@ -495,6 +517,17 @@ class AccountingPostingService
             if ($advanceApplied > 0 && $customerAdvanceId <= 0) {
                 return ['success' => false, 'skipped' => false, 'message' => 'Customer advance liability account is not configured'];
             }
+            if ($fx !== null) {
+                if ($fx['bank_charges_base'] > 0 && $fx['bank_charges_account_id'] <= 0) {
+                    return ['success' => false, 'skipped' => false, 'message' => 'Bank Charges expense account is not configured'];
+                }
+                if ($fx['wht_base'] > 0 && $fx['wht_account_id'] <= 0) {
+                    return ['success' => false, 'skipped' => false, 'message' => 'Withholding Tax receivable account is not configured'];
+                }
+                if (abs($fx['gain_loss']) > 0.004 && $fx['gain_loss_account_id'] <= 0) {
+                    return ['success' => false, 'skipped' => false, 'message' => 'Exchange Gain/Loss account is not configured'];
+                }
+            }
         }
 
         $jeModel = new JournalEntryModel();
@@ -504,11 +537,26 @@ class AccountingPostingService
         try {
             $totalAmount = $isAdvanceOnly ? $advanceOnlyAmount : $allocatedTotal;
             $totalAmount = $this->roundMoney($totalAmount);
+            // When we have real bank-settlement figures, the AR credit (and the entry's
+            // header totals) must be posted in PKR too, otherwise this entry's debits
+            // (real PKR bank/charges/WHT lines) would never balance against a raw USD credit.
+            $arCreditAmount = $totalAmount;
+            $arCreditCurrency = $currency;
+            $arCreditFxRate = 1.0;
+            if (!$isAdvanceOnly && $fx !== null) {
+                $arCreditAmount = $fx['ar_expected_base'];
+                $arCreditCurrency = 'PKR';
+                $arCreditFxRate = $fx['standard_rate'];
+                $totalAmount = $this->roundMoney($fx['net_bank_cash'] + $fx['bank_charges_base'] + $fx['wht_base']);
+            }
 
             $jeId = $jeModel->insert([
                 'entry_date' => $entryDate,
                 'memo' => $memo,
-                'currency_code' => $currency,
+                // FX-settled entries post every line (bank/charges/WHT/AR/gain-loss) in PKR — the
+                // header currency must match, or it mislabels PKR figures as the original ($currency)
+                // transaction currency wherever this field is displayed (journal view, receipts, etc.).
+                'currency_code' => (!$isAdvanceOnly && $fx !== null) ? 'PKR' : $currency,
                 'total_debits' => $totalAmount,
                 'total_credits' => $totalAmount,
                 'source_type' => 'payment',
@@ -542,7 +590,60 @@ class AccountingPostingService
                     'base_amount' => $totalAmount,
                 ]);
             } else {
-                if ($cashTotal > 0) {
+                if ($cashTotal > 0 && $fx !== null) {
+                    // Real PKR bank movement, charges and withholding tax — reconciled against the actual
+                    // bank credit instead of assuming the face-value USD amount landed 1:1 in the account.
+                    $this->insertLine($jlModel, [
+                        'entry_id' => $jeId,
+                        'account_id' => $sourceAccountId,
+                        'description' => $memo,
+                        'debit' => $fx['net_bank_cash'],
+                        'credit' => 0,
+                        'currency_code' => 'PKR',
+                        'fx_rate' => 1.0,
+                        'base_amount' => $fx['net_bank_cash'],
+                    ]);
+
+                    if ($fx['bank_charges_base'] > 0 && $fx['bank_charges_account_id'] > 0) {
+                        $this->insertLine($jlModel, [
+                            'entry_id' => $jeId,
+                            'account_id' => $fx['bank_charges_account_id'],
+                            'description' => 'Correspondent Bank Charges - ' . $memo,
+                            'debit' => $fx['bank_charges_base'],
+                            'credit' => 0,
+                            'currency_code' => 'PKR',
+                            'fx_rate' => 1.0,
+                            'base_amount' => $fx['bank_charges_base'],
+                        ]);
+                    }
+
+                    if ($fx['wht_base'] > 0 && $fx['wht_account_id'] > 0) {
+                        $this->insertLine($jlModel, [
+                            'entry_id' => $jeId,
+                            'account_id' => $fx['wht_account_id'],
+                            'description' => 'Withholding Tax (Sec. 154) - ' . $memo,
+                            'debit' => $fx['wht_base'],
+                            'credit' => 0,
+                            'currency_code' => 'PKR',
+                            'fx_rate' => 1.0,
+                            'base_amount' => $fx['wht_base'],
+                        ]);
+                    }
+
+                    if (abs($fx['gain_loss']) > 0.004 && $fx['gain_loss_account_id'] > 0) {
+                        $isGain = $fx['gain_loss'] > 0;
+                        $this->insertLine($jlModel, [
+                            'entry_id' => $jeId,
+                            'account_id' => $fx['gain_loss_account_id'],
+                            'description' => ($isGain ? 'Exchange Gain' : 'Exchange Loss') . ' - ' . $memo,
+                            'debit' => $isGain ? 0 : abs($fx['gain_loss']),
+                            'credit' => $isGain ? abs($fx['gain_loss']) : 0,
+                            'currency_code' => 'PKR',
+                            'fx_rate' => 1.0,
+                            'base_amount' => abs($fx['gain_loss']),
+                        ]);
+                    }
+                } elseif ($cashTotal > 0) {
                     $cashTotal = $this->roundMoney($cashTotal);
                     $this->insertLine($jlModel, [
                         'entry_id' => $jeId,
@@ -575,10 +676,10 @@ class AccountingPostingService
                     'account_id' => $arId,
                     'description' => $memo,
                     'debit' => 0,
-                    'credit' => $totalAmount,
-                    'currency_code' => $currency,
-                    'fx_rate' => 1.0,
-                    'base_amount' => $totalAmount,
+                    'credit' => $arCreditAmount,
+                    'currency_code' => $arCreditCurrency,
+                    'fx_rate' => $arCreditFxRate,
+                    'base_amount' => $arCreditAmount,
                 ]);
             }
 
@@ -593,6 +694,9 @@ class AccountingPostingService
             }
             if (in_array('updated_at', $paymentCols, true)) {
                 $payUpdate['updated_at'] = date('Y-m-d H:i:s');
+            }
+            if ($fx !== null && in_array('settlement_fx_rate', $paymentCols, true)) {
+                $payUpdate['settlement_fx_rate'] = $fx['implied_rate'];
             }
             if (!empty($payUpdate)) {
                 $paymentModel->update($paymentId, $payUpdate);
@@ -656,6 +760,9 @@ class AccountingPostingService
                         $query = 'SELECT COALESCE(SUM(' . $allocAmountExpr . '),0) AS paid '
                             . 'FROM customer_payment_allocations cpa '
                             . 'INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
+                            . 'INNER JOIN customer_invoices ci_guard ON ci_guard.id = cpa.invoice_id '
+                            . 'AND cp.customer_id = ci_guard.customer_id '
+                            . 'AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= COALESCE(ci_guard.created_at, "1970-01-01 00:00:00") '
                             . 'WHERE cpa.invoice_id = ? AND (' . $statusCheck . ' OR cp.id = ?)';
                         
                         $paid = (float)($this->db->query(
@@ -1104,6 +1211,152 @@ class AccountingPostingService
         }
     }
 
+    /**
+     * Post a salary payment: the wage is an expense, the cash leaves an account.
+     *
+     *   Dr  Salaries Expense (5200)
+     *   Cr  the cash/bank account it was paid from
+     *
+     * Only paid slips post. A pending slip is a plan, not a transaction.
+     */
+    public function postSalaryPayment(int $salaryPaymentId): array
+    {
+        if ($salaryPaymentId <= 0) {
+            return ['success' => false, 'skipped' => false, 'message' => 'salary_payment_id is required'];
+        }
+
+        if (! $this->db->tableExists('salary_payments')) {
+            return ['success' => false, 'skipped' => false, 'message' => 'salary_payments table is not available'];
+        }
+
+        $slipModel = new \App\Models\SalaryPaymentModel();
+        $slip = $slipModel->find($salaryPaymentId);
+        if (!$slip) {
+            return ['success' => false, 'skipped' => false, 'message' => 'Salary slip not found'];
+        }
+
+        $already = (int)($slip['posted_entry_id'] ?? 0);
+        if ($already > 0) {
+            return ['success' => true, 'skipped' => true, 'posted_entry_id' => $already, 'message' => 'Salary payment already posted'];
+        }
+
+        if (($slip['status'] ?? '') !== 'paid') {
+            return ['success' => false, 'skipped' => true, 'message' => 'Only paid salary slips are posted to the ledger'];
+        }
+
+        $amount = $this->roundMoney((float)($slip['net_amount'] ?? 0));
+        if ($amount <= 0) {
+            return ['success' => false, 'skipped' => false, 'message' => 'Salary net amount must be positive'];
+        }
+
+        $sourceAccountId = (int)($slip['source_account_id'] ?? 0);
+        if ($sourceAccountId <= 0) {
+            return ['success' => false, 'skipped' => false, 'message' => 'Choose the cash or bank account the salary was paid from'];
+        }
+
+        $expenseAccountId = $this->findAccountIdByCodeOrName(['5200'], ['salaries expense', 'salary']);
+        if ($expenseAccountId <= 0) {
+            return ['success' => false, 'skipped' => false, 'message' => 'Salaries Expense account (5200) is not configured'];
+        }
+
+        $employee = $this->db->table('employees')->select('first_name, last_name, employee_code')
+            ->where('id', (int)$slip['employee_id'])->get()->getRowArray();
+        $name = $employee ? trim($employee['first_name'] . ' ' . $employee['last_name']) : 'Employee #' . (int)$slip['employee_id'];
+
+        $currency = strtoupper(trim((string)($slip['currency_code'] ?? 'PKR'))) ?: 'PKR';
+        $entryDate = $slip['paid_on'] ?: date('Y-m-d');
+        $memo = 'Salary ' . date('F Y', strtotime($slip['period_month'])) . ' - ' . $name;
+        if (!empty($slip['cheque_number'])) {
+            $memo .= ' (Cheque ' . $slip['cheque_number'] . ')';
+        }
+
+        // Commission carries its own expense head so it can be read apart from
+        // basic pay; without account 5210 it simply stays in Salaries Expense.
+        $commission = $this->roundMoney((float)($slip['commission'] ?? 0));
+        $salaryPart = $this->roundMoney($amount - $commission);
+        $commissionAccountId = $commission > 0
+            ? $this->findAccountIdByCodeOrName(['5210'], ['commission expense'])
+            : 0;
+        if ($commissionAccountId <= 0 || $salaryPart <= 0) {
+            $commission = 0.0;
+            $salaryPart = $amount;
+        }
+        $commissionMemo = 'Commission ' . date('F Y', strtotime($slip['period_month'])) . ' - ' . $name
+            . (!empty($slip['commission_note']) ? ': ' . $slip['commission_note'] : '');
+        $fxRate = 1.0;
+
+        $jeModel = new JournalEntryModel();
+        $jlModel = new JournalLineModel();
+
+        $this->db->transBegin();
+        try {
+            $jeId = $jeModel->insert([
+                'entry_date' => $entryDate,
+                'memo' => $memo,
+                'currency_code' => $currency,
+                'total_debits' => $amount,
+                'total_credits' => $amount,
+                'source_type' => 'salary_payment',
+                'source_id' => $salaryPaymentId,
+            ], true);
+
+            if (!$jeId) {
+                throw new \RuntimeException('Failed to create journal entry: ' . json_encode($jeModel->errors()));
+            }
+
+            $this->insertLine($jlModel, [
+                'entry_id' => $jeId,
+                'account_id' => $expenseAccountId,
+                'description' => $memo,
+                'debit' => $salaryPart,
+                'credit' => 0,
+                'currency_code' => $currency,
+                'fx_rate' => $fxRate,
+                'base_amount' => $this->roundMoney($salaryPart * $fxRate),
+            ]);
+
+            if ($commission > 0) {
+                $this->insertLine($jlModel, [
+                    'entry_id' => $jeId,
+                    'account_id' => $commissionAccountId,
+                    'description' => $commissionMemo,
+                    'debit' => $commission,
+                    'credit' => 0,
+                    'currency_code' => $currency,
+                    'fx_rate' => $fxRate,
+                    'base_amount' => $this->roundMoney($commission * $fxRate),
+                ]);
+            }
+
+            $this->insertLine($jlModel, [
+                'entry_id' => $jeId,
+                'account_id' => $sourceAccountId,
+                'description' => $memo,
+                'debit' => 0,
+                'credit' => $amount,
+                'currency_code' => $currency,
+                'fx_rate' => $fxRate,
+                'base_amount' => $this->roundMoney($amount * $fxRate),
+            ]);
+
+            $slipModel->update($salaryPaymentId, ['posted_entry_id' => $jeId]);
+
+            if ($this->db->transStatus() === false) {
+                throw new \RuntimeException('DB transaction failed');
+            }
+
+            $this->db->transCommit();
+            log_message('debug', 'AccountingPostingService: salary payment posted journal_entry_id=' . $jeId . ' salary_payment_id=' . $salaryPaymentId);
+
+            return ['success' => true, 'skipped' => false, 'posted_entry_id' => $jeId, 'message' => 'Salary payment posted'];
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            log_message('error', 'AccountingPostingService: salary posting failed salary_payment_id=' . $salaryPaymentId . ' err=' . $e->getMessage());
+
+            return ['success' => false, 'skipped' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     private function insertLine(JournalLineModel $jlModel, array $row): void
     {
         $ok = $jlModel->insert($row);
@@ -1115,6 +1368,147 @@ class AccountingPostingService
     private function roundMoney(float $v): float
     {
         return (float)number_format($v, 2, '.', '');
+    }
+
+    /**
+     * Reconciles a foreign-currency customer receipt against what the bank actually credited.
+     *
+     * Manually entered on the receiving page (bank statement doesn't equal face value once
+     * correspondent charges and withholding tax are netted out): received_amount_base (PKR
+     * actually credited, gross of WHT), bank_charges_fc (charges deducted in transit, in the
+     * invoice's currency), withholding_tax_base (PKR tax withheld, e.g. Section 154 export WHT
+     * — a recoverable asset, not an expense).
+     *
+     * Exchange gain/loss = (real PKR received + PKR value of charges) - (AR claim translated at
+     * the company's standard invoicing rate for that currency as of the invoice date) — i.e. the
+     * AR side of the entry keeps its existing USD-native convention untouched, while this method
+     * only supplies the real-PKR debit lines (bank/charges/WHT) and the plug that reconciles them.
+     */
+    /**
+     * Read-only preview of the FX settlement breakdown (bank/charges/WHT/gain-loss + accounts)
+     * for display on the payment view page before/after posting. Same math as the posting path.
+     */
+    public function previewFxSettlement(array $payment, string $currency, float $cashTotal): ?array
+    {
+        $fx = $this->buildFxSettlementLines($payment, $currency, $cashTotal);
+        if ($fx === null) {
+            return null;
+        }
+        $accountModel = new \App\Models\Accounting\AccountModel();
+        $nameFor = static function (int $id) use ($accountModel): string {
+            if ($id <= 0) {
+                return '';
+            }
+            $a = $accountModel->find($id);
+            return $a ? (string) ($a['name'] ?? '') : '';
+        };
+        $fx['bank_charges_account_name'] = $nameFor((int) $fx['bank_charges_account_id']);
+        $fx['wht_account_name'] = $nameFor((int) $fx['wht_account_id']);
+        $fx['gain_loss_account_name'] = $nameFor((int) $fx['gain_loss_account_id']);
+
+        return $fx;
+    }
+
+    /**
+     * The rate/PKR-equivalent to show on a draft payment before any actual bank
+     * settlement figures (received_amount_base etc.) have been entered — the
+     * "normal" booked rate, not the real bank-settled rate from previewFxSettlement().
+     */
+    public function previewStandardConversion(string $currency, string $asOfDate, float $amount): ?array
+    {
+        $currency = strtoupper(trim($currency));
+        if ($currency === '' || $currency === 'PKR' || $amount <= 0) {
+            return null;
+        }
+        $rate = $this->lookupStandardFxRate($currency, $asOfDate !== '' ? $asOfDate : date('Y-m-d'));
+        if ($rate <= 0) {
+            return null;
+        }
+        return [
+            'rate' => $rate,
+            'base_amount' => $this->roundMoney($amount * $rate),
+        ];
+    }
+
+    private function buildFxSettlementLines(array $payment, string $currency, float $cashTotal): ?array
+    {
+        if ($currency === 'PKR' || $currency === '' || $cashTotal <= 0) {
+            return null;
+        }
+
+        $receivedBase = (float)($payment['received_amount_base'] ?? 0);
+        if ($receivedBase <= 0) {
+            return null; // No manual settlement data entered — fall back to legacy behavior.
+        }
+
+        $bankChargesFc = max(0.0, (float)($payment['bank_charges_fc'] ?? 0));
+        $whtBase = max(0.0, (float)($payment['withholding_tax_base'] ?? 0));
+
+        // Charges may be quoted in the invoice currency (e.g. a USD SWIFT deduction) or already
+        // in PKR (e.g. a Wise withdrawal fee the user read straight off their transfer receipt) —
+        // whichever is easiest for the person entering the payment to look up.
+        $chargesCurrency = strtoupper(trim((string)($payment['bank_charges_currency'] ?? '')));
+        $chargesAlreadyBase = ($chargesCurrency === 'PKR');
+
+        $netFc = $chargesAlreadyBase ? $cashTotal : ($cashTotal - $bankChargesFc);
+        if ($netFc <= 0) {
+            return null;
+        }
+
+        $impliedRate = $receivedBase / $netFc;
+        $bankChargesBase = $chargesAlreadyBase ? $this->roundMoney($bankChargesFc) : $this->roundMoney($bankChargesFc * $impliedRate);
+        $netBankCash = $this->roundMoney($receivedBase - $whtBase);
+
+        // A user may pick a specific GL account for these lines (e.g. a different bank-fees
+        // expense account than the auto-detected one); 0/empty means "let the system decide".
+        $bankChargesAccountOverride = (int) ($payment['bank_charges_account_id'] ?? 0);
+        $whtAccountOverride = (int) ($payment['wht_account_id'] ?? 0);
+        $gainLossAccountOverride = (int) ($payment['gain_loss_account_id'] ?? 0);
+
+        $standardRate = $this->lookupStandardFxRate($currency, (string)($payment['payment_date'] ?? date('Y-m-d')));
+        $arExpectedBase = $this->roundMoney($cashTotal * $standardRate);
+        $gainLoss = $this->roundMoney(($receivedBase + $bankChargesBase) - $arExpectedBase);
+
+        return [
+            'implied_rate' => round($impliedRate, 4),
+            'standard_rate' => $standardRate,
+            'ar_expected_base' => $arExpectedBase,
+            'net_bank_cash' => $netBankCash,
+            'bank_charges_base' => $bankChargesBase,
+            'bank_charges_fc' => $bankChargesFc,
+            'bank_charges_currency' => $chargesAlreadyBase ? 'PKR' : $currency,
+            'bank_charges_already_base' => $chargesAlreadyBase,
+            'bank_charges_account_id' => $bankChargesAccountOverride ?: $this->findAccountIdByCodeOrName(['5056', '5050', '5051', '5054'], ['bank charges', 'bank fee', 'bank fees']),
+            'wht_base' => $this->roundMoney($whtBase),
+            'wht_account_id' => $whtAccountOverride ?: $this->findAccountIdByCodeOrName(['1105', '1104'], ['withholding', 'wht']),
+            'gain_loss' => $gainLoss,
+            'gain_loss_account_id' => $gainLossAccountOverride ?: ($gainLoss >= 0
+                ? $this->findAccountIdByCodeOrName(['4050'], ['exchange gain'])
+                : $this->findAccountIdByCodeOrName(['5055'], ['exchange loss'])),
+        ];
+    }
+
+    /** Company's booked USD->PKR (or other currency) rate as of a given date, for the invoicing currency. */
+    private function lookupStandardFxRate(string $currency, string $asOfDate): float
+    {
+        try {
+            $row = $this->db->query(
+                'SELECT rate FROM exchange_rate WHERE base_code = ? AND quote_code = ? AND as_of <= ? ORDER BY as_of DESC, id DESC LIMIT 1',
+                [$currency, 'PKR', $asOfDate]
+            )->getRowArray();
+            if ($row && (float)($row['rate'] ?? 0) > 0) {
+                return (float)$row['rate'];
+            }
+            $row = $this->db->query(
+                'SELECT rate FROM exchange_rate WHERE base_code = ? AND quote_code = ? ORDER BY as_of DESC, id DESC LIMIT 1',
+                [$currency, 'PKR']
+            )->getRowArray();
+            if ($row && (float)($row['rate'] ?? 0) > 0) {
+                return (float)$row['rate'];
+            }
+        } catch (\Throwable $_) {
+        }
+        return 1.0;
     }
 
     /**

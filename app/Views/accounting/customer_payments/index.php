@@ -9,6 +9,14 @@
   $voided = $voided ?? [];
   $filteredInvoice = $filteredInvoice ?? null;
   $filterInvoiceId = (int)($filterInvoiceId ?? 0);
+  $receivePaymentUrl = base_url('accounting/customer-payments/pay');
+  if ($filterInvoiceId > 0 && !empty($filteredInvoice)) {
+    $receivePaymentUrl .= '?' . http_build_query([
+      'invoice_id' => $filterInvoiceId,
+      'customer_id' => (int)($filteredInvoice['customer_id'] ?? 0),
+      'amount' => (string)($filteredInvoice['total_amount'] ?? ''),
+    ]);
+  }
 
   $currencySymbols = [
     'USD' => '$',
@@ -86,7 +94,7 @@
       <small style="color:var(--gray-400,#94a3b8)">Manage drafts, posted, and voided customer payments</small>
     </div>
     <div class="d-flex gap-2">
-      <a href="<?= base_url('accounting/customer-payments/pay') ?>" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Receive Payment</a>
+      <a href="<?= esc($receivePaymentUrl) ?>" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Receive Payment</a>
       <a href="<?= base_url('accounting/customer-payments') ?>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
     </div>
   </div>
@@ -101,6 +109,18 @@
         <a class="btn btn-sm btn-outline-primary" href="<?= base_url('customer-invoices/view/' . $filterInvoiceId) ?>">Open Invoice</a>
         <a class="btn btn-sm btn-outline-secondary" href="<?= base_url('accounting/customer-payments') ?>">Clear Filter</a>
       </div>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($filterInvoiceId > 0 && empty($drafts) && empty($posted) && empty($voided)): ?>
+    <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
+      <div>
+        <div class="fw-semibold">No payment is recorded for <?= esc($filteredInvoice['invoice_number'] ?? ('invoice #' . $filterInvoiceId)) ?>.</div>
+        <small>This page only displays payments already saved and allocated to this invoice.</small>
+      </div>
+      <a href="<?= esc($receivePaymentUrl) ?>" class="btn btn-success btn-sm">
+        <i class="bi bi-cash-coin me-1"></i>Receive Payment for This Invoice
+      </a>
     </div>
   <?php endif; ?>
 
@@ -144,7 +164,7 @@
         <div class="empty-msg"><i class="bi bi-inbox me-1"></i>No payments found</div>
       <?php else: ?>
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead>
             <tr>
               <th>#</th>
@@ -199,7 +219,7 @@
         <div class="empty-msg"><i class="bi bi-inbox me-1"></i>No pending drafts</div>
       <?php else: ?>
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead>
             <tr>
               <th>#</th>
@@ -255,7 +275,7 @@
         <div class="empty-msg"><i class="bi bi-inbox me-1"></i>No posted payments yet</div>
       <?php else: ?>
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead><tr><th>#</th><th>Date</th><th>Customer</th><th>Method</th><th class="text-end">Amount</th><th>Actions</th></tr></thead>
           <tbody>
           <?php foreach ($posted as $row):
@@ -284,7 +304,7 @@
     <?php if ($hasVoided): ?>
     <div class="cpl-tab-panel" id="panel-voided">
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead><tr><th>#</th><th>Date</th><th>Customer</th><th>Method</th><th class="text-end">Amount</th><th>Actions</th></tr></thead>
           <tbody>
           <?php foreach ($voided as $row):

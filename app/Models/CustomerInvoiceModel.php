@@ -15,7 +15,7 @@ class CustomerInvoiceModel extends Model
         'issue_date', 'due_date', 'payment_term_id', 'currency_code',
         'subtotal', 'discount_total', 'document_discount_type', 'document_discount_value', 'discount_exclude_shipping', 'tax_total', 'total_amount', 'shipping_cost', 'customs_value',
         'status', 'is_custom_adjusted', 'custom_notes', 'export_reference',
-        'notes', 'posted_entry_id', 'created_by'
+        'notes', 'bank_details', 'terms_conditions', 'customer_po_number', 'customer_snapshot', 'posted_entry_id', 'created_by'
     ];
     protected $useTimestamps = true;
     protected $dateFormat = 'datetime';

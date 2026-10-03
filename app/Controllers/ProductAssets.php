@@ -229,6 +229,7 @@ class ProductAssets extends BaseController
                 ->select('product_asset_listings.*, channels.name as channel_name')
                 ->join('channels', 'channels.id = product_asset_listings.channel_id', 'left')
                 ->where('product_id', $productId)
+                ->where($filters['variant_id'] > 0 ? ['variant_id' => $filters['variant_id']] : ['variant_id' => null])
                 ->orderBy('id', 'DESC')
                 ->findAll();
 
@@ -1148,6 +1149,8 @@ class ProductAssets extends BaseController
         $productId = (int) $product['id'];
 
         $channelId = (int) ($this->request->getPost('channel_id') ?? 0);
+        $variantIdRaw = $this->request->getPost('variant_id');
+        $variantId = is_numeric($variantIdRaw) && (int) $variantIdRaw > 0 ? (int) $variantIdRaw : null;
         $listingUrl = trim((string) ($this->request->getPost('listing_url') ?? ''));
         $listingId = (int) ($this->request->getPost('listing_id') ?? 0);
         $notes = trim((string) ($this->request->getPost('notes') ?? '')) ?: null;
@@ -1162,6 +1165,7 @@ class ProductAssets extends BaseController
 
         $payload = [
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'channel_id' => $channelId,
             'listing_url' => $listingUrl,
             'notes' => $notes,
@@ -1169,7 +1173,10 @@ class ProductAssets extends BaseController
 
         if ($listingId > 0) {
             $existing = $this->listingModel->find($listingId);
-            if (! $existing || (int) ($existing['product_id'] ?? 0) !== $productId) {
+            $existingVariantId = is_numeric($existing['variant_id'] ?? null) ? (int) ($existing['variant_id'] ?? 0) : 0;
+            $currentVariantId = $variantId ?? 0;
+
+            if (! $existing || (int) ($existing['product_id'] ?? 0) !== $productId || $existingVariantId !== $currentVariantId) {
                 return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Listing not found']);
             }
 
@@ -1186,6 +1193,7 @@ class ProductAssets extends BaseController
             $existing = $this->listingModel
                 ->where('product_id', $productId)
                 ->where('channel_id', $channelId)
+                ->where('variant_id', $variantId)
                 ->first();
 
             if ($existing) {

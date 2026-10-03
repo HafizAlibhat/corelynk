@@ -101,7 +101,7 @@
             <div class="card-body p-0">
                 <?php if (!empty($process_templates)): ?>
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="cl-table table table-hover mb-0">
                             <thead class="bg-light">
                                 <tr>
                                     <th>Name</th>

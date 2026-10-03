@@ -17,7 +17,7 @@
 </div>
 
 <?= form_open_multipart('', ['class' => 'needs-validation', 'novalidate' => true]) ?>
-    <div class="row">
+    <div class="row cl-form-page">
         <!-- Main Information -->
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm mb-4">

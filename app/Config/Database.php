@@ -29,7 +29,7 @@ class Database extends Config
         'hostname'     => '127.0.0.1',
         'username'     => 'root',
         'password'     => '',
-        'database'     => 'corelynk_db',
+        'database'     => 'corelynk_dev',
         'DBDriver'     => 'MySQLi',
         'DBPrefix'     => '',
         'pConnect'     => false,
@@ -49,6 +49,11 @@ class Database extends Config
             'time'     => 'H:i:s',
         ],
     ];
+
+    /** Request-scoped copies populated by TenantContextFilter. */
+    public array $controlRuntime = [];
+    public array $tenantRuntime = [];
+    public array $tenantProvisioning = [];
 
     // Unified single database: accounting group removed. If rollback needed, restore previous group definition.
 
@@ -159,22 +164,36 @@ class Database extends Config
     //    ];
 
     /**
-     * This database connection is used when running PHPUnit database tests.
+     * Isolated test database.
      *
-     * @var array<string, mixed>
+     * Batch 2A: this group was CodeIgniter's stock SQLite ":memory:" default, which
+     * cannot be used to test this application. The defect family that produced every
+     * blank status in this database -- silent MySQL ENUM truncation under a non-strict
+     * sql_mode -- does not exist in SQLite, which has no ENUM type at all. Testing
+     * against SQLite would have reported PASS for all six known defects.
+     *
+     * So this points at a real MySQL database, corelynk_test, whose schema is a
+     * structural clone of corelynk_db. It holds no business data.
+     *
+     * strictOn is deliberately false to MATCH PRODUCTION. Setting it true here would
+     * make MySQL reject invalid writes with an error, and the domain test would then
+     * pass for the wrong reason -- it would be exercising a configuration nobody runs.
+     * With strictOn = false the test reproduces the real failure mode: the write
+     * reports success and silently stores the empty string. The test catches that by
+     * reading the value back and comparing it to what was written.
      */
     public array $tests = [
         'DSN'         => '',
         'hostname'    => '127.0.0.1',
-        'username'    => '',
+        'username'    => 'root',
         'password'    => '',
-        'database'    => ':memory:',
-        'DBDriver'    => 'SQLite3',
-        'DBPrefix'    => 'db_',  // Needed to ensure we're working correctly with prefixes live. DO NOT REMOVE FOR CI DEVS
+        'database'    => 'corelynk_test',
+        'DBDriver'    => 'MySQLi',
+        'DBPrefix'    => '',
         'pConnect'    => false,
         'DBDebug'     => true,
-        'charset'     => 'utf8',
-        'DBCollat'    => '',
+        'charset'     => 'utf8mb4',
+        'DBCollat'    => 'utf8mb4_general_ci',
         'swapPre'     => '',
         'encrypt'     => false,
         'compress'    => false,

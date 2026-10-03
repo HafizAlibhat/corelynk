@@ -48,9 +48,15 @@ class InventoryAvailabilityService
     /**
      * Get inventory availability for a product (with optional variant).
      * 
+     * "reserved" is an explicit stock hold created by a user. A confirmed
+     * order is demand, but it does not reduce availability until stock is
+     * deliberately reserved for it.
+     *
      * @param int $productId
      * @param int|null $variantId
      * @param string $productType Optional product type (simple, variable, etc.)
+     * @param array $options exclude_sales_order_line_id: ignore that line's own
+     *                       demand, so a line is never reserved against itself.
      * @return array|null
      *   {
      *     'on_hand': float,
@@ -59,7 +65,7 @@ class InventoryAvailabilityService
      *   }
      *   Returns NULL if product is not storable.
      */
-    public function getAvailability(int $productId, ?int $variantId = null, string $productType = ''): ?array
+    public function getAvailability(int $productId, ?int $variantId = null, string $productType = '', array $options = []): ?array
     {
         // Check if product is storable
         if (!$this->isStorable($productId)) {
@@ -67,12 +73,18 @@ class InventoryAvailabilityService
         }
 
         $onHand = 0.0;
-        $reserved = 0.0;
+        $explicitReserved = (new StockReservationService($this->db))->reservedQuantity(
+            $productId,
+            $variantId,
+            isset($options['exclude_sales_order_line_id']) ? (int) $options['exclude_sales_order_line_id'] : null
+        );
 
-        // Priority 1: Variant inventory (if variant_id provided)
+        // Legacy fallback: use variant_inventory only when location balances do
+        // not exist. Location balances distinguish usable internal stock from
+        // work-in-progress physically sitting at a vendor.
         if ($variantId !== null && $variantId > 0) {
             try {
-                if ($this->db->tableExists('variant_inventory')) {
+                if ($this->db->tableExists('variant_inventory') && ! $this->db->tableExists('stock_balances')) {
                     $row = $this->db->table('variant_inventory')
                         ->select('SUM(quantity) as quantity, SUM(reserved) as reserved')
                         ->where('variant_id', (int)$variantId)
@@ -88,7 +100,7 @@ class InventoryAvailabilityService
                             $reserved = 0;
                         }
 
-                        return $this->buildAvailability($onHand, $reserved);
+                        return $this->buildAvailability($onHand, $reserved + $explicitReserved);
                     }
                 }
             } catch (\Throwable $e) {
@@ -96,11 +108,14 @@ class InventoryAvailabilityService
             }
         }
 
-        // Priority 2: Stock balances (aggregated by product_id and variant_id)
+        // Primary source: active internal stock locations only.
         try {
             if ($this->db->tableExists('stock_balances')) {
                 $query = $this->db->table('stock_balances')
-                    ->select('SUM(quantity) as total_qty')
+                    ->select('SUM(stock_balances.quantity) as total_qty')
+                    ->join('warehouse_locations wl', 'wl.id = stock_balances.location_id', 'inner')
+                    ->where('wl.is_active', 1)
+                    ->where('wl.vendor_id IS NULL', null, false)
                     ->where('product_id', (int)$productId);
                 
                 // If variant_id is provided, filter by it
@@ -119,10 +134,7 @@ class InventoryAvailabilityService
 
                 if ($row) {
                     $onHand = (float)($row['total_qty'] ?? 0);
-                    // stock_balances doesn't have reserved; reserved = 0 for simple products
-                    $reserved = 0.0;
-
-                    return $this->buildAvailability($onHand, $reserved);
+                    return $this->buildAvailability($onHand, $explicitReserved);
                 }
             }
         } catch (\Throwable $e) {
@@ -141,9 +153,8 @@ class InventoryAvailabilityService
 
                 if ($prod) {
                     $onHand = (float)($prod['current_stock'] ?? 0);
-                    $reserved = 0.0;
 
-                    return $this->buildAvailability($onHand, $reserved);
+                    return $this->buildAvailability($onHand, $explicitReserved);
                 }
             }
         } catch (\Throwable $e) {
@@ -151,7 +162,7 @@ class InventoryAvailabilityService
         }
 
         // If all sources fail, return zeros (conservative: no stock)
-        return $this->buildAvailability(0.0, 0.0);
+        return $this->buildAvailability(0.0, $explicitReserved);
     }
 
     /**

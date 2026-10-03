@@ -6,6 +6,15 @@
     st.textContent = '' +
       '[data-doc-lines-root] .doc-drag-handle{opacity:.2;transition:opacity .12s ease;}' +
       '[data-doc-lines-root] tr:hover .doc-drag-handle{opacity:.9;}' +
+      '[data-doc-lines-root] .so-lines-table th{padding:5px 6px!important;font-size:.68rem!important;line-height:1.05!important;}' +
+      '[data-doc-lines-root] .so-lines-table td{padding:3px 6px!important;font-size:.74rem!important;line-height:1.08!important;}' +
+      '[data-doc-lines-root] .so-lines-table img{width:24px!important;height:24px!important;object-fit:cover;}' +
+      '[data-doc-lines-root] .so-lines-table .line-desc .fw-semibold,[data-doc-lines-root] .so-lines-table td .fw-semibold{line-height:1.05!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;}' +
+      '[data-doc-lines-root] .so-lines-table .line-desc .text-muted,[data-doc-lines-root] .so-lines-table td .text-muted{font-size:.66rem!important;line-height:1.05!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;}' +
+      '[data-doc-lines-root] .so-lines-table .btn-sm{padding:.12rem .35rem!important;font-size:.68rem!important;line-height:1.1!important;}' +
+      '[data-doc-lines-root] .doc-section-title{min-height:30px!important;padding:5px 10px!important;background:linear-gradient(90deg,#47505b 0,#384252 100%)!important;border-left:4px solid #6d5dfc!important;}' +
+      '[data-doc-lines-root] .doc-section-input{min-height:24px!important;height:24px!important;padding:2px 7px!important;font-size:.75rem!important;}' +
+      '[data-doc-lines-root] .doc-section-subtotal-row td{padding:3px 6px!important;line-height:1.08!important;background:rgba(15,23,42,.72)!important;border-top:1px solid rgba(148,163,184,.18)!important;border-bottom:6px solid #0f172a!important;color:#cbd5e1!important;}' +
       '@media (hover:none){[data-doc-lines-root] .doc-drag-handle{opacity:.85;}}';
     document.head.appendChild(st);
   })();
@@ -212,6 +221,21 @@
     modal.show();
   }
 
+  // The toolbar (Add Product Line / Sort Lines) lives as a sibling above the
+  // lines table, not inside [data-doc-lines-root] — walk up ancestors looking
+  // for a preceding sibling that carries the marker instead of searching
+  // inside root, which never finds it and falls back to appending the Sort
+  // button inside the table wrapper (breaks the layout).
+  function findLineToolbar(root) {
+    var el = root;
+    while (el && el !== document.body) {
+      var prev = el.previousElementSibling;
+      if (prev && prev.hasAttribute && prev.hasAttribute('data-doc-line-toolbar')) return prev;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   function bindDocumentLineTools(root) {
     var table = qs('table[data-doc-line-type]', root);
     if (!table) return;
@@ -224,9 +248,18 @@
     if (table.dataset.docLineBound === '1') return;
     table.dataset.docLineBound = '1';
 
-    var toolbar = qs('[data-doc-line-toolbar]', root) || table.parentNode;
+    var toolbar = findLineToolbar(root) || table.parentNode;
 
     var sortBtn = qs('[data-doc-sort-btn]', toolbar);
+    var addSectionBtn = qs('[data-add-section-btn]', toolbar);
+    if (!addSectionBtn) {
+      addSectionBtn = document.createElement('button');
+      addSectionBtn.type = 'button';
+      addSectionBtn.className = 'btn btn-sm btn-outline-primary';
+      addSectionBtn.setAttribute('data-add-section-btn', '1');
+      addSectionBtn.innerHTML = '<i class="bi bi-type-bold me-1"></i>Add Heading';
+      toolbar.appendChild(addSectionBtn);
+    }
     if (!sortBtn) {
       sortBtn = document.createElement('button');
       sortBtn.type = 'button';
@@ -321,12 +354,57 @@
       });
     });
 
-    tbody.addEventListener('change', function () {
-      // Section feature removed: no section title editing.
+    addSectionBtn.addEventListener('click', function () {
+      var title = window.prompt('Heading title');
+      title = title == null ? '' : String(title).trim();
+      if (!title) return;
+      callEndpoint('document-lines/add-section', {
+        doc_type: docType,
+        document_id: documentId,
+        section_title: title,
+        line_versions: lineVersionMap(tbody)
+      }).then(function (res) {
+        if (res.rows_html) refreshRowsHtml(res.rows_html);
+        syncSortButtonState();
+        notify('Heading added', 'success');
+      });
     });
 
-    tbody.addEventListener('click', function () {
-      // Section feature removed: no section delete actions.
+    tbody.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('doc-section-input')) return;
+      var row = t.closest('tr[data-line-id][data-display-type="section"]');
+      if (!row) return;
+      callEndpoint('document-lines/update-section', {
+        doc_type: docType,
+        document_id: documentId,
+        line_id: parseInt(row.getAttribute('data-line-id') || '0', 10),
+        section_title: t.value || '',
+        line_versions: lineVersionMap(tbody)
+      }).then(function (res) {
+        if (res.rows_html) refreshRowsHtml(res.rows_html);
+        notify('Heading saved', 'success');
+      });
+    });
+
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-delete-section-btn]') : null;
+      if (!btn || !tbody.contains(btn)) return;
+      var row = btn.closest('tr[data-line-id][data-display-type="section"]');
+      if (!row) return;
+      openSectionDeleteChoice(function (mode) {
+        callEndpoint('document-lines/delete-section', {
+          doc_type: docType,
+          document_id: documentId,
+          line_id: parseInt(row.getAttribute('data-line-id') || '0', 10),
+          mode: mode,
+          line_versions: lineVersionMap(tbody)
+        }).then(function (res) {
+          if (res.rows_html) refreshRowsHtml(res.rows_html);
+          syncSortButtonState();
+          notify('Heading deleted', 'success');
+        });
+      });
     });
 
     var recalcTimer = null;

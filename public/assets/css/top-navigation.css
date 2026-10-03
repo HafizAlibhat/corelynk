@@ -1,0 +1,230 @@
+/**
+ * CoreLynk top navigation + shell geometry.
+ *
+ * CENTRAL OWNER of the app chrome layout: this file is loaded last and is the
+ * only place that should set the top bar, the sidebar/content grid offsets and
+ * the full-width page frame. Colours/spacing reuse the existing shell tokens
+ * (sidebar-navigation.css :root + design-system.css) — no new palette here.
+ */
+:root {
+  --cl-topbar-h: 58px;
+  --cl-topbar-bg: var(--cl-nav-bg, #0b0c16);
+  --cl-topbar-border: var(--cl-nav-border, rgba(255, 255, 255, .06));
+  --cl-topbar-text: var(--cl-nav-child, #c7cad1);
+  --cl-topbar-accent: var(--cl-nav-purple, #8b7ff5);
+}
+
+/* ---------------------------------------------------------------- top bar */
+.cl-topbar {
+  position: relative;
+  z-index: 1040;
+  width: 100%;
+  height: var(--cl-topbar-h);
+  border-bottom: 1px solid var(--cl-topbar-border);
+  background: var(--cl-topbar-bg);
+  color: var(--cl-topbar-text);
+}
+
+.cl-topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.cl-topbar-burger {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border: 1px solid var(--cl-topbar-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  color: var(--cl-topbar-text);
+  font-size: 1.2rem;
+}
+
+.cl-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cl-topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* overflow stays visible so Bootstrap dropdowns are never clipped */
+}
+
+.cl-topbar-item { flex: 0 0 auto; }
+
+.cl-topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--cl-topbar-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color .18s ease, color .18s ease;
+}
+
+.cl-topbar-link > i:first-child { font-size: .9rem; }
+.cl-topbar-caret { font-size: .65rem; opacity: .6; }
+
+.cl-topbar-link:is(:hover, :focus-visible) {
+  background: rgba(255, 255, 255, .07);
+  color: #fff;
+}
+
+.cl-topbar-link.active,
+.cl-topbar-item .cl-topbar-link[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--cl-topbar-accent) 22%, transparent);
+  color: #fff;
+}
+
+.cl-topbar :is(.cl-topbar-link, .cl-icon-btn, .cl-quick-create, .cl-topbar-burger):focus-visible {
+  outline: 2px solid var(--cl-topbar-accent);
+  outline-offset: 2px;
+}
+
+.cl-topbar-menu {
+  min-width: 220px;
+  padding: 5px;
+  border: 1px solid rgba(15, 23, 42, .1);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, .18);
+}
+
+.cl-topbar-menu .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.cl-topbar-menu .dropdown-item > i { width: 16px; font-size: .85rem; opacity: .75; }
+.cl-topbar-menu .dropdown-item.active { background: var(--cl-topbar-accent); color: #fff; }
+.cl-topbar-menu .dropdown-item.active > i { opacity: 1; }
+
+/* Action cluster moved out of the sidebar: restore its sizing here. */
+.cl-topbar .nav-actions { margin-left: auto; }
+.cl-topbar :is(.cl-icon-btn, .cl-quick-create) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+.cl-topbar #userBtn { width: auto; min-width: 0; padding: 0 10px; gap: 8px; }
+.cl-topbar .cl-user-avatar { width: 28px; height: 28px; flex: 0 0 28px; font-size: 11px; }
+.cl-topbar .cl-user-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cl-topbar .cl-topbar-search {
+  position: relative;
+  align-items: center;
+  gap: 8px;
+  width: clamp(150px, 18vw, 280px);
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--cl-topbar-border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .05);
+}
+.cl-topbar .cl-topbar-search:focus-within { border-color: var(--cl-topbar-accent); }
+.cl-topbar .cl-topbar-search input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.cl-topbar .cl-topbar-search-advanced {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: .6;
+}
+
+/* Below 1400px the module labels alone keep every group reachable. */
+@media (max-width: 1399.98px) {
+  .cl-topbar-nav .cl-topbar-link > i:first-child { display: none; }
+  .cl-topbar-link { padding: 0 9px; }
+}
+
+/* -------------------------------------------- shell geometry (full width) */
+/* No sidebar column any more. The legacy sheets still carry a two-column grid
+   (design-system.css, sidebar-navigation.css) whose selectors outrank a bare
+   .app-layout rule, so the shell is flattened to a block instead of fighting
+   them area by area: one full-width scrolling column under the top bar. */
+html body .app-layout {
+  display: block !important;
+  grid-template-columns: none !important;
+  grid-template-rows: none !important;
+  grid-template-areas: none !important;
+  gap: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+html body .app-layout > .main-content {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: calc(100dvh - var(--cl-topbar-h)) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+@media (min-width: 1200px) {
+  html body .app-layout > .main-content { padding: 16px 20px !important; }
+}
+
+/* Under 1200px the module bar scrolls sideways instead of hiding: with the
+   sidebar gone it is the only way to reach a module. */
+@media (max-width: 1199.98px) {
+  .cl-topbar-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .cl-topbar-nav::-webkit-scrollbar { display: none; }
+  .cl-topbar .cl-topbar-search { display: none !important; }
+  .cl-topbar-brand-name { display: none; }
+
+  html body .app-layout > .main-content { padding: 14px !important; }
+}

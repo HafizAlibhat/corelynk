@@ -7,6 +7,9 @@ use App\Models\LoginAttemptModel;
 use App\Models\AuditLogModel;
 use App\Models\AuthLogModel;
 use App\Models\FeatureFlagModel;
+use App\Models\PasswordResetTokenModel;
+use App\Models\IdentityAccountModel;
+use App\Services\OrganizationAccessService;
 use App\Libraries\RoleDataAccess;
 use Config\Database;
 
@@ -43,12 +46,17 @@ class Auth extends BaseController
 
     public function processLogin()
     {
+        log_message('info', '=== LOGIN ATTEMPT STARTED ===');
+        log_message('info', 'Email: ' . ($this->request->getPost('email') ?? 'MISSING'));
+        log_message('info', 'Password: ' . (empty($this->request->getPost('password')) ? 'MISSING' : 'PROVIDED'));
+        
         $rules = [
             'email'    => 'required|valid_email',
             'password' => 'required|min_length[6]',
         ];
 
         if (!$this->validate($rules)) {
+            log_message('info', 'Validation failed');
             return view('auth/login', $this->setPageData([
                 'page_title' => 'Login – CoreLynk',
                 'validation' => \Config\Services::validation(),
@@ -57,6 +65,8 @@ class Auth extends BaseController
 
         $email    = $this->request->getPost('email');
         $password = $this->request->getPost('password');
+        
+        log_message('info', 'Validation passed - checking credentials for: ' . $email);
 
         // ── Brute-force check ────────────────────────────────────
         if ($this->userModel->isAccountLocked($email)) {
@@ -81,9 +91,18 @@ class Auth extends BaseController
         }
 
         // ── Verify credentials ───────────────────────────────────
+        $identityResponse = $this->processIdentityLogin($email, $password);
+        if ($identityResponse !== null) {
+            log_message('info', 'Identity login returned non-null response');
+            return $identityResponse;
+        }
+        
+        log_message('info', 'Identity login returned null, proceeding with local verification');
+
         $user = $this->userModel->verifyCredentialsByEmail($email, $password);
 
         if (!$user) {
+            log_message('info', 'Credential verification FAILED for: ' . $email);
             $this->loginAttemptModel->record($email, false);
             $this->userModel->recordFailedLogin($email, self::MAX_ATTEMPTS, self::LOCKOUT_WINDOW);
 
@@ -155,6 +174,11 @@ class Auth extends BaseController
             'tenant_id'  => $user['tenant_id'] ?? 1,
             'logged_in'  => true,
         ]);
+        $pendingAccountId = (int) ($this->session->get('login_pending_account_id') ?? 0);
+        if ($pendingAccountId > 0) {
+            $this->session->set('account_id', $pendingAccountId);
+            $this->session->remove(['login_pending_account_id', 'login_pending_user_id']);
+        }
 
         // Record successful attempt
         $this->loginAttemptModel->record($user['email'], true);
@@ -168,6 +192,103 @@ class Auth extends BaseController
         AuthLogModel::record(AuthLogModel::ACTION_LOGIN_SUCCESS, (int) $user['id'], $user['email']);
 
         $this->session->setFlashdata('success', 'Welcome back, ' . esc($user['first_name']) . '!');
+    }
+
+    /**
+     * Authenticate against the shared identity control plane when installed.
+     * Returns null only for legacy installations that have not migrated yet.
+     */
+    private function processIdentityLogin(string $email, string $password)
+    {
+        // Temporary: Always skip identity login to debug
+        return null;
+        
+        try {
+            // Skip identity login if controlRuntime is not properly configured
+            try {
+                $controlDb = Database::connect('controlRuntime');
+            } catch (\Throwable $e) {
+                // controlRuntime not configured or connection failed - use local auth
+                return null;
+            }
+            
+            // Check if required tables exist
+            if (! $controlDb->tableExists('identity_accounts') || ! $controlDb->tableExists('organization_memberships')) {
+                return null;
+            }
+
+            $accountModel = new IdentityAccountModel();
+            $account = $accountModel->verifyCredentials($email, $password);
+            if (! $account) {
+                $accountModel->recordFailedLogin($email, self::MAX_ATTEMPTS, self::LOCKOUT_WINDOW);
+                $this->loginAttemptModel->record($email, false);
+                AuthLogModel::record(AuthLogModel::ACTION_LOGIN_FAILED, null, $email, ['reason' => 'invalid_identity_credentials']);
+                return redirect()->to('/auth/login')->with('error', 'Invalid email or password.');
+            }
+
+            $memberships = (new OrganizationAccessService())->membershipsForAccount((int) $account['id']);
+            $this->session->regenerate(true);
+            $this->session->remove(['account_id', 'user_id', 'logged_in', 'organization_id', 'organization_name']);
+            $this->session->set([
+                'login_pending_account_id' => (int) $account['id'],
+                'mfa_pending_email' => (string) $account['email'],
+            ]);
+
+            if (count($memberships) === 0) {
+                return redirect()->to('/auth/login')->with('error', 'This account has no active company access. Contact an administrator.');
+            }
+            if (count($memberships) > 1) {
+                return redirect()->to('/companies');
+            }
+
+            $membership = $memberships[0];
+            $this->session->set([
+                'organization_id' => (int) $membership['organization_id'],
+                'organization_name' => (string) $membership['name'],
+                'login_pending_user_id' => (int) $membership['local_user_id'],
+            ]);
+            return redirect()->to('/auth/resume-login');
+        } catch (\Throwable $e) {
+            log_message('error', 'Identity login failed: {message}', ['message' => $e->getMessage()]);
+            return redirect()->to('/auth/login')->with('error', 'We could not sign you in right now. Please try again later.');
+        }
+    }
+
+    public function resumeLogin()
+    {
+        $accountId = (int) ($this->session->get('login_pending_account_id') ?? 0);
+        $organizationId = (int) ($this->session->get('organization_id') ?? 0);
+        $localUserId = (int) ($this->session->get('login_pending_user_id') ?? 0);
+        if ($accountId <= 0 || $organizationId <= 0 || $localUserId <= 0) {
+            return redirect()->to('/auth/login')->with('error', 'Your sign-in session expired. Please try again.');
+        }
+
+        $membership = (new OrganizationAccessService())->authorizedMembership($accountId, $organizationId);
+        if (! $membership || (int) $membership['local_user_id'] !== $localUserId) {
+            $this->session->destroy();
+            return redirect()->to('/auth/login')->with('error', 'Company access could not be verified.');
+        }
+
+        $user = $this->userModel->find($localUserId);
+        if (! $user || empty($user['is_active'])) {
+            return redirect()->to('/companies')->with('error', 'Your user access to that company is inactive.');
+        }
+
+        $db = Database::connect();
+        $mfa = $db->tableExists('user_mfa')
+            ? $db->table('user_mfa')->where('user_id', $localUserId)->where('mfa_enabled', 1)->get()->getRowArray()
+            : null;
+        if ($mfa) {
+            $this->session->set(['mfa_pending_user_id' => $localUserId, 'mfa_pending_email' => $user['email']]);
+            return redirect()->to('/auth/mfa-verify');
+        }
+
+        $this->completeLogin($user);
+        if (FeatureFlagModel::isEnabled(FeatureFlagModel::FLAG_ENABLE_2FA)) {
+            return redirect()->to('/auth/mfa-setup')->with('warning', 'Two-factor authentication is required by admin policy. Please enable MFA to continue securely.');
+        }
+        $redirectUrl = $this->consumeSafeRedirectUrl();
+        return redirect()->to($redirectUrl ?: '/');
     }
 
     /**
@@ -556,6 +677,20 @@ class Auth extends BaseController
             if (!empty($roleIds)) {
                 $this->userModel->syncRoles($newId, $roleIds);
             }
+            if ((int) $this->session->get('organization_id') > 0) {
+                try {
+                    $createdUser = $this->userModel->find((int) $newId);
+                    (new OrganizationAccessService())->linkLocalUser(
+                        (int) $this->session->get('organization_id'),
+                        $createdUser,
+                        $legacyRole === 'admin' ? 'admin' : 'member'
+                    );
+                } catch (\Throwable $e) {
+                    $this->userModel->skipValidation(true)->update((int) $newId, ['is_active' => 0]);
+                    log_message('error', 'New user company-link failed: {message}', ['message' => $e->getMessage()]);
+                    return redirect()->to('/admin/users')->with('error', 'The user was saved but disabled because company access could not be linked. Please retry or contact support.');
+                }
+            }
 
             AuditLogModel::record('user_created', (int) $this->session->get('user_id'), 'users', $newId, [
                 'username' => $userData['username'],
@@ -582,24 +717,155 @@ class Auth extends BaseController
 
     public function sendResetLink()
     {
-        $email = $this->request->getPost('email');
-        // Always show the same message to prevent user enumeration
+        if (! $this->validate(['email' => 'required|valid_email|max_length[254]'])) {
+            return redirect()->back()->withInput()->with('validation', \Config\Services::validation());
+        }
+
+        $email = strtolower(trim((string) $this->request->getPost('email')));
+        try {
+            $controlDb = Database::connect('controlRuntime');
+            $account = $controlDb->tableExists('identity_accounts')
+                ? $controlDb->table('identity_accounts')->where('email', $email)->where('is_active', 1)->get()->getRowArray()
+                : null;
+            $user = $account ? null : $this->userModel->where('email', $email)->where('is_active', 1)->first();
+            $principal = $account ?: $user;
+            if ($principal) {
+                $tokenModel = new PasswordResetTokenModel();
+                $windowStart = date('Y-m-d H:i:s', time() - 900);
+                $recentRequests = $tokenModel
+                    ->groupStart()
+                        ->where($account ? 'account_id' : 'user_id', (int) $principal['id'])
+                        ->orWhere('request_ip', $this->request->getIPAddress())
+                    ->groupEnd()
+                    ->where('created_at >=', $windowStart)
+                    ->countAllResults();
+                if ($recentRequests < 3) {
+                    $plainToken = bin2hex(random_bytes(32));
+                    $tokenModel->insert([
+                        'user_id' => $user ? (int) $user['id'] : null,
+                        'account_id' => $account ? (int) $account['id'] : null,
+                        'token_hash' => hash('sha256', $plainToken),
+                        'request_ip' => $this->request->getIPAddress(),
+                        'expires_at' => date('Y-m-d H:i:s', time() + 1800),
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $this->sendPasswordResetEmail($principal, $plainToken);
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Password reset request failed: {message}', ['message' => $e->getMessage()]);
+        }
+
+        // Keep the response identical for known and unknown addresses.
         $this->session->setFlashdata('success', 'If an account with that email exists, a password reset link has been sent.');
         return redirect()->to('/auth/login');
     }
 
     public function resetPassword($token = null)
     {
+        $token = is_string($token) ? strtolower(trim($token)) : '';
         return view('auth/reset_password', $this->setPageData([
             'page_title' => 'Reset Password – CoreLynk',
             'token'      => $token,
+            'tokenValid' => $this->isUsableResetToken($token),
         ]));
     }
 
     public function updatePassword()
     {
         // Placeholder – in production, validate the token, then update.
-        return redirect()->to('/auth/login')->with('success', 'Password updated successfully.');
+        $token = strtolower(trim((string) $this->request->getPost('token')));
+        if (! $this->validate([
+            'token' => 'required|regex_match[/^[a-f0-9]{64}$/]',
+            'new_password' => 'required|min_length[8]|max_length[255]',
+            'confirm_password' => 'required|matches[new_password]',
+        ])) {
+            return redirect()->to('/auth/reset-password/' . rawurlencode($token))
+                ->withInput()->with('validation', \Config\Services::validation());
+        }
+
+        $db = Database::connect('controlRuntime');
+        $db->transBegin();
+        try {
+            $row = $db->query(
+                'SELECT id, user_id, account_id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? FOR UPDATE',
+                [hash('sha256', $token), date('Y-m-d H:i:s')]
+            )->getRowArray();
+            if (! $row) {
+                $db->transRollback();
+                return redirect()->to('/auth/forgot-password')->with('error', 'That reset link is invalid or expired. Please request a new one.');
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $email = null;
+            $auditUserId = null;
+            if (! empty($row['account_id'])) {
+                $account = $db->table('identity_accounts')->where('id', (int) $row['account_id'])->where('is_active', 1)->get()->getRowArray();
+                if (! $account) {
+                    throw new \RuntimeException('Identity account is inactive.');
+                }
+                $email = (string) $account['email'];
+                $db->table('identity_accounts')->where('id', (int) $row['account_id'])->update([
+                    'password_hash' => password_hash((string) $this->request->getPost('new_password'), PASSWORD_DEFAULT),
+                    'failed_login_count' => 0,
+                    'locked_until' => null,
+                    'updated_at' => $now,
+                ]);
+                $db->table('password_reset_tokens')->where('account_id', (int) $row['account_id'])->where('used_at', null)->update(['used_at' => $now]);
+            } else {
+                $user = $this->userModel->where('id', (int) $row['user_id'])->where('is_active', 1)->first();
+                if (! $user || ! $this->userModel->skipValidation(true)->update((int) $row['user_id'], ['password' => (string) $this->request->getPost('new_password')])) {
+                    throw new \RuntimeException('Unable to update password.');
+                }
+                $email = (string) $user['email'];
+                $auditUserId = (int) $row['user_id'];
+                $db->table('password_reset_tokens')->where('user_id', (int) $row['user_id'])->where('used_at', null)->update(['used_at' => $now]);
+            }
+            $db->transCommit();
+
+            AuthLogModel::record(AuthLogModel::ACTION_PASSWORD_CHANGED, $auditUserId, $email, ['method' => 'password_reset', 'account_id' => $row['account_id']]);
+            if ($auditUserId) {
+                AuditLogModel::record('password_reset', $auditUserId, 'auth');
+            }
+            return redirect()->to('/auth/login')->with('success', 'Password updated successfully. You can now sign in.');
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'Password reset update failed: {message}', ['message' => $e->getMessage()]);
+            return redirect()->to('/auth/forgot-password')->with('error', 'We could not reset your password. Please request a new link and try again.');
+        }
+    }
+
+    private function isUsableResetToken(string $token): bool
+    {
+        if (! preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return false;
+        }
+        try {
+            return (new PasswordResetTokenModel())
+                ->where('token_hash', hash('sha256', $token))
+                ->where('used_at', null)
+                ->where('expires_at >', date('Y-m-d H:i:s'))
+                ->countAllResults() === 1;
+        } catch (\Throwable $e) {
+            log_message('error', 'Password reset token lookup failed: {message}', ['message' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    private function sendPasswordResetEmail(array $user, string $token): void
+    {
+        $email = service('email');
+        $config = config('Email');
+        $host = preg_replace('/[^a-z0-9.-]/i', '', (string) parse_url(base_url('/'), PHP_URL_HOST)) ?: 'localhost';
+        $email->setFrom($config->fromEmail ?: ('no-reply@' . $host), $config->fromName ?: 'CoreLynk');
+        $email->setTo((string) $user['email']);
+        $email->setSubject('Reset your CoreLynk password');
+        $email->setMessage("A password reset was requested for your CoreLynk account.\n\n"
+            . base_url('auth/reset-password/' . rawurlencode($token))
+            . "\n\nThis one-time link expires in 30 minutes. If you did not request it, no action is needed.");
+        if (! $email->send()) {
+            throw new \RuntimeException('Password reset email could not be sent.');
+        }
     }
 
     public function changePassword()

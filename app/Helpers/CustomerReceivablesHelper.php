@@ -20,16 +20,20 @@ class CustomerReceivablesHelper
         }
         
         $unpaidInvoices = [];
+        helper('currency');
         $orderReceivables = [];
         $totalReceivable = 0.0;
-        
+        $totalsByCurrency = [];
+        helper('currency');
+
         try {
             if (!$db->tableExists('customer_invoices')) {
                 if ($debug) log_message('debug', 'customer_invoices table does not exist');
-                return ['unpaid' => [], 'total' => 0.0, 'count' => 0, 'order_receivables' => []];
+                return ['unpaid' => [], 'total' => 0.0, 'count' => 0, 'order_receivables' => [], 'totals_by_currency' => []];
             }
-            
+
             $invCols = $db->getFieldNames('customer_invoices');
+            $hasCurrency = in_array('currency_code', $invCols, true);
             
             // Determine the correct total amount field
             $totalField = 'total_amount';
@@ -109,12 +113,16 @@ class CustomerReceivablesHelper
                 . ($hasDueDate ? 'ci.due_date' : 'NULL AS due_date') . ', '
                 . ($hasStatus ? 'ci.status' : "'issued' AS status") . ', '
                 . 'ci.' . $totalField . ' AS total_amount, '
+                . ($hasCurrency ? 'ci.currency_code' : "'' AS currency_code") . ', '
                 . ($hasSalesOrderId ? 'ci.sales_order_id' : 'NULL AS sales_order_id') . ', '
                 . $soNumExpr . ', '
                 . '(SELECT COALESCE(SUM(' . $allocExpr . '),0) '
                 . ' FROM customer_payment_allocations cpa '
                 . ' INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
-                . ' WHERE cpa.invoice_id = ci.id AND (cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0)) AS paid_amount '
+                . ' WHERE cpa.invoice_id = ci.id '
+                . ' AND cp.customer_id = ci.customer_id '
+                . ' AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
+                . ' AND (cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0)) AS paid_amount '
                 . 'FROM customer_invoices ci '
                 . $soJoin
                 . 'WHERE ' . $whereClause . ' '
@@ -147,22 +155,28 @@ class CustomerReceivablesHelper
                     continue;
                 }
                 
+                // Each invoice keeps its own currency; totals are grouped, never merged.
+                $currency = \currency_code_or_base($row['currency_code'] ?? null);
+                $row['currency_code'] = $currency;
                 $row['outstanding'] = $outstanding;
                 $unpaidInvoices[] = $row;
                 $totalReceivable += $outstanding;
-                
+                $totalsByCurrency[$currency] = round(($totalsByCurrency[$currency] ?? 0.0) + $outstanding, 2);
+
                 if (!empty($row['sales_order_id'])) {
                     $soId = (int)$row['sales_order_id'];
-                    if (!isset($orderReceivables[$soId])) {
-                        $orderReceivables[$soId] = [
+                    $bucket = $soId . '|' . $currency;
+                    if (!isset($orderReceivables[$bucket])) {
+                        $orderReceivables[$bucket] = [
                             'sales_order_id' => $soId,
                             'sales_order_number' => $row['sales_order_number'] ?? ('SO-' . $soId),
+                            'currency_code' => $currency,
                             'pending_amount' => 0.0,
                             'invoice_count' => 0,
                         ];
                     }
-                    $orderReceivables[$soId]['pending_amount'] += $outstanding;
-                    $orderReceivables[$soId]['invoice_count']++;
+                    $orderReceivables[$bucket]['pending_amount'] += $outstanding;
+                    $orderReceivables[$bucket]['invoice_count']++;
                 }
             }
             
@@ -184,6 +198,7 @@ class CustomerReceivablesHelper
             'total' => $totalReceivable,
             'count' => count($unpaidInvoices),
             'order_receivables' => $orderReceivables,
+            'totals_by_currency' => $totalsByCurrency,
         ];
     }
 
@@ -201,18 +216,23 @@ class CustomerReceivablesHelper
             'posted_payments' => 0.0,
             'draft_payments' => 0.0,
             'advance_balance' => 0.0,
+            'pending_by_currency' => [],
+            'posted_by_currency' => [],
+            'draft_by_currency' => [],
         ];
         
         try {
             // Get unpaid invoices
             $unpaidData = self::getUnpaidInvoices($customerId, $db, false);
             $result['total_pending'] = $unpaidData['total'];
+            $result['pending_by_currency'] = $unpaidData['totals_by_currency'] ?? [];
             
             // Get payment totals
             if ($db->tableExists('customer_payments')) {
                 $payCols = $db->getFieldNames('customer_payments');
                 $hasStatus = in_array('status', $payCols, true);
                 $hasPostedEntryId = in_array('posted_entry_id', $payCols, true);
+                $payCurrency = in_array('currency_code', $payCols, true) ? 'cp.currency_code' : "''";
                 
                 // Determine how to detect "posted" vs "draft" payments
                 if ($hasStatus) {
@@ -231,19 +251,25 @@ class CustomerReceivablesHelper
                 
                 $paymentQuery = 'SELECT '
                     . $statusExpr . ', '
+                    . $payCurrency . ' AS currency_code, '
                     . 'COALESCE(SUM(cp.amount), 0) AS total_amount '
                     . 'FROM customer_payments cp '
                     . 'WHERE cp.customer_id = ? '
-                    . 'GROUP BY ' . ($hasStatus ? 'LOWER(COALESCE(cp.status, \'draft\'))' : 'IF(cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0, \'posted\', \'draft\')');
+                    // Group on the select aliases: MariaDB's ONLY_FULL_GROUP_BY will not
+                    // match a repeated IF()/LOWER() expression back to the select list, and
+                    // the error was swallowed, leaving every payment total at zero.
+                    . 'GROUP BY status, currency_code';
                 
                 $payments = $db->query($paymentQuery, [(int)$customerId])->getResultArray();
                 
+                helper('currency');
                 foreach ($payments as $pay) {
-                    if ($pay['status'] === 'posted') {
-                        $result['posted_payments'] = (float)($pay['total_amount'] ?? 0);
-                    } else {
-                        $result['draft_payments'] = (float)($pay['total_amount'] ?? 0);
-                    }
+                    $amount = (float)($pay['total_amount'] ?? 0);
+                    $code   = currency_code_or_base($pay['currency_code'] ?? null);
+                    $bucket = $pay['status'] === 'posted' ? 'posted' : 'draft';
+                    $result[$bucket . '_payments'] += $amount;
+                    $key = $bucket . '_by_currency';
+                    $result[$key][$code] = round(($result[$key][$code] ?? 0.0) + $amount, 2);
                 }
             }
             

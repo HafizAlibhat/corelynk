@@ -52,7 +52,25 @@ foreach ($lines as $idx => $ln):
     $next = $lines[$idx + 1] ?? null;
     $nextIsSectionOrEnd = (!$next) || ($lineType($next) === 'section');
     if ($isSection):
-        // Section feature removed.
+        $currentSectionId = $id;
+        $title = trim((string)($ln['section_title'] ?? $ln['product_name'] ?? $ln['description'] ?? 'Section'));
+        if ($title === '') {
+            $title = 'Section';
+        }
+        if (!isset($sectionSubtotals[$currentSectionId])) {
+            $sectionSubtotals[$currentSectionId] = 0.0;
+        }
+?>
+<tr class="doc-section-row" data-line-id="<?= $id ?>" data-display-type="section" data-line-updated-at="<?= esc((string)($ln['updated_at'] ?? '')) ?>">
+    <td colspan="<?= $columnCount ?>">
+        <div class="doc-section-title">
+            <span class="doc-drag-handle me-2" title="Drag section" style="cursor:grab;opacity:.75;"><i class="bi bi-grip-vertical"></i></span>
+            <input type="text" class="form-control form-control-sm doc-section-input" value="<?= esc($title) ?>" aria-label="Section heading" style="max-width:520px;font-weight:700;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#fff;">
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" data-delete-section-btn="1" title="Delete this heading"><i class="bi bi-trash"></i></button>
+        </div>
+    </td>
+</tr>
+<?php
         continue;
     endif;
 

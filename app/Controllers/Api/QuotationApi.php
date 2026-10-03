@@ -123,11 +123,20 @@ class QuotationApi extends BaseApiController
         ];
 
         foreach ($body['lines'] as $ln) {
+            $productId = !empty($ln['product_id']) ? (int) $ln['product_id'] : 0;
+            $quantity  = (float) ($ln['quantity'] ?? 0);
+            $unitPrice = (float) ($ln['unit_price'] ?? 0);
+
+            if ($this->priceRequiresOverride($data['customer_id'], $productId, $quantity, $unitPrice)
+                && !service('policy')->can('quotations', 'override_price')) {
+                return $this->error('This price requires override permission.');
+            }
+
             $data['lines'][] = [
-                'product_id'    => !empty($ln['product_id']) ? (int) $ln['product_id'] : null,
+                'product_id'    => $productId ?: null,
                 'description'   => $ln['description'] ?? '',
-                'quantity'      => (float) ($ln['quantity'] ?? 0),
-                'unit_price'    => (float) ($ln['unit_price'] ?? 0),
+                'quantity'      => $quantity,
+                'unit_price'    => $unitPrice,
                 'discount_type' => $ln['discount_type'] ?? 'percent',
                 'discount_value'=> (float) ($ln['discount_value'] ?? 0),
                 'tax_rate'      => (float) ($ln['tax_rate'] ?? 0),
@@ -135,7 +144,11 @@ class QuotationApi extends BaseApiController
             ];
         }
 
-        $insertId = $model->createQuotation($data);
+        try {
+            $insertId = $model->createQuotation($data);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
 
         if ($insertId === false) {
             return $this->error('Failed to create quotation.');
@@ -147,5 +160,43 @@ class QuotationApi extends BaseApiController
             'id'           => $insertId,
             'quote_number' => $created['quote_number'] ?? '',
         ], 'Quotation created successfully.', 201);
+    }
+
+    /**
+     * True if $unitPrice doesn't match any known valid price for the product
+     * (customer's tiered price-list price, else the product master sale price),
+     * meaning the quotations.override_price permission is required to save it.
+     * A $productId of 0 (free-text/manual line) is never validated.
+     */
+    private function priceRequiresOverride(int $customerId, int $productId, float $quantity, float $unitPrice): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+        $validPrices = [];
+        if ($customerId > 0) {
+            try {
+                $item = (new \App\Models\PriceListItemModel())->getCustomerProductPrice($customerId, $productId, (int) max(1, $quantity));
+                if ($item && isset($item['special_price'])) {
+                    $validPrices[] = (float) $item['special_price'];
+                }
+            } catch (\Throwable $e) { /* best-effort */ }
+        }
+        try {
+            $pricing = (new \App\Models\ProductModel())->getPricingInfo($productId);
+            if (isset($pricing['sale_price'])) {
+                $validPrices[] = (float) $pricing['sale_price'];
+            }
+        } catch (\Throwable $e) { /* best-effort */ }
+
+        if (empty($validPrices)) {
+            return false;
+        }
+        foreach ($validPrices as $vp) {
+            if (abs($vp - $unitPrice) < 0.005) {
+                return false;
+            }
+        }
+        return true;
     }
 }

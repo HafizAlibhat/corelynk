@@ -117,6 +117,43 @@
       </div>
     </div>
 
+    <div class="card mt-3" id="fxSettlementCard" style="display:none;">
+      <div class="card-header"><strong>Foreign Currency Settlement</strong></div>
+      <div class="card-body">
+        <div class="mb-2">
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="fx_route" id="fx_route_direct" value="direct" checked>
+            <label class="form-check-label" for="fx_route_direct">Direct to our Pakistan account</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="fx_route" id="fx_route_intermediary" value="intermediary">
+            <label class="form-check-label" for="fx_route_intermediary">Via foreign account (Stripe/Wise) first</label>
+          </div>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label" id="fx_received_label">PKR credited by bank</label>
+            <input type="number" step="0.01" min="0" id="fx_received_base" class="form-control" placeholder="From bank statement">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Total fees deducted</label>
+            <div class="input-group">
+              <input type="number" step="0.01" min="0" id="fx_bank_charges" class="form-control" placeholder="0.00">
+              <select id="fx_bank_charges_currency" class="form-select" style="max-width:110px;">
+                <option value="">In <span id="fx_currency_label_opt">invoice ccy</span></option>
+                <option value="PKR">In PKR</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Withholding tax (PKR)</label>
+            <input type="number" step="0.01" min="0" id="fx_wht" class="form-control" placeholder="0.00">
+          </div>
+        </div>
+        <div class="mt-2 small" id="fx_preview" style="display:none;background:var(--gray-50,#f8fafc);border:1px solid var(--gray-200,#e2e8f0);border-radius:6px;padding:.5rem .75rem;"></div>
+      </div>
+    </div>
+
     <div class="card mt-3" id="customerCreditsCard" style="display:none;">
       <div class="card-header d-flex justify-content-between align-items-center">
         <strong>Existing Customer Payments (Unallocated Balance)</strong>
@@ -157,6 +194,9 @@
       <?php if (!empty($prefill) && !empty($prefill['id']) && !empty($prefill['amount'])): ?>
         <input type="hidden" id="prefill_amount" value="<?= esc($prefill['amount']) ?>">
       <?php endif; ?>
+      <?php if (!empty($prefill) && !empty($prefill['is_payment_edit']) && empty($prefill['currency_code']) === false && $prefill['currency_code'] !== 'PKR'): ?>
+        <input type="hidden" id="prefill_payment_currency" value="<?= esc($prefill['currency_code']) ?>">
+      <?php endif; ?>
 
       <?php if (!empty($prefill) && !empty($prefill['is_payment_edit'])): ?>
         <input type="hidden" id="editing_payment_id" value="<?= (int)($prefill['id'] ?? 0) ?>">
@@ -187,6 +227,14 @@
     sourceAccount: document.getElementById('source_account_id'),
     notes: document.getElementById('notes'),
     attachments: document.getElementById('attachments'),
+    fxCard: document.getElementById('fxSettlementCard'),
+    fxReceivedBase: document.getElementById('fx_received_base'),
+    fxReceivedLabel: document.getElementById('fx_received_label'),
+    fxBankCharges: document.getElementById('fx_bank_charges'),
+    fxBankChargesCurrency: document.getElementById('fx_bank_charges_currency'),
+    fxWht: document.getElementById('fx_wht'),
+    fxCurrencyLabel: document.getElementById('fx_currency_label_opt'),
+    fxPreview: document.getElementById('fx_preview'),
     saveBtn: document.getElementById('btn_save'),
     confirmBtn: document.getElementById('btn_confirm'),
     refreshBtn: document.getElementById('btn_refresh_invoices'),
@@ -313,7 +361,8 @@
         const inp = tr ? tr.querySelector('.alloc-amt') : null;
         if (!inp) return;
         if (cb.checked && num(inp.value) <= 0) {
-          inp.value = fmt(num(inp.getAttribute('data-max')));
+          const suggested = num(inp.getAttribute('data-suggested'));
+          inp.value = fmt(suggested > 0 ? suggested : num(inp.getAttribute('data-max')));
         }
         if (!cb.checked) {
           inp.value = '';
@@ -358,7 +407,61 @@
       }
     } else if (lblVsAlloc) { lblVsAlloc.innerHTML = ''; }
     if (lblStatus) lblStatus.textContent = '';
+    updateFxCard();
   };
+
+  const getSelectedCurrency = () => {
+    const rows = Array.from(el.tableBody.querySelectorAll('tr[data-id]'));
+    for (const tr of rows) {
+      const cb = tr.querySelector('.inv-cb');
+      if (!cb || !cb.checked) continue;
+      const id = parseInt(tr.getAttribute('data-id'), 10);
+      const inv = openInvoices.find((i) => parseInt(i.id, 10) === id);
+      const cur = (inv && inv.currency_code ? inv.currency_code : '').toUpperCase().trim();
+      if (cur) return cur;
+    }
+    const prefillCur = document.getElementById('prefill_invoice_currency') || document.getElementById('prefill_payment_currency');
+    return prefillCur ? String(prefillCur.value || '').toUpperCase().trim() : '';
+  };
+
+  const getFxRoute = () => {
+    const checked = document.querySelector('input[name="fx_route"]:checked');
+    return checked ? checked.value : 'direct';
+  };
+
+  const updateFxCard = () => {
+    if (!el.fxCard) return;
+    const currency = getSelectedCurrency();
+    const isForeign = currency && currency !== 'PKR';
+    el.fxCard.style.display = isForeign ? '' : 'none';
+    if (!isForeign) { el.fxPreview.style.display = 'none'; return; }
+    if (el.fxCurrencyLabel) el.fxCurrencyLabel.textContent = currency;
+
+    const route = getFxRoute();
+    if (el.fxReceivedLabel) {
+      el.fxReceivedLabel.textContent = route === 'intermediary' ? 'PKR credited after transfer to Pakistan' : 'PKR credited by bank';
+    }
+
+    const received = num(el.fxReceivedBase.value);
+    const charges = num(el.fxBankCharges.value);
+    const chargesInPkr = el.fxBankChargesCurrency && el.fxBankChargesCurrency.value === 'PKR';
+    const cashTotal = num(el.amount.value);
+    const netFc = chargesInPkr ? cashTotal : (cashTotal - charges);
+    if (received > 0 && netFc > 0) {
+      const impliedRate = received / netFc;
+      el.fxPreview.style.display = '';
+      el.fxPreview.innerHTML = 'Implied settlement rate: <strong>' + impliedRate.toFixed(4) + '</strong> ' + currency + '/PKR '
+        + '&nbsp;·&nbsp; Net ' + currency + ' after charges: <strong>' + fmt(netFc) + '</strong>'
+        + '&nbsp;·&nbsp; Exact gain/loss vs. booked rate is computed and posted on Confirm.';
+    } else {
+      el.fxPreview.style.display = 'none';
+    }
+  };
+
+  if (el.fxReceivedBase) el.fxReceivedBase.addEventListener('input', updateFxCard);
+  if (el.fxBankCharges) el.fxBankCharges.addEventListener('input', updateFxCard);
+  if (el.fxBankChargesCurrency) el.fxBankChargesCurrency.addEventListener('change', updateFxCard);
+  document.querySelectorAll('input[name="fx_route"]').forEach((r) => r.addEventListener('change', updateFxCard));
 
   const renderInvoices = () => {
     if (!openInvoices.length && !existingAllocRows.length) {
@@ -400,10 +503,11 @@
       const prefillAmt = existingAllocMap[id] > 0 ? Math.min(outstanding, num(existingAllocMap[id])) : 0;
       const isPrefillInv = el.prefillInvoiceId && parseInt(el.prefillInvoiceId.value || '0', 10) === id;
       const prefillAmtForThis = isPrefillInv ? num(document.getElementById('prefill_amount') ? document.getElementById('prefill_amount').value : prefillAmount) : 0;
+      const suggestedAmt = num(inv.suggested_amount) > 0 ? Math.min(outstanding, num(inv.suggested_amount)) : outstanding;
       const checked = prefillAmt > 0 || isPrefillInv;
       const autoAmt = prefillAmt > 0 ? prefillAmt
         : (isPrefillInv && prefillAmtForThis > 0 ? Math.min(outstanding, prefillAmtForThis)
-        : (checked ? (prefillAmount > 0 ? Math.min(outstanding, prefillAmount) : outstanding) : 0));
+        : (checked ? (prefillAmount > 0 ? Math.min(outstanding, prefillAmount) : suggestedAmt) : 0));
       html += buildInvRow(inv, checked, autoAmt, false);
     });
 
@@ -465,8 +569,12 @@
     html += '<td style="vertical-align:middle;font-size:.8rem;color:#64748b">' + esc(formatDate(inv.issue_date || '')) + '</td>';
     html += '<td class="text-end" style="vertical-align:middle;font-weight:600">' + fmt(totalAmt) + '</td>';
     html += '<td class="text-end" style="vertical-align:middle;color:' + (paidAmt > 0.005 ? '#16a34a' : '#94a3b8') + ';font-weight:' + (paidAmt > 0.005 ? '700' : '400') + '">' + (paidAmt > 0.005 ? fmt(paidAmt) : '—') + '</td>';
+    const suggested = num(inv.suggested_amount) > 0 ? Math.min(outstanding, num(inv.suggested_amount)) : outstanding;
+    const isMilestone = suggested > 0.005 && suggested < outstanding - 0.005;
+    const suggestedPct = totalAmt > 0 ? Math.round((suggested / totalAmt) * 100) : 0;
     html += '<td class="text-end" style="vertical-align:middle;color:#ef4444;font-weight:700">' + fmt(outstanding) + '</td>';
-    html += '<td class="text-end" style="vertical-align:middle"><input type="number" step="0.01" min="0" data-max="' + outstanding + '" value="' + (autoAmt > 0 ? fmt(autoAmt) : '') + '" class="form-control form-control-sm alloc-amt text-end" placeholder="0.00"></td>';
+    html += '<td class="text-end" style="vertical-align:middle"><input type="number" step="0.01" min="0" data-max="' + outstanding + '" data-suggested="' + suggested + '" value="' + (autoAmt > 0 ? fmt(autoAmt) : '') + '" class="form-control form-control-sm alloc-amt text-end" placeholder="0.00">'
+      + (isMilestone ? '<div class="small text-warning mt-1">Due now per terms (' + suggestedPct + '%): ' + fmt(suggested) + '</div>' : '') + '</td>';
     html += '</tr>';
     return html;
   };
@@ -567,6 +675,13 @@
     fd.append('allocations', JSON.stringify(allocations));
     fd.append('advance_amount', '0');
 
+    if (el.fxCard && el.fxCard.style.display !== 'none') {
+      fd.append('received_amount_base', el.fxReceivedBase.value || '0');
+      fd.append('bank_charges_fc', el.fxBankCharges.value || '0');
+      fd.append('withholding_tax_base', el.fxWht.value || '0');
+      fd.append('bank_charges_currency', (el.fxBankChargesCurrency && el.fxBankChargesCurrency.value === 'PKR') ? 'PKR' : '');
+    }
+
     const files = el.attachments.files || [];
     for (let i = 0; i < files.length; i++) {
       fd.append('attachments[]', files[i]);
@@ -606,6 +721,20 @@
     }
     window.location = urls.view + saveJson.payment_id;
   });
+
+  <?php if (isset($prefill['received_amount_base'])): ?>
+  if (el.fxReceivedBase) el.fxReceivedBase.value = <?= json_encode((float) $prefill['received_amount_base']) ?>;
+  <?php endif; ?>
+  <?php if (isset($prefill['bank_charges_fc'])): ?>
+  if (el.fxBankCharges) el.fxBankCharges.value = <?= json_encode((float) $prefill['bank_charges_fc']) ?>;
+  <?php endif; ?>
+  <?php if (isset($prefill['withholding_tax_base'])): ?>
+  if (el.fxWht) el.fxWht.value = <?= json_encode((float) $prefill['withholding_tax_base']) ?>;
+  <?php endif; ?>
+  <?php if (($prefill['bank_charges_currency'] ?? '') === 'PKR'): ?>
+  if (el.fxBankChargesCurrency) el.fxBankChargesCurrency.value = 'PKR';
+  <?php endif; ?>
+  updateFxCard();
 
   el.customer.addEventListener('change', loadInvoices);
   el.refreshBtn.addEventListener('click', loadInvoices);

@@ -19,20 +19,25 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <h3 class="mb-0">Ready to Ship Queue</h3>
+<div class="container-fluid cl-list-page cl-warehouse-page" data-cl-list>
+
+    <div class="cl-list-page-header">
         <div>
-            <a href="<?= site_url('delivery-orders/shipped') ?>" class="btn btn-sm btn-success me-2">
+            <h2 class="mb-0"><i class="bi bi-check-circle me-2"></i>Ready to Ship Queue</h2>
+        </div>
+        <div class="cl-list-page-actions">
+            <a href="<?= site_url('delivery-orders/shipped') ?>" class="btn btn-success">
                 <i class="bi bi-truck me-1"></i>View Shipped Orders
             </a>
-            <a href="<?= site_url('documents') ?>" class="btn btn-sm btn-outline-secondary">Back to Documents</a>
+            <a href="<?= site_url('documents') ?>" class="btn btn-outline-secondary">Back to Documents</a>
         </div>
     </div>
-    <div class="card-body">
+
+    <div class="card border-0 shadow-sm cl-list-table-card">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-striped align-middle">
-                <thead class="table-light">
+            <table class="cl-table table align-middle">
+                <thead>
                     <tr>
                         <th style="width: 13%;">SO Number</th>
                         <th style="width: 28%;">Customer</th>
@@ -74,12 +79,13 @@
                             <td>
                                 <span class="badge <?= $badgeClass ?>"><?= $statusLabel ?></span>
                             </td>
-                            <td class="text-end d-flex align-items-center justify-content-end gap-1 flex-wrap">
+                            <td class="text-end">
+                                <div class="d-flex align-items-center justify-content-end gap-1 flex-wrap">
                                 <!-- Order Progress button -->
                                 <button type="button" class="btn btn-sm btn-outline-info btn-progress"
                                     data-so-id="<?= $soId ?>"
                                     title="View Order Progress">
-                                    <i class="bi bi-diagram-3"></i> Progress
+                                    <i class="bi bi-diagram-3 me-1"></i>Progress
                                 </button>
 
                                 <?php if ($draftDoId): ?>
@@ -99,6 +105,7 @@
                                         <i class="bi bi-truck me-1"></i>Create DO
                                     </button>
                                 <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -111,7 +118,8 @@
             </table>
         </div>
     </div>
-</div>
+    </div>
+</div><!-- /.cl-list-page -->
 
 <script>
 document.querySelectorAll('.btn-progress').forEach(function(btn) {

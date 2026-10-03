@@ -11,6 +11,127 @@ use Config\Database;
 class VendorBills extends BaseController
 {
     /**
+     * List all vendor bills
+     * 
+     * Route: GET /vendor-bills
+     */
+    public function index()
+    {
+        try {
+            $db = Database::connect();
+
+            // ── Filter params ──────────────────────────────────────────────
+            $vendorId  = $this->request->getGet('vendor_id');
+            $dbStatus  = $this->request->getGet('status');      // draft|confirmed|cancelled (DB level)
+            $payStatus = $this->request->getGet('pay_status');  // paid|unpaid|partial (computed level)
+            $search    = $this->request->getGet('search');
+            $perPage   = max(10, min(200, (int)($this->request->getGet('per_page') ?: 25)));
+            $page      = max(1, (int)($this->request->getGet('page') ?: 1));
+
+            // ── Sorting params ─────────────────────────────────────────────
+            $allowedSorts = [
+                'id'           => 'vendor_bills.id',
+                'bill_date'    => 'vendor_bills.bill_date',
+                'vendor'       => 'vendors.name',
+                'total'        => 'vendor_bills.total_amount',
+                'paid'         => 'pay_agg.paid_total',
+                'balance'      => 'vendor_bills.balance',
+                'last_paid'    => 'pay_agg.last_payment_date',
+                'payment_count'=> 'pay_agg.payment_count',
+            ];
+            $sortKey = $this->request->getGet('sort') ?: 'bill_date';
+            $sortDir = strtolower($this->request->getGet('dir') ?: 'desc') === 'asc' ? 'ASC' : 'DESC';
+            if (!array_key_exists($sortKey, $allowedSorts)) $sortKey = 'bill_date';
+
+            // ── Build query ────────────────────────────────────────────────
+            $query = $db->table('vendor_bills');
+
+            // DB-level status filter (only for draft/confirmed/cancelled)
+            if ($dbStatus && in_array($dbStatus, ['draft', 'confirmed', 'cancelled', 'paid'])) {
+                $query->where('vendor_bills.status', $dbStatus);
+            }
+            if ($vendorId) {
+                $query->where('vendor_bills.vendor_id', (int)$vendorId);
+            }
+            if ($search) {
+                $query->groupStart()
+                      ->like('vendor_bills.bill_number', $search)
+                      ->orLike('vendor_bills.notes', $search)
+                      ->orLike('vendors.name', $search)
+                      ->groupEnd();
+            }
+
+            $allBills = $query
+                ->select('vendor_bills.*, vendors.name as vendor_name,
+                    COALESCE(pay_agg.payment_count, 0) as payment_count,
+                    COALESCE(pay_agg.paid_total, 0) as paid_total,
+                    pay_agg.last_payment_date')
+                ->join('vendors', 'vendors.id = vendor_bills.vendor_id', 'left')
+                ->join('(
+                    SELECT vpa.vendor_bill_id,
+                        COUNT(DISTINCT vp.id) as payment_count,
+                        SUM(COALESCE(NULLIF(vpa.amount_allocated, 0), vpa.amount, 0)) as paid_total,
+                        MAX(vp.payment_date) as last_payment_date
+                    FROM vendor_payment_allocations vpa
+                    JOIN vendor_payments vp ON vp.id = vpa.payment_id
+                    WHERE vp.status = \'posted\'
+                    GROUP BY vpa.vendor_bill_id
+                ) pay_agg', 'pay_agg.vendor_bill_id = vendor_bills.id', 'left')
+                ->orderBy($allowedSorts[$sortKey], $sortDir)
+                ->get()
+                ->getResultArray();
+
+            // ── Computed pay_status PHP filter ────────────────────────────
+            if ($payStatus && in_array($payStatus, ['paid', 'unpaid', 'partial'])) {
+                $allBills = array_values(array_filter($allBills, function($row) use ($payStatus) {
+                    $total  = (float)($row['total_amount'] ?? 0);
+                    $paid   = (float)($row['paid_total']   ?? 0);
+                    $bal    = max(0, $total - $paid);
+                    $dbSt   = $row['status'] ?? '';
+                    if ($dbSt === 'cancelled') return $payStatus === 'cancelled'; // won't hit here but safety
+                    $computed = ($dbSt === 'paid' || $bal <= 0.001 && $total > 0)
+                        ? 'paid'
+                        : ($paid > 0 ? 'partial' : 'unpaid');
+                    return $computed === $payStatus;
+                }));
+            }
+
+            $totalRecords = count($allBills);
+            $totalPages   = max(1, (int)ceil($totalRecords / $perPage));
+            $page         = min($page, $totalPages);
+            $offset       = ($page - 1) * $perPage;
+            $bills        = array_slice($allBills, $offset, $perPage);
+
+            // ── Vendors dropdown ──────────────────────────────────────────
+            $vendors = $db->table('vendors')
+                ->select('id, name')
+                ->where('is_active', 1)
+                ->orderBy('name')
+                ->get()
+                ->getResultArray();
+
+            return view('vendor_bills/index', [
+                'bills'        => $bills,
+                'allBills'     => $allBills,   // needed for footer totals across all filtered rows
+                'vendors'      => $vendors,
+                'activeStatus' => $dbStatus,
+                'activePayStatus' => $payStatus,
+                'activeVendor' => $vendorId,
+                'searchTerm'   => $search,
+                'sortKey'      => $sortKey,
+                'sortDir'      => $sortDir,
+                'perPage'      => $perPage,
+                'page'         => $page,
+                'totalPages'   => $totalPages,
+                'totalRecords' => $totalRecords,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'Failed to load vendor bills list: ' . $e->getMessage());
+            return redirect()->to(site_url('purchases'))->with('error', 'Failed to load bills');
+        }
+    }
+
+    /**
      * Get vendor bill details
      * Route: GET /vendor-bills/{bill_id}
      */
@@ -140,6 +261,16 @@ class VendorBills extends BaseController
             // Fetch all product IDs from lines
             $productIds = array_values(array_filter(array_unique(array_map(function($l){ return $l['product_id'] ?? null; }, $lines))));
             $variantIds = array_values(array_filter(array_unique(array_map(function($l){ return $l['variant_id'] ?? null; }, $lines))));
+
+            // Job/service bill lines carry no product_id — their only description lives
+            // on the source PO line (e.g. "Plasma Coating ... Lot VSN-..."), so pull it in.
+            $poLineIds = array_values(array_filter(array_unique(array_map(function($l){ return $l['po_line_id'] ?? null; }, $lines))));
+            $poLineDescMap = [];
+            if (!empty($poLineIds)) {
+                foreach ($db->table('purchase_order_lines')->select('id, description')->whereIn('id', $poLineIds)->get()->getResultArray() as $pol) {
+                    $poLineDescMap[(int)$pol['id']] = $pol['description'] ?? '';
+                }
+            }
             
             // Fetch products with images
             $prodMap = [];
@@ -169,6 +300,16 @@ class VendorBills extends BaseController
 
             // Enrich lines with product/variant data and build image URLs
             foreach ($lines as &$line) {
+                // unit_price is the gross PO price; line_total is already net (discounted).
+                // The gap between qty*unit_price and line_total is what's discounted off this line.
+                $qty = (float)($line['qty'] ?? 0);
+                $grossAmount = round($qty * (float)($line['unit_price'] ?? 0), 2);
+                $lineTotal = (float)($line['line_total'] ?? 0);
+                if ($grossAmount > $lineTotal + 0.001) {
+                    $line['discount_amount'] = round($grossAmount - $lineTotal, 2);
+                    $line['discount_percent'] = $grossAmount > 0 ? round(($line['discount_amount'] / $grossAmount) * 100, 2) : 0;
+                }
+
                 // Merge variant data if available
                 if (!empty($line['variant_id']) && isset($variantMap[(int)$line['variant_id']])) {
                     $v = $variantMap[(int)$line['variant_id']];
@@ -188,6 +329,8 @@ class VendorBills extends BaseController
                     $line['product_images'] = $p['images'] ?? null;
                     $line['product_detailed_type'] = $p['detailed_type'] ?? null;
                     $line['product_unit'] = $p['unit'] ?? null;
+                } elseif (!empty($line['po_line_id']) && !empty($poLineDescMap[(int)$line['po_line_id']])) {
+                    $line['product_name'] = $poLineDescMap[(int)$line['po_line_id']];
                 }
 
                 $thumbnailUrl = null;

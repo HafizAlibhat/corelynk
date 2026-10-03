@@ -4,6 +4,7 @@
 <?php
     $attributeOptions = $attribute_options ?? [];
     $currentAttributes = $filters['attributes'] ?? [];
+    $attributeFilterCount = is_array($currentAttributes) ? count($currentAttributes) : 0;
 ?>
 
 <?= $this->section('title') ?>Inventory Stock<?= $this->endSection() ?>
@@ -40,7 +41,7 @@
 
     .stk-attr-name { min-width: 180px; }
     .stk-attr-value { min-width: 180px; }
-    .stk-filter-hint { font-size: .78rem; color: var(--cl-text-muted); margin-top: .35rem; }
+    .stk-filter-hint { font-size: .68rem; color: var(--cl-text-muted); margin-top: .35rem; }
     .stk-attr-tag { display: inline-flex; align-items: center; gap: .25rem; background: #2563eb; color: #fff; border-radius: 999px; padding: .18rem .5rem .18rem .68rem; font-size: .78rem; font-weight: 500; }
     .stk-attr-tag-val { font-weight: 700; }
     .stk-attr-tag-rm { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: none; background: rgba(255,255,255,.22); color: #fff; font-size: .7rem; line-height: 1; cursor: pointer; }
@@ -111,43 +112,345 @@
     }
     .stk-af-drop li.stk-af-active mark { background: rgba(255,255,255,.3); color: #fff; }
     .stk-af-add-btn:disabled { opacity: .5; pointer-events: none; }
+    /* Compact, Professional Stock Breakdown UI */
+    .pl-stock-table .product-summary {
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+    }
+    .pl-stock-table .product-summary:hover {
+        background-color: var(--bs-table-hover-bg, rgba(99, 102, 241, 0.04)) !important;
+    }
+    .pl-stock-table .product-summary[aria-expanded="true"] {
+        background-color: var(--bs-table-active-bg, rgba(99, 102, 241, 0.06)) !important;
+    }
+
+    .pl-stock-table tr.product-detail > td {
+        padding-top: 0.35rem !important;
+        padding-bottom: 0.35rem !important;
+        background-color: rgba(15, 23, 42, 0.02) !important;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.5) !important;
+        font-size: 0.8125rem;
+    }
+    html[data-bs-theme="dark"] .pl-stock-table tr.product-detail > td,
+    body.theme-dark .pl-stock-table tr.product-detail > td {
+        background-color: rgba(255, 255, 255, 0.018) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+    }
+
+    .stk-tree-icon {
+        color: var(--cl-text-muted, #64748b);
+        opacity: 0.45;
+        font-size: 0.75rem;
+    }
+
+    .stk-loc-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+        min-width: 0;
+    }
+    .stk-wh-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.025em;
+        text-transform: uppercase;
+        padding: 0.12rem 0.45rem;
+        border-radius: 4px;
+        background: rgba(99, 102, 241, 0.1);
+        color: #4f46e5;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        white-space: nowrap;
+        line-height: 1.25;
+    }
+    html[data-bs-theme="dark"] .stk-wh-badge,
+    body.theme-dark .stk-wh-badge {
+        background: rgba(99, 102, 241, 0.18);
+        color: #a5b4fc;
+        border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    .stk-loc-breadcrumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        font-size: 0.8rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .stk-loc-node {
+        color: var(--cl-text-muted, #64748b);
+        font-size: 0.78rem;
+    }
+    .stk-loc-sep {
+        font-size: 0.55rem;
+        color: var(--cl-text-muted, #94a3b8);
+        opacity: 0.5;
+        display: inline-flex;
+        align-items: center;
+    }
+    .stk-loc-leaf {
+        color: var(--cl-text-primary, #0f172a);
+        font-weight: 600;
+        font-size: 0.8rem;
+        background: rgba(0, 0, 0, 0.04);
+        padding: 0.08rem 0.38rem;
+        border-radius: 3px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    html[data-bs-theme="dark"] .stk-loc-leaf,
+    body.theme-dark .stk-loc-leaf {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .stk-qty-cell {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+    .stk-qty-num {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        font-size: 0.84rem;
+        min-width: 45px;
+        text-align: right;
+    }
+    .stk-qty-pos {
+        color: #10b981;
+    }
+    html[data-bs-theme="dark"] .stk-qty-pos,
+    body.theme-dark .stk-qty-pos {
+        color: #34d399;
+    }
+    .stk-qty-zero {
+        color: var(--cl-text-muted, #94a3b8);
+        opacity: 0.65;
+    }
+
+    .stk-res-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        flex-wrap: wrap;
+    }
+    .stk-res-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 500;
+        line-height: 1.2;
+        padding: 0.12rem 0.45rem;
+        border-radius: 999px;
+        background: rgba(14, 165, 233, 0.1);
+        color: #0284c7;
+        border: 1px solid rgba(14, 165, 233, 0.25);
+        cursor: default;
+        transition: all 0.12s ease;
+    }
+    .stk-res-chip:hover {
+        border-color: rgba(14, 165, 233, 0.5);
+        transform: translateY(-1px);
+    }
+    html[data-bs-theme="dark"] .stk-res-chip,
+    body.theme-dark .stk-res-chip {
+        background: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+        border-color: rgba(56, 189, 248, 0.28);
+    }
+    .stk-res-chip i {
+        font-size: 0.62rem;
+    }
+    .stk-res-val {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .stk-res-doc {
+        font-size: 0.65rem;
+        opacity: 0.85;
+    }
+
+    /* Stat Pills for Total -> Reserved -> Left */
+    .stk-summary-stat-group {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+    .stk-stat-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 5px;
+        font-size: 0.74rem;
+        line-height: 1.25;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        transition: all 0.12s ease;
+    }
+    .stk-stat-lbl {
+        font-size: 0.64rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        opacity: 0.75;
+    }
+    .stk-stat-val {
+        font-weight: 700;
+    }
+
+    /* Summary Row Pills */
+    .stk-stat-total {
+        background: rgba(148, 163, 184, 0.12);
+        color: var(--cl-text-secondary, #475569);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    html[data-bs-theme="dark"] .stk-stat-total,
+    body.theme-dark .stk-stat-total {
+        background: rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .stk-stat-res {
+        background: rgba(245, 158, 11, 0.12);
+        color: #d97706;
+        border: 1px solid rgba(245, 158, 11, 0.28);
+    }
+    html[data-bs-theme="dark"] .stk-stat-res,
+    body.theme-dark .stk-stat-res {
+        background: rgba(245, 158, 11, 0.18);
+        color: #fbbf24;
+        border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .stk-stat-left {
+        background: rgba(16, 185, 129, 0.12);
+        color: #059669;
+        border: 1px solid rgba(16, 185, 129, 0.28);
+    }
+    html[data-bs-theme="dark"] .stk-stat-left,
+    body.theme-dark .stk-stat-left {
+        background: rgba(16, 185, 129, 0.18);
+        color: #34d399;
+        border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    /* Detail Row Compact Pills */
+    .stk-stat-total-sm {
+        background: rgba(148, 163, 184, 0.08);
+        color: var(--cl-text-muted, #64748b);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        font-size: 0.71rem;
+        padding: 0.1rem 0.38rem;
+    }
+    html[data-bs-theme="dark"] .stk-stat-total-sm,
+    body.theme-dark .stk-stat-total-sm {
+        background: rgba(255, 255, 255, 0.04);
+        color: #94a3b8;
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .stk-stat-left-sm {
+        background: rgba(16, 185, 129, 0.1);
+        color: #059669;
+        border: 1px solid rgba(16, 185, 129, 0.24);
+        font-size: 0.72rem;
+        padding: 0.1rem 0.42rem;
+    }
+    html[data-bs-theme="dark"] .stk-stat-left-sm,
+    body.theme-dark .stk-stat-left-sm {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .stk-stat-zero-sm {
+        background: rgba(148, 163, 184, 0.08);
+        color: var(--cl-text-muted, #94a3b8);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        font-size: 0.71rem;
+        padding: 0.1rem 0.38rem;
+        opacity: 0.7;
+    }
+
+    .stk-summary-res-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.22rem;
+        font-size: 0.68rem;
+        font-weight: 600;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        background: rgba(245, 158, 11, 0.1);
+        color: #d97706;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        margin-left: 0.4rem;
+        vertical-align: middle;
+    }
+    html[data-bs-theme="dark"] .stk-summary-res-badge,
+    body.theme-dark .stk-summary-res-badge {
+        background: rgba(245, 158, 11, 0.16);
+        color: #fbbf24;
+        border-color: rgba(245, 158, 11, 0.32);
+    }
 </style>
-<div class="main-content-wrapper">
-    <div class="page-header mb-3">
-        <div class="row align-items-center">
-            <div class="col">
-                <h1 class="page-title mb-0"><i class="bi bi-box-seam text-info me-2"></i>Inventory Stock</h1>
-                <p class="text-muted mb-0">Read-only stock by warehouse and location</p>
-            </div>
+<div class="container-fluid cl-list-page cl-stock-list" data-cl-list>
+<div class="cl-stock-shell data-table">
+    <div class="cl-list-page-header cl-stock-header">
+        <div>
+            <h2 class="mb-0"><i class="bi bi-boxes me-2"></i>Inventory Stock</h2>
+            <div class="small text-muted">Review product availability by warehouse and location</div>
         </div>
     </div>
 
-    <!-- Filters Card -->
-    <div class="card mb-3 border-0 shadow-sm">
-        <div class="card-body py-2">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Warehouse</label>
-                    <select name="warehouse_id" class="form-select">
-                        <option value="">All warehouses</option>
-                        <?php foreach ($warehouses as $w): ?>
-                            <option value="<?= esc($w['id']) ?>" <?= (isset($filters['warehouse_id']) && $filters['warehouse_id']==$w['id'])? 'selected':'' ?>><?= esc($w['name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+    <form method="get" class="pl-filter-form cl-list-toolbar cl-stock-toolbar">
+        <div class="pl-filter-toolbar">
+            <div class="pl-filter-toolbar-search">
+                <div class="pl-filter-search-label">
+                    <label for="productSearch">Search stock</label>
+                    <span>Press Enter to search</span>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Product</label>
-                    <input type="search" name="product_search" id="productSearch" list="productList" class="form-control" placeholder="Name, code, SKU, variant code/name, attributes" value="<?= esc($filters['product_search'] ?? '') ?>">
+                <div class="pl-search-shell">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" name="product_search" id="productSearch" list="productList" class="form-control pl-filter-control pl-filter-control-search" placeholder="Search product name, code, SKU, variant, or attribute" value="<?= esc($filters['product_search'] ?? '') ?>">
                     <datalist id="productList"></datalist>
                 </div>
-                <div class="col-md-2 text-end">
-                    <button type="submit" class="btn btn-primary mt-1"><i class="bi bi-funnel-fill me-1"></i>Filter</button>
-                    <a href="<?= base_url('inventory/stock') ?>" class="btn btn-link text-decoration-none mt-1">Reset</a>
-                </div>
+            </div>
+            <div class="pl-filter-toolbar-actions">
+                <button type="submit" class="btn btn-primary pl-filter-btn pl-filter-btn-primary"><i class="bi bi-funnel-fill me-1"></i>Filter</button>
+                <a href="<?= base_url('inventory/stock') ?>" class="btn btn-outline-secondary pl-filter-btn pl-filter-btn-soft text-decoration-none">Reset</a>
+            </div>
+        </div>
 
-                <div class="col-12">
-                    <label class="form-label fw-bold">Attribute Filter</label>
-                    <div class="stk-af-row" id="stkAfRow">
+        <div class="pl-filter-chipbar" aria-label="Stock filters">
+            <div class="pl-chip-field pl-chip-field-lg">
+                <label class="pl-chip-label" for="stockWarehouse">Warehouse</label>
+                <select name="warehouse_id" id="stockWarehouse" class="form-select pl-filter-control">
+                    <option value="">All warehouses</option>
+                    <?php foreach ($warehouses as $w): ?>
+                        <option value="<?= esc($w['id']) ?>" <?= (isset($filters['warehouse_id']) && $filters['warehouse_id']==$w['id'])? 'selected':'' ?>><?= esc($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+                <details class="pl-more-filters cl-list-more-filters" <?= $attributeFilterCount > 0 ? 'open' : '' ?>>
+                    <summary class="pl-more-filters-summary">
+                        <span>More filters</span>
+                        <span class="pl-more-filters-meta cl-list-more-filters-meta"><?= $attributeFilterCount ?> attribute filter<?= $attributeFilterCount === 1 ? '' : 's' ?></span>
+                    </summary>
+                    <div class="pl-more-filters-panel cl-list-more-filters-panel">
+                    <div class="stk-af-row" id="stkAfRow" aria-label="Stock attribute filters">
                         <select class="form-select stk-af-name-sel" id="stkAfNameSel" title="Select attribute">
                             <option value="">Attribute</option>
                             <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
@@ -161,7 +464,7 @@
                             <ul id="stkAfDrop" class="stk-af-drop" role="listbox" aria-label="Attribute values"></ul>
                         </div>
 
-                        <button type="button" class="btn btn-outline-primary mt-1 stk-af-add-btn" id="stkAfAddBtn" disabled>
+                        <button type="button" class="btn btn-outline-primary stk-af-add-btn" id="stkAfAddBtn" disabled>
                             <i class="bi bi-plus"></i> Add Attribute Filter
                         </button>
                     </div>
@@ -169,28 +472,36 @@
                     <div id="stkAfChips" class="d-flex flex-wrap gap-2 mt-2"></div>
                     <div id="stkAfHidden" style="display:none"></div>
                     <div class="stk-filter-hint">Pro tip: This stock search now supports product code, variant code/name, and attribute filters exactly like products search.</div>
-                </div>
-            </form>
-        </div>
-    </div>
+                    </div>
+                </details>
+    </form>
 
     <!-- Stock Table -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-body p-2">
+    <div class="card border-0 shadow-sm cl-list-table-card">
+    <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0 align-middle" style="font-size:0.85rem;">
-                    <thead class="table-dark">
+                <table class="cl-table table table-sm table-hover pl-table pl-stock-table data-table-table mb-0 align-middle">
+                    <caption class="visually-hidden">Inventory stock grouped by product and location</caption>
+                    <colgroup>
+                        <col style="width: 44px;">
+                        <col style="width: 128px;">
+                        <col style="width: 76px;">
+                        <col>
+                        <col style="width: 380px;">
+                    </colgroup>
+                    <thead>
                                 <tr>
-                                    <th style="width:11%">Product Code</th>
-                                    <th style="width:7%">Image</th>
-                                    <th style="width:50%">Product</th>
-                                    <th class="text-end" style="width:32%">Stock by Location</th>
+                                    <th scope="col" class="text-center">#</th>
+                                    <th scope="col">Product Code</th>
+                                    <th scope="col">Image</th>
+                                    <th scope="col">Product</th>
+                                    <th scope="col" class="text-end">Stock Breakdown</th>
                                 </tr>
                     </thead>
                             <tbody>
                                 <?php if (empty($rows)): ?>
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">No stock found</td>
+                                        <td colspan="5"><div class="cl-list-empty cl-list-empty--row"><span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-boxes"></i></span><h6>No Stock Found</h6><p>Try another warehouse, product, or attribute filter.</p></div></td>
                                     </tr>
                                 <?php else: ?>
                                     <?php
@@ -214,11 +525,16 @@
                                                     'variant_art_number' => $r['variant_art_number'] ?? '',
                                                     'rows' => [],
                                                     'total' => 0.0,
+                                                    'total_stock' => 0.0,
+                                                    'reserved_total' => 0.0,
                                                 ];
                                             }
                                             $qty = isset($r['quantity']) ? (float)$r['quantity'] : 0.0;
+                                            $tStock = isset($r['total_stock']) ? (float)$r['total_stock'] : ($qty + (float)($r['reserved_total'] ?? 0.0));
                                             $groups[$key]['rows'][] = $r;
                                             $groups[$key]['total'] += $qty;
+                                            $groups[$key]['total_stock'] += $tStock;
+                                            $groups[$key]['reserved_total'] += (float)($r['reserved_total'] ?? 0.0);
                                         }
                                         $grpIndex = 0;
                                     ?>
@@ -249,7 +565,7 @@
                                     ?>
                                     <?php foreach ($groups as $gk => $g): $grpIndex++; $gid = 'grp'.$grpIndex; ?>
                                         <!-- Product summary row -->
-                                            <tr class="product-summary align-middle" data-group="<?= esc($gid) ?>" aria-expanded="false" style="cursor:pointer;">
+                                            <tr class="product-summary align-middle" data-group="<?= esc($gid) ?>" aria-expanded="false" tabindex="0" role="button" style="cursor:pointer;">
                                             <?php $detailCount = count($g['rows']); ?>
                                             <?php
                                                 // Display code: prefer variant art number, else product code/sku
@@ -281,14 +597,18 @@
                                                         }
                                                     }
                                             ?>
-                                                <td class="py-1 align-middle small fw-bold" aria-expanded="true" title="<?= esc($displayCode ?? 'No Code') ?>">
-                                                    <?= esc($displayCode !== '' && $displayCode !== null ? $displayCode : '-') ?>
+                                                <td class="py-1 align-middle text-center cl-stock-row-number">
+                                                    <?= (int)$grpIndex ?>
+                                                </td>
+                                                <td class="py-1 align-middle small fw-bold" title="<?= esc($displayCode ?? 'No Code') ?>">
+                                                    <code class="cl-stock-code"><?= esc($displayCode !== '' && $displayCode !== null ? $displayCode : '-') ?></code>
                                                 </td>
                                                 <td class="py-1 align-middle">
-                                                    <img src="<?= esc($img) ?>" alt="" data-preview="<?= esc($img) ?>" style="width:34px;height:30px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.dataset.preview='<?= base_url('assets/images/no-image.png') ?>';">
+                                                    <img src="<?= esc($img) ?>" alt="" class="cl-stock-thumb" data-preview="<?= esc($img) ?>" onerror="this.onerror=null;this.src='<?= base_url('assets/images/no-image.png') ?>';this.dataset.preview='<?= base_url('assets/images/no-image.png') ?>';">
                                                 </td>
                                                 <td class="py-1 align-middle">
-                                                    <div class="fw-semibold" style="line-height:1.2;">
+                                                    <div class="fw-semibold cl-stock-product-name">
+                                                        <i class="bi bi-chevron-right toggle-chevron me-2" aria-hidden="true"></i>
                                                         <?= esc($g['product_name'] ?: 'Unnamed Product') ?>
                                                         <?php if (!empty($g['variant_id'])): ?>
                                                             <span class="text-muted fw-normal">— <?= esc($g['variant_name'] ?: 'Variant') ?></span>
@@ -296,23 +616,113 @@
                                                     </div>
                                             </td>
                                             <td class="py-1 align-middle text-end pe-3">
-                                                <span class="badge bg-success" style="font-size:0.85rem;"><?= number_format($g['total'], 2) ?></span>
+                                                <?php
+                                                    $grpTotalStock = $g['total_stock'] ?? ($g['total'] + ($g['reserved_total'] ?? 0.0));
+                                                    $grpReserved = $g['reserved_total'] ?? 0.0;
+                                                    $grpLeft = $g['total'];
+                                                ?>
+                                                <div class="stk-summary-stat-group">
+                                                    <span class="stk-stat-pill stk-stat-total" title="Total initial physical stock across all locations">
+                                                        <span class="stk-stat-lbl">Total</span>
+                                                        <span class="stk-stat-val"><?= number_format($grpTotalStock, 2) ?></span>
+                                                    </span>
+                                                    <?php if ($grpReserved > 0.0001): ?>
+                                                        <span class="stk-stat-pill stk-stat-res" title="Total reserved by documents across all locations">
+                                                            <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                                                            <span class="stk-stat-lbl">Reserved</span>
+                                                            <span class="stk-stat-val"><?= number_format($grpReserved, 2) ?></span>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <span class="stk-stat-pill stk-stat-left" title="Available stock remaining (Free to use)">
+                                                        <span class="stk-stat-lbl">Left</span>
+                                                        <span class="stk-stat-val"><?= number_format($grpLeft, 2) ?></span>
+                                                    </span>
+                                                </div>
                                             </td>
                                         </tr>
                                         <!-- Location detail rows -->
                                 <?php foreach ($g['rows'] as $dr): ?>
-                                    <tr class="product-detail group-<?= esc($gid) ?>" style="background-color: rgba(255,255,255,0.015); border-left: 3px solid #0d6efd;">
-                                        <td class="py-1" style="padding-left: 2.5rem;"></td>
-                                        <td class="py-1"></td>
-                                        <td class="py-1 small" style="padding-left:2.5rem;">
+                                    <?php
+                                        $resSummary = [];
+                                        if (!empty($dr['reservations'])) {
+                                            foreach ($dr['reservations'] as $res) {
+                                                $rem = (float)($res['remaining'] ?? 0);
+                                                if ($rem <= 0.0001) continue;
+                                                $doc = $res['order_number'] ?: ($res['document_type'] . ' #' . $res['document_id']);
+                                                if (!isset($resSummary[$doc])) {
+                                                    $resSummary[$doc] = [
+                                                        'total' => 0.0,
+                                                        'allocations' => 0,
+                                                        'parts' => [],
+                                                    ];
+                                                }
+                                                $resSummary[$doc]['total'] += $rem;
+                                                $resSummary[$doc]['allocations']++;
+                                                $resSummary[$doc]['parts'][] = number_format($rem, 2);
+                                            }
+                                        }
+                                        $path = $dr['location_path'] ?? $dr['location_name'] ?? '-';
+                                        $segments = array_values(array_filter(array_map('trim', explode('/', $path))));
+                                        $segCount = count($segments);
+                                    ?>
+                                    <tr class="product-detail group-<?= esc($gid) ?>">
+                                        <td class="py-1 text-center align-middle">
+                                            <i class="bi bi-arrow-return-right stk-tree-icon" aria-hidden="true"></i>
                                         </td>
-                                        <td class="py-1 text-end pe-3" style="font-size:0.9rem;">
-                                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 1.5rem;">
-                                                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="bi bi-arrow-return-right text-muted" style="font-size:0.8rem;"></i>
-                                                    <span class="text-muted"><?= esc($dr['warehouse_name'] ?? '') ?> / <?= esc($dr['location_path'] ?? $dr['location_name'] ?? '-') ?></span>
+                                        <td class="py-1"></td>
+                                        <td class="py-1"></td>
+                                        <td class="py-1 align-middle">
+                                            <div class="stk-loc-row">
+                                                <?php if (!empty($dr['warehouse_name'])): ?>
+                                                    <span class="stk-wh-badge"><?= esc($dr['warehouse_name']) ?></span>
+                                                <?php endif; ?>
+                                                <div class="stk-loc-breadcrumb" title="<?= esc($path) ?>">
+                                                    <?php if ($segCount > 0): ?>
+                                                        <?php foreach ($segments as $sIdx => $seg): ?>
+                                                            <?php $isLeaf = ($sIdx === $segCount - 1); ?>
+                                                            <span class="<?= $isLeaf ? 'stk-loc-leaf' : 'stk-loc-node' ?>"><?= esc($seg) ?></span>
+                                                            <?php if (!$isLeaf): ?>
+                                                                <span class="stk-loc-sep"><i class="bi bi-chevron-right"></i></span>
+                                                            <?php endif; ?>
+                                                        <?php endforeach; ?>
+                                                    <?php else: ?>
+                                                        <span class="stk-loc-leaf">-</span>
+                                                    <?php endif; ?>
                                                 </div>
-                                                <span class="fw-bold" style="color: #10b981; min-width: 45px; text-align: right;"><?= number_format($dr['quantity'], 2) ?></span>
+                                            </div>
+                                        </td>
+                                        <td class="py-1 align-middle text-end pe-3">
+                                            <?php
+                                                $locQty = (float)$dr['quantity'];
+                                                $locReserved = (float)($dr['reserved_total'] ?? 0.0);
+                                                $locTotal = isset($dr['total_stock']) ? (float)$dr['total_stock'] : ($locQty + $locReserved);
+                                            ?>
+                                            <div class="stk-qty-cell">
+                                                <span class="stk-stat-pill stk-stat-total-sm" title="Total initial stock in this box: <?= number_format($locTotal, 2) ?>">
+                                                    <span class="stk-stat-lbl">Total</span>
+                                                    <span class="stk-stat-val"><?= number_format($locTotal, 2) ?></span>
+                                                </span>
+                                                <?php if (!empty($resSummary)): ?>
+                                                    <div class="stk-res-group">
+                                                        <?php foreach ($resSummary as $docRef => $info): ?>
+                                                            <?php
+                                                                $tooltip = 'Reserved: ' . number_format($info['total'], 2) . ' for ' . $docRef;
+                                                                if ($info['allocations'] > 1) {
+                                                                    $tooltip .= ' (' . $info['allocations'] . ' allocations: ' . implode(' + ', $info['parts']) . ')';
+                                                                }
+                                                            ?>
+                                                            <span class="stk-res-chip" title="<?= esc($tooltip) ?>">
+                                                                <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                                                                <span class="stk-res-val"><?= number_format($info['total'], 2) ?></span>
+                                                                <span class="stk-res-doc">(<?= esc($docRef) ?>)</span>
+                                                            </span>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <span class="stk-stat-pill <?= $locQty > 0.0001 ? 'stk-stat-left-sm' : 'stk-stat-zero-sm' ?>" title="Available stock remaining in this box: <?= number_format($locQty, 2) ?>">
+                                                    <span class="stk-stat-lbl">Left</span>
+                                                    <span class="stk-stat-val"><?= number_format($locQty, 2) ?></span>
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -322,8 +732,9 @@
                             </tbody>
                 </table>
             </div>
-        </div>
     </div>
+    </div>
+</div>
 
     <!-- Image hover preview -->
     <div id="stockImgPreview"><img src="" alt="" id="stockImgPreviewImg"></div>
@@ -565,6 +976,12 @@
                 var che = row.querySelector('.toggle-chevron');
                 if (che) che.className = (!expanded) ? 'bi bi-chevron-down toggle-chevron me-2' : 'bi bi-chevron-right toggle-chevron me-2';
             });
+            row.addEventListener('keydown', function(event){
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    row.click();
+                }
+            });
         });
     })();
 
@@ -636,3 +1053,5 @@
 </div>
 
 <?= $this->endSection() ?>
+
+

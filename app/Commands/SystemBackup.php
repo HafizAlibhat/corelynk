@@ -11,11 +11,13 @@ class SystemBackup extends BaseCommand
     protected $group = 'System';
     protected $name = 'system:backup';
     protected $description = 'Create manual backups or run due scheduled backups.';
-    protected $usage = 'system:backup [--type=full] [--run-schedules] [--verify=<public_id>]';
+    protected $usage = 'system:backup [--type=full] [--run-schedules] [--verify=<public_id>] [--job-id=<id>] [--include-media]';
     protected $options = [
         '--type' => 'Backup type: full, db_only, code_only',
         '--run-schedules' => 'Execute all due backup schedules now.',
         '--verify' => 'Re-run health verification for a backup public id.',
+        '--job-id' => 'Process an already-queued job row instead of creating a new one (used for background/async runs).',
+        '--include-media' => 'Include public/uploads in the archive (excluded by default).',
     ];
 
     public function run(array $params)
@@ -37,8 +39,19 @@ class SystemBackup extends BaseCommand
             return;
         }
 
+        $excludeMedia = !$this->hasOption($args, '--include-media');
+
+        $jobId = $this->getOptionValue($args, '--job-id');
+        if ($jobId !== null && $jobId !== '') {
+            $job = $service->processQueuedJob((int) $jobId, $excludeMedia);
+            CLI::write('Backup created: ' . ($job['archive_name'] ?? 'unknown'), 'green');
+            CLI::write('Public ID: ' . ($job['public_id'] ?? 'unknown'));
+            CLI::write('Health: ' . ($job['health_status'] ?? 'unknown'));
+            return;
+        }
+
         $type = $this->getOptionValue($args, '--type') ?? 'full';
-        $job = $service->createManualBackup($type, null, null);
+        $job = $service->createManualBackup($type, null, null, $excludeMedia);
         CLI::write('Backup created: ' . ($job['archive_name'] ?? 'unknown'), 'green');
         CLI::write('Public ID: ' . ($job['public_id'] ?? 'unknown'));
         CLI::write('Health: ' . ($job['health_status'] ?? 'unknown'));

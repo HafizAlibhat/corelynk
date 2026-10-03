@@ -76,6 +76,18 @@ $routes->group('api', ['namespace' => 'App\Controllers\Api'], function ($routes)
     $routes->get('customers',            'CustomerApi::index');
     $routes->get('customers/(:segment)', 'CustomerApi::show/$1');
 
+    // Tags
+    $routes->get('tags',            'TagApi::index');
+    $routes->get('tags/(:num)',     'TagApi::show/$1');
+    $routes->post('tags',           'TagApi::create');
+    $routes->post('tags/(:num)',    'TagApi::update/$1');
+    $routes->delete('tags/(:num)',  'TagApi::delete/$1');
+
+    // Document tags
+    $routes->get('document-tags',  'DocumentTagsApi::index');
+    $routes->post('document-tags', 'DocumentTagsApi::save');
+    $routes->delete('document-tags', 'DocumentTagsApi::delete');
+
     // Admin — API token management
     $routes->get('admin/api-tokens',              'ApiAdminApi::tokens');
     $routes->get('admin/api-stats',               'ApiAdminApi::stats');
@@ -99,10 +111,18 @@ $routes->group('api', ['namespace' => 'App\Controllers\Api'], function ($routes)
 $routes->get('customs-approval/(:segment)', 'CustomsInvoices::approvalPortal/$1');
 $routes->post('customs-approval/(:segment)/decision', 'CustomsInvoices::approvalDecision/$1');
 
+// First-run setup wizard — only reachable until an admin user exists (see App\Filters\SetupFilter)
+$routes->group('setup', function ($routes) {
+    $routes->get('/', 'Setup::index');
+    $routes->post('fresh', 'Setup::runFresh');
+    $routes->post('restore', 'Setup::restore');
+});
+
 // Authentication Routes
 $routes->group('auth', function($routes) {
     $routes->get('login', 'Auth::login');
     $routes->post('login', 'Auth::processLogin');
+    $routes->get('resume-login', 'Auth::resumeLogin');
     $routes->get('logout', 'Auth::logout');
     $routes->get('register', 'Auth::register');
     $routes->post('register', 'Auth::attemptRegister');
@@ -121,6 +141,11 @@ $routes->group('auth', function($routes) {
     $routes->post('mfa-setup', 'Auth::mfaSetupProcess');
 });
 
+$routes->get('companies', 'Companies::index');
+$routes->get('companies/create', 'Companies::create');
+$routes->post('companies', 'Companies::store');
+$routes->post('companies/switch/(:segment)', 'Companies::switch/$1');
+
 // ── Admin Panel (admin role only) ─────────────────────────────────────
 $routes->group('admin', ['filter' => 'role:admin'], function($routes) {
     // Users
@@ -130,6 +155,12 @@ $routes->group('admin', ['filter' => 'role:admin'], function($routes) {
     $routes->get('users/(:num)/edit', 'Admin::editUser/$1');
     $routes->post('users/(:num)/update', 'Admin::updateUser/$1');
     $routes->post('users/(:num)/toggle', 'Admin::toggleUser/$1');
+
+    // Employee logins (admin-only, driven from the employee page)
+    $routes->post('employees/(:num)/access', 'EmployeeAccess::save/$1');
+    $routes->post('employees/(:num)/access/unlink', 'EmployeeAccess::unlink/$1');
+    $routes->post('employees/(:num)/access/toggle', 'EmployeeAccess::toggle/$1');
+    $routes->post('employees/(:num)/access/password', 'EmployeeAccess::password/$1');
 
     // Roles
     $routes->get('roles', 'Admin::roles');
@@ -222,6 +253,7 @@ $routes->group('', function($routes) {
         $routes->get($productIdentifier . '/edit', 'Products::edit/$1');
         $routes->post('(:num)/update', 'Products::update/$1');
         $routes->post('(:num)/copy-weight-to-variants', 'Products::copyWeightToVariants/$1');
+        $routes->post('(:num)/copy-route-to-variants', 'Products::copyRouteToVariants/$1');
         $routes->post('(:num)/copy-vendor-to-variants', 'Products::copyVendorToVariants/$1');
         $routes->post('(:num)/copy-cost-to-variants', 'Products::copyCostToVariants/$1');
         $routes->post('(:num)/copy-sale-to-variants', 'Products::copySaleToVariants/$1');
@@ -278,6 +310,7 @@ $routes->group('', function($routes) {
         $routes->post('(:num)/update', 'PreparationProfiles::update/$1');
         $routes->post('(:num)/delete', 'PreparationProfiles::delete/$1');
         $routes->post('(:num)/copy-to-variants', 'PreparationProfiles::copyToVariants/$1');
+        $routes->get('ajax/vendor-services/(:num)', 'PreparationProfiles::vendorServicesAjax/$1');
         $routes->post('ajax/create-service', 'PreparationProfiles::createServiceAjax');
     });
 
@@ -461,12 +494,22 @@ $routes->group('', function($routes) {
     // Employees Management
     $routes->group('employees', function($routes) {
         $routes->get('/', 'Employees::index');
+        // Salaries (HR). Declared before the (:num) routes; 'payroll' is not numeric.
+        $routes->get('payroll', 'Payroll::index');
+        $routes->post('payroll/generate', 'Payroll::generate');
+        $routes->post('payroll/save', 'Payroll::save');
+        $routes->post('payroll/import', 'Payroll::import');
+        $routes->post('payroll/(:num)/confirm', 'Payroll::confirm/$1');
+        $routes->post('payroll/(:num)/pay', 'Payroll::pay/$1');
+        $routes->post('payroll/(:num)/unpay', 'Payroll::unpay/$1');
         $routes->get('create', 'Employees::create');
         $routes->post('store', 'Employees::store');
         $routes->get('(:num)', 'Employees::show/$1');
         $routes->get('(:num)/edit', 'Employees::edit/$1');
         $routes->post('(:num)/update', 'Employees::update/$1');
         $routes->delete('(:num)', 'Employees::delete/$1');
+        $routes->post('(:num)/restore', 'Employees::restore/$1');
+        $routes->delete('(:num)/permanent', 'Employees::destroy/$1');
         $routes->get('by-skill', 'Employees::getBySkill');
         $routes->get('all', 'Employees::getAll');
         // Alias to support frontend calling /employees/getAll
@@ -617,7 +660,15 @@ $routes->group('', function($routes) {
         $routes->get('create', 'Customers::create');
         $routes->post('create', 'Customers::create');
         $routes->post('api-create', 'Customers::apiCreate');
-        $routes->get('(:segment)', 'Customers::show/$1');
+    // AJAX endpoints for address selects (must be registered before the
+    // '(:segment)' wildcard below, otherwise it shadows these literal routes)
+    $routes->get('states/(:num)', 'Customers::states/$1');
+    $routes->get('states', 'Customers::states');
+    $routes->get('cities/(:num)', 'Customers::cities/$1');
+    $routes->get('cities', 'Customers::cities');
+    $routes->get('zip-search', 'Customers::zipSearch');
+        $routes->get('(:segment)/relations', 'Customers::relations/$1');
+    $routes->get('(:segment)', 'Customers::show/$1');
         $routes->get('(:segment)/edit', 'Customers::edit/$1');
         $routes->post('(:segment)/edit', 'Customers::edit/$1');
         $routes->get('(:segment)/delete', 'Customers::delete/$1');
@@ -627,15 +678,10 @@ $routes->group('', function($routes) {
         $routes->post('(:segment)/add-contact', 'Customers::addContact/$1');
         $routes->post('(:segment)/update-contact/(:num)', 'Customers::updateContact/$1/$2');
         $routes->post('(:segment)/delete-contact/(:num)', 'Customers::deleteContact/$1/$2');
-    // AJAX endpoints for address selects
-    $routes->get('states/(:num)', 'Customers::states/$1');
-    $routes->get('states', 'Customers::states');
-    $routes->get('cities/(:num)', 'Customers::cities/$1');
-    $routes->get('cities', 'Customers::cities');
-    $routes->get('zip-search', 'Customers::zipSearch');
-    $routes->post('(:num)/update-address/(:num)', 'Customers::updateAddress/$1/$2');
-    $routes->post('(:num)/delete-address/(:num)', 'Customers::deleteAddress/$1/$2');
-    $routes->post('(:num)/addresses/(:num)/set-default', 'Customers::setAddressDefault/$1/$2');
+    $routes->post('(:segment)/update-address/(:num)', 'Customers::updateAddress/$1/$2');
+    $routes->post('(:segment)/delete-address/(:num)', 'Customers::deleteAddress/$1/$2');
+    $routes->post('(:segment)/addresses/(:num)/set-default', 'Customers::setAddressDefault/$1/$2');
+$routes->post('(:segment)/contacts/(:num)/set-primary', 'Customers::setContactPrimary/$1/$2');
     });
 
     // Customer Invoices (System & Custom)
@@ -648,6 +694,7 @@ $routes->group('', function($routes) {
         $routes->get('edit/(:segment)', 'CustomerInvoices::edit/$1');
         $routes->post('update/(:segment)', 'CustomerInvoices::update/$1');
         $routes->post('post/(:segment)', 'CustomerInvoices::post/$1');
+        $routes->post('payment-terms/(:segment)', 'CustomerInvoices::savePaymentTerms/$1');
         $routes->get('view/(:segment)', 'CustomerInvoices::view/$1');
     $routes->get('pdf/(:segment)', 'CustomerInvoices::pdf/$1');
     $routes->get('print/(:segment)', 'CustomerInvoices::printView/$1');
@@ -713,7 +760,12 @@ $routes->group('', function($routes) {
         $routes->post('delete-line/(:any)', 'Quotations::deleteLine/$1');
     // Update shipping amount
     $routes->post('update-shipping/(:any)', 'Quotations::updateShipping/$1');
-        // Bulk update quotation (edit form)
+    $routes->post('refresh-customer-address/(:any)', 'Quotations::refreshCustomerAddress/$1');
+    // Payment terms (instalment plan agreed with the quote)
+    $routes->post('payment-terms/(:any)', 'Quotations::updatePaymentTerms/$1');
+        // Duplicate quotation (exact copy as a new draft)
+    $routes->post('duplicate/(:any)', 'Quotations::duplicate/$1');
+    // Bulk update quotation (edit form)
         $routes->post('update/(:any)', 'Quotations::update/$1');
         // View a saved quotation
         $routes->get('view/(:any)', 'Quotations::view/$1');
@@ -755,6 +807,36 @@ $routes->group('', function($routes) {
         $routes->post('acknowledge-orders-alarm', 'Documents::acknowledgeOrdersAlarm');
     });
 
+    // Price lists (customer and vendor) + price resolution used by documents
+    $routes->group('pricing', ['filter' => 'auth'], function($routes) {
+        $routes->get('lists', 'Pricing::lists');
+        $routes->post('resolve', 'Pricing::resolve');
+    });
+
+    $routes->group('price-lists', ['filter' => 'auth'], function($routes) {
+        $routes->get('/', 'PriceLists::index');
+        $routes->get('manage', 'PriceLists::manage');
+        $routes->get('manage/(:num)', 'PriceLists::manage/$1');
+        $routes->post('save', 'PriceLists::save');
+        $routes->post('save/(:num)', 'PriceLists::save/$1');
+        $routes->post('delete/(:num)', 'PriceLists::delete/$1');
+    });
+
+    // Tags Management (web controllers for session-based auth)
+    $routes->group('tags', ['filter' => 'auth'], function($routes) {
+        $routes->get('/', 'Tags::index');
+        $routes->post('/', 'Tags::create');
+        $routes->post('(:num)', 'Tags::update/$1');
+        $routes->delete('(:num)', 'Tags::delete/$1');
+    });
+
+    // Document Tags (assign tags to documents)
+    $routes->group('document-tags', ['filter' => 'auth'], function($routes) {
+        $routes->get('/', 'DocumentTags::index');
+        $routes->post('/', 'DocumentTags::save');
+        $routes->delete('/', 'DocumentTags::delete');
+    });
+
     // Expose product vendor price lookup at a top-level path for AJAX clients
     // (keeps compatibility with frontend code that requests /product-vendors/price)
     $routes->get('product-vendors/price', 'ProductVendors::price');
@@ -771,18 +853,38 @@ $routes->group('', function($routes) {
         $routes->get('invoice/(:num)', 'SalesOrders::invoice/$1');
         $routes->post('cancel/(:any)', 'SalesOrders::cancel/$1');
         $routes->post('reset-to-quotation/(:any)', 'SalesOrders::resetToQuotation/$1');
+        $routes->post('refresh-customer-address/(:any)', 'SalesOrders::refreshCustomerAddress/$1');
         $routes->post('create-purchase-drafts/(:num)', 'SalesOrders::createPurchaseDrafts/$1'); // Phase-2
-        $routes->post('create-material-rfq/(:num)', 'SalesOrders::createMaterialRfq/$1');
+        $routes->post('create-material-rfq/(:num)', 'SalesOrders::createPurchaseDrafts/$1');
+        
+        $routes->post('reserve-line', 'SalesOrders::reserveLineStock');
+        $routes->post('release-line-reservation', 'SalesOrders::releaseLineReservation');
         $routes->post('preparation/send-to-vendor', 'PreparationExecution::sendToVendor');
         $routes->post('preparation/bulk-send-to-vendor', 'PreparationExecution::bulkSendToVendor');
+        $routes->post('preparation/create-job-pos', 'PreparationExecution::createJobPos');
         $routes->post('preparation/start-inhouse', 'PreparationExecution::startInHouse');
+        $routes->post('preparation/reserve-stock', 'PreparationExecution::reserveStock');
+        $routes->post('preparation/release-reservation', 'PreparationExecution::releaseReservation');
+        $routes->post('preparation/complete-step', 'PreparationExecution::complete');
+        $routes->post('preparation/add-vendor-location', 'PreparationExecution::addVendorLocation');
+        $routes->post('preparation/reroute-to-vendor', 'PreparationExecution::rerouteToVendor');
+        $routes->post('preparation/cancel-send-note', 'PreparationExecution::cancelSendNote');
+        $routes->get('preparation/trail/(:num)/(:num)', 'PreparationExecution::trail/$1/$2');
     });
+
+    // Public verification route for scanned QR / Barcode tokens (authenticated AES-256 tokens)
+    $routes->get('vendor-receive/verify/(:any)', 'VendorReceive::verify/$1');
 
     $routes->group('vendor-receive', ['filter' => 'auth'], function($routes) {
         $routes->get('/', 'VendorReceive::index');
         $routes->get('received-items', 'VendorReceive::receivedItems');
         $routes->get('rejection/(:num)/pdf', 'VendorReceive::rejectionPdf/$1');
         $routes->get('handover-slip/batch', 'VendorReceive::handoverSlipBatch');
+        $routes->get('order/(:num)/combined-send-slip', 'VendorReceive::combinedSendSlip/$1');
+        $routes->get('order/(:num)/lot-stickers', 'VendorReceive::lotStickers/$1');
+        $routes->get('combined-send-slip/(:num)', 'VendorReceive::combinedSendSlip/$1');
+        $routes->get('(:num)/send-slip', 'VendorReceive::sendSlip/$1');
+        $routes->get('note/(:num)/slip', 'VendorReceive::receiveSlip/$1');
         $routes->get('(:num)', 'VendorReceive::receiveForm/$1');
         $routes->get('(:num)/handover-slip', 'VendorReceive::handoverSlip/$1');
         $routes->post('store', 'VendorReceive::store');
@@ -792,12 +894,11 @@ $routes->group('', function($routes) {
     $routes->group('warehouse', ['filter' => 'auth'], function($routes) {
         $routes->get('ready-to-ship', 'WarehouseDashboard::readyToShip');
         $routes->get('incoming-shipments', 'WarehouseDashboard::incomingFromVendors');
-        // Debug endpoints — production-gated
-        if (ENVIRONMENT !== 'production') {
-            $routes->get('debugFulfillment', 'WarehouseDashboard::debugFulfillment');
-            $routes->get('testReadyToShip', 'WarehouseDashboard::testReadyToShip');
-            $routes->get('testDOCreation', 'WarehouseDashboard::testDOCreation');
-        }
+        // Batch 2A: the debugFulfillment / testReadyToShip / testDOCreation GET
+        // routes were removed. testDOCreation created a real delivery order against
+        // the hardcoded production sales order RI-S0001. The ENVIRONMENT gate did not
+        // protect this deployment, which runs CI_ENVIRONMENT = development against
+        // the live business database.
     });
 
     // Delivery Orders
@@ -830,6 +931,7 @@ $routes->group('', function($routes) {
         $routes->post('reorder', 'DocumentLines::reorder');
         $routes->post('sort', 'DocumentLines::sort');
         $routes->post('add-section', 'DocumentLines::addSection');
+        $routes->post('move-to-section', 'DocumentLines::moveToSection');
         $routes->post('update-section', 'DocumentLines::updateSection');
         $routes->post('delete-section', 'DocumentLines::deleteSection');
         $routes->post('recalculate', 'DocumentLines::recalculate');
@@ -858,6 +960,7 @@ $routes->group('', function($routes) {
         $routes->post('stock-take', 'Components::processStockTake');
         $routes->get('adjustments', 'StockAdjustments::index');
         $routes->post('adjustments/save', 'StockAdjustments::save');
+        $routes->post('adjustments/sales-order/(:segment)', 'StockAdjustments::salesOrder/$1');
         $routes->get('adjustments/history', 'StockAdjustments::history');
         $routes->get('adjustments/product-search', 'StockAdjustments::productSearch');
         $routes->get('adjustments/warehouses',       'StockAdjustments::warehouses');
@@ -904,24 +1007,8 @@ $routes->group('', function($routes) {
     // Reports & Analytics
     $routes->group('reports', function($routes) {
         $routes->get('/', 'Reports::index');
-        // Existing report pages (some may be placeholders)
-        $routes->get('production', 'Reports::production');
-        $routes->get('quality', 'Reports::quality');
-        $routes->get('inventory', 'Reports::inventory');
-        $routes->get('financial', 'Reports::financial');
-        $routes->get('vendor', 'Reports::vendor');
-        $routes->get('custom', 'Reports::custom');
-        $routes->post('generate', 'Reports::generate');
-        $routes->get('export/(:any)', 'Reports::export/$1');
-        $routes->post('schedule', 'Reports::schedule');
-        $routes->get('templates', 'Reports::templates');
-        $routes->post('templates', 'Reports::saveTemplate');
-
-        // Deterministic forecasting JSON endpoints
-        $routes->get('forecast/summary', 'Reports::forecastSummary');
-        $routes->get('forecast/bottlenecks', 'Reports::forecastBottlenecks');
-        $routes->get('forecast/burnup', 'Reports::forecastBurnup');
-        $routes->get('forecast/risks', 'Reports::forecastRisks');
+        $routes->get('export/(:alpha)', 'Reports::export/$1');
+        $routes->get('(:alpha)', 'Reports::show/$1');
     });
     
     // Ultra-simple backup journal (completely independent) - OUTSIDE accounting group
@@ -1060,6 +1147,8 @@ $routes->group('', function($routes) {
         $routes->post('saveFiscalYear', 'Settings::saveFiscalYear');
         $routes->post('saveSecurity', 'Settings::saveSecurity');
         $routes->post('addPaymentMethod', 'Settings::addPaymentMethod');
+    $routes->post('savePaymentTerm', 'Settings::savePaymentTerm'); $routes->post('apiCreatePaymentTerm', 'Settings::apiCreatePaymentTerm');
+    $routes->post('deletePaymentTerm/(:num)', 'Settings::deletePaymentTerm/$1');
         $routes->post('addExchangeRate', 'Settings::addExchangeRate');
         $routes->post('saveOdoo', 'Settings::saveOdoo');
         $routes->post('cleanDatabase', 'Settings::cleanDatabase');
@@ -1067,6 +1156,27 @@ $routes->group('', function($routes) {
         $routes->post('saveMobileSettings', 'Settings::saveMobileSettings');
         $routes->post('saveDateFormat', 'Settings::saveDateFormat');
         $routes->post('saveProductAssetUploadSettings', 'Settings::saveProductAssetUploadSettings');
+        $routes->post('saveTag', 'Settings::saveTag');
+        $routes->post('updateTag/(:num)', 'Settings::updateTag/$1');
+        $routes->post('deleteTag/(:num)', 'Settings::deleteTag/$1');
+        // Currency management
+        $routes->post('addCurrency', 'Settings::addCurrency');
+        $routes->post('toggleCurrency/(:any)', 'Settings::toggleCurrency/$1');
+        // Backups (controller methods existed but were never routed — settings/#backups UI 404'd)
+        $routes->post('createBackup', 'Settings::createBackup');
+        $routes->get('backupJobsStatus', 'Settings::backupJobsStatus');
+        $routes->get('downloadBackup/(:segment)', 'Settings::downloadBackup/$1');
+        $routes->post('verifyBackup/(:segment)', 'Settings::verifyBackup/$1');
+        $routes->post('cancelBackup/(:segment)', 'Settings::cancelBackup/$1');
+        $routes->post('restoreBackup/(:segment)', 'Settings::restoreBackup/$1');
+        $routes->post('saveBackupSchedule', 'Settings::saveBackupSchedule');
+        // Data export / import
+        $routes->post('exportData', 'Settings::exportData');
+        $routes->post('importPreviewData', 'Settings::importPreviewData');
+        $routes->post('importConfirmData', 'Settings::importConfirmData');
+        $routes->get('dataJobsStatus', 'Settings::dataJobsStatus');
+        $routes->get('downloadDataExport/(:segment)', 'Settings::downloadDataExport/$1');
+        $routes->post('cancelDataJob/(:segment)', 'Settings::cancelDataJob/$1');
     });
 
     // Integrations (Odoo)
@@ -1200,6 +1310,7 @@ $routes->post('new-purchase-rfqs/(:segment)/send', 'NewPurchaseRfqs::send/$1');
 $routes->post('new-purchase-rfqs/(:segment)/accept', 'NewPurchaseRfqs::accept/$1');
 $routes->post('new-purchase-rfqs/(:segment)/cancel', 'NewPurchaseRfqs::cancel/$1');
 $routes->post('new-purchase-rfqs/(:segment)/delete', 'NewPurchaseRfqs::delete/$1');
+$routes->post('new-purchase-rfqs/(:segment)/duplicate', 'NewPurchaseRfqs::duplicate/$1');
 
 // PO from RFQ conversion
 $routes->post('new-purchase-orders/from-rfq/(:num)', 'NewPurchaseOrders::from_rfq/$1');
@@ -1210,6 +1321,7 @@ $routes->get('new-purchase-orders/(:segment)/pdf', 'NewPurchaseOrders::pdf/$1');
 $routes->get('new-purchase-orders/(:segment)/print', 'NewPurchaseOrders::printView/$1');
 $routes->post('new-purchase-orders/(:segment)/update', 'NewPurchaseOrders::update/$1');
 $routes->post('new-purchase-orders/(:segment)/set-draft', 'NewPurchaseOrders::setDraft/$1');
+$routes->post('new-purchase-orders/(:segment)/reset-to-rfq', 'NewPurchaseOrders::resetToRfq/$1');
 $routes->post('new-purchase-orders/(:segment)/cancel', 'NewPurchaseOrders::cancel/$1');
 $routes->post('new-purchase-orders/(:segment)/close', 'NewPurchaseOrders::close/$1');
 

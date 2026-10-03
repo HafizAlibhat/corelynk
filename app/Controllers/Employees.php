@@ -20,10 +20,12 @@ class Employees extends BaseController
     {
         $this->requireAuth();
         
+        $showInactive = (bool) $this->request->getGet('inactive');
+
         $employees = [];
         $employeeError = null;
         try {
-            $employees = $this->employeeModel->getEmployeesWithSkills();
+            $employees = $this->employeeModel->getEmployeesWithSkills($showInactive);
         } catch (\Exception $e) {
             log_message('error', 'Failed to load employees: ' . $e->getMessage());
             $employeeError = 'Employee data is not available. Please ensure the employees table and related migrations have been applied.';
@@ -32,6 +34,7 @@ class Employees extends BaseController
         $data = [
             'page_title' => 'Employees Management',
             'employees' => $employees,
+            'showInactive' => $showInactive,
             'employeeError' => $employeeError
         ];
 
@@ -54,6 +57,7 @@ class Employees extends BaseController
         $data = [
             'page_title' => 'Add New Employee',
             'skills' => $skills,
+            'departments' => $this->employeeModel->departmentList(),
             'employeeError' => $employeeError
         ];
 
@@ -70,7 +74,9 @@ class Employees extends BaseController
             'last_name' => 'required|min_length[1]|max_length[50]',
             'phone' => 'permit_empty|min_length[10]|max_length[20]',
             'email' => 'permit_empty|valid_email',
-            'department' => 'permit_empty|max_length[50]'
+            'department' => 'permit_empty|max_length[50]',
+            'designation' => 'permit_empty|max_length[100]',
+            'monthly_salary' => 'permit_empty|decimal|greater_than_equal_to[0]'
         ]);
 
         if (!$validation->withRequest($this->request)->run()) {
@@ -78,14 +84,16 @@ class Employees extends BaseController
             return redirect()->back()->withInput()->with('validation', $validation);
         }
 
-        $employeeData = [
-            'first_name' => $this->request->getPost('first_name'),
-            'last_name' => $this->request->getPost('last_name'),
-            'phone' => $this->request->getPost('phone'),
-            'email' => $this->request->getPost('email'),
-            'department' => $this->request->getPost('department'),
-            'is_active' => 1
-        ];
+        $photo = $this->storePhoto();
+        if ($photo === false) {
+            session()->setFlashdata('error', 'The photo must be a JPG, PNG or WEBP image under 5 MB.');
+            return redirect()->back()->withInput();
+        }
+
+        $employeeData = array_merge($this->employmentFields(), ['is_active' => 1]);
+        if ($photo !== null) {
+            $employeeData['photo_path'] = $photo;
+        }
 
         // Handle skills
         $skills = [];
@@ -110,6 +118,53 @@ class Employees extends BaseController
             session()->setFlashdata('error', 'Failed to add employee');
             return redirect()->back()->withInput()->with('validation', $validation);
         }
+    }
+
+    /** The posted employee fields, shared by store() and update(). */
+    private function employmentFields(): array
+    {
+        helper('currency');
+        $salary = $this->request->getPost('monthly_salary');
+
+        return [
+            'first_name'      => $this->request->getPost('first_name'),
+            'last_name'       => $this->request->getPost('last_name'),
+            'phone'           => $this->request->getPost('phone'),
+            'email'           => $this->request->getPost('email'),
+            'department'      => $this->request->getPost('department'),
+            'designation'     => $this->request->getPost('designation'),
+            'joining_date'    => $this->request->getPost('joining_date') ?: null,
+            'monthly_salary'  => ($salary === null || $salary === '') ? null : (float) $salary,
+            'salary_currency' => $this->request->getPost('salary_currency') ?: base_currency_code(),
+        ];
+    }
+
+    /**
+     * Profile picture upload. Same shape as the payroll cheque upload:
+     * @return string|null|false path on success, null when nothing was sent,
+     *                           false when the file was rejected
+     */
+    private function storePhoto()
+    {
+        $file = $this->request->getFile('photo');
+        if (! $file || ! $file->isValid() || $file->hasMoved()) {
+            return null;
+        }
+
+        if ($file->getSize() > 5 * 1024 * 1024
+            || ! in_array($file->getMimeType(), ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            return false;
+        }
+
+        $dir = FCPATH . 'uploads/employees';
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $name = 'emp_' . time() . mt_rand(100, 999) . '.' . $file->getExtension();
+        $file->move($dir, $name);
+
+        return 'uploads/employees/' . $name;
     }
 
     public function show($id)
@@ -137,10 +192,49 @@ class Employees extends BaseController
             'page_title' => 'Employee Details',
             'employee' => $employee,
             'skills' => $skills,
+            'salaryHistory' => $employee ? (new \App\Models\SalaryPaymentModel())->historyFor($id) : [],
             'employeeError' => $employeeError
-        ];
+        ] + $this->accessData($employee);
 
         return view('employees/show', $data);
+    }
+
+    /**
+     * The login attached to this employee, plus what an admin needs to attach
+     * one: the user accounts nobody else is using, and the roles on offer.
+     */
+    private function accessData(?array $employee): array
+    {
+        $userModel = new \App\Models\UserModel();
+        // Same test the admin route filter uses, so the buttons only show
+        // when they would actually work.
+        $isAdmin   = in_array('admin', (array) (session('role_slugs') ?: [session('role')]), true);
+
+        $account = ($employee && ! empty($employee['user_id']))
+            ? $userModel->find($employee['user_id'])
+            : null;
+
+        if ($account) {
+            $account['roles'] = $userModel->getRoles((int) $account['id']);
+        }
+
+        $free = [];
+        if ($isAdmin && ! $account) {
+            $taken = array_map('intval', array_filter(
+                array_column($this->employeeModel->select('user_id')->findAll(), 'user_id')
+            ));
+            $free = $userModel->select('id, username, email, first_name, last_name, is_active')
+                              ->orderBy('username', 'ASC')
+                              ->findAll();
+            $free = array_values(array_filter($free, static fn ($u) => ! in_array((int) $u['id'], $taken, true)));
+        }
+
+        return [
+            'account'        => $account,
+            'canManageUsers' => $isAdmin,
+            'freeUsers'      => $free,
+            'allRoles'       => $isAdmin ? (new \App\Models\RoleModel())->orderBy('name', 'ASC')->findAll() : [],
+        ];
     }
 
     public function edit($id)
@@ -158,6 +252,7 @@ class Employees extends BaseController
             'page_title' => 'Edit Employee',
             'employee' => $employee,
             'skills' => $skills,
+            'departments' => $this->employeeModel->departmentList(),
             'all_skills' => $this->skillModel->getUniqueSkills()
         ];
 
@@ -179,7 +274,9 @@ class Employees extends BaseController
             'last_name' => 'required|min_length[1]|max_length[50]',
             'phone' => 'permit_empty|min_length[10]|max_length[20]',
             'email' => 'permit_empty|valid_email',
-            'department' => 'permit_empty|max_length[50]'
+            'department' => 'permit_empty|max_length[50]',
+            'designation' => 'permit_empty|max_length[100]',
+            'monthly_salary' => 'permit_empty|decimal|greater_than_equal_to[0]'
         ]);
 
         if (!$validation->withRequest($this->request)->run()) {
@@ -187,13 +284,18 @@ class Employees extends BaseController
             return redirect()->back()->withInput()->with('validation', $validation);
         }
 
-        $employeeData = [
-            'first_name' => $this->request->getPost('first_name'),
-            'last_name' => $this->request->getPost('last_name'),
-            'phone' => $this->request->getPost('phone'),
-            'email' => $this->request->getPost('email'),
-            'department' => $this->request->getPost('department')
-        ];
+        $photo = $this->storePhoto();
+        if ($photo === false) {
+            session()->setFlashdata('error', 'The photo must be a JPG, PNG or WEBP image under 5 MB.');
+            return redirect()->back()->withInput();
+        }
+
+        $employeeData = $this->employmentFields();
+        if ($photo !== null) {
+            $employeeData['photo_path'] = $photo;
+        } elseif ($this->request->getPost('remove_photo')) {
+            $employeeData['photo_path'] = null;
+        }
 
         $this->employeeModel->update($id, $employeeData);
 
@@ -217,20 +319,113 @@ class Employees extends BaseController
         return redirect()->to('/employees');
     }
 
+    /**
+     * Deactivate: the employee stays on record so past payslips, cheques and
+     * work-order history keep pointing at a real person.
+     *
+     * Called over AJAX, so it answers JSON — a redirect here left the page
+     * showing "Network error occurred" while the change had actually gone through.
+     */
     public function delete($id)
     {
         $this->requireAuth();
-        
+
         $employee = $this->employeeModel->find($id);
         if (!$employee) {
-            throw new \CodeIgniter\Exceptions\PageNotFoundException('Employee not found');
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Employee not found']);
         }
 
-        // Soft delete by setting is_active to 0
         $this->employeeModel->update($id, ['is_active' => 0]);
-        
-        session()->setFlashdata('success', 'Employee deactivated successfully');
-        return redirect()->to('/employees');
+        \App\Models\AuditLogModel::record('employee_deactivated', (int) session('user_id'), 'employees', (int) $id, [
+            'employee_code' => $employee['employee_code'],
+        ]);
+        session()->setFlashdata('success', 'Employee deactivated. They are hidden from lists but their history is intact.');
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Employee deactivated']);
+    }
+
+    /** Put a deactivated employee back to work. */
+    public function restore($id)
+    {
+        $this->requireAuth();
+
+        $employee = $this->employeeModel->find($id);
+        if (!$employee) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Employee not found']);
+        }
+
+        $this->employeeModel->update($id, ['is_active' => 1]);
+        \App\Models\AuditLogModel::record('employee_reactivated', (int) session('user_id'), 'employees', (int) $id, [
+            'employee_code' => $employee['employee_code'],
+        ]);
+        session()->setFlashdata('success', 'Employee reactivated');
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Employee reactivated']);
+    }
+
+    /**
+     * Permanent delete — only for records with no history behind them
+     * (a typo, a duplicate). Anyone with payslips or cheques must be
+     * deactivated instead, or the accounts would point at nothing.
+     */
+    public function destroy($id)
+    {
+        $this->requireAuth();
+
+        $employee = $this->employeeModel->find($id);
+        if (!$employee) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Employee not found']);
+        }
+
+        $blockers = $this->historyBlockers((int) $id);
+        if ($blockers) {
+            return $this->response->setStatusCode(409)->setJSON([
+                'success' => false,
+                'message' => 'This employee cannot be deleted because of ' . implode(' and ', $blockers)
+                    . '. Deactivate them instead so the records stay intact.',
+            ]);
+        }
+
+        $this->skillModel->where('employee_id', $id)->delete();
+        $this->employeeModel->delete($id, true);
+
+        // The row is gone for good, so keep enough of it to answer "who deleted whom".
+        \App\Models\AuditLogModel::record('employee_deleted', (int) session('user_id'), 'employees', (int) $id, [
+            'employee_code' => $employee['employee_code'],
+            'name'          => trim($employee['first_name'] . ' ' . $employee['last_name']),
+            'department'    => $employee['department'],
+        ]);
+        session()->setFlashdata('success', 'Employee deleted permanently');
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Employee deleted permanently']);
+    }
+
+    /** Human-readable reasons an employee record must be kept. */
+    private function historyBlockers(int $id): array
+    {
+        $db     = \Config\Database::connect();
+        $labels = [
+            'salary_payments'              => 'salary slip',
+            'cheques'                      => 'cheque',
+            'process_employee_assignments' => 'work assignment',
+            'process_batch_employees'      => 'batch assignment',
+        ];
+
+        $blockers = [];
+        foreach ($labels as $table => $label) {
+            if (!$db->tableExists($table)) {
+                continue;
+            }
+            $n = (int) $db->table($table)->where('employee_id', $id)->countAllResults();
+            if ($n > 0) {
+                $blockers[] = $n . ' ' . $label . ($n === 1 ? '' : 's');
+            }
+        }
+
+        return $blockers;
     }
 
     // AJAX endpoint to get employees by skill

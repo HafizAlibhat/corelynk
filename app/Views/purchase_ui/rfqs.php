@@ -53,7 +53,7 @@ Purchase RFQs
   // Render RFQs from server response
   function renderRfqs(rows){
     if(!rows || rows.length===0){ rfqList.innerHTML='<em>No RFQs found.</em>'; return; }
-    let html = '<table><tr><th>ID</th><th>RFQ#</th><th>Vendor</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
+    let html = '<table class="cl-table"><tr><th>ID</th><th>RFQ#</th><th>Vendor</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
     for(const r of rows){
       html += `<tr data-id="${r.id}"><td>${r.id}</td><td>${r.rfq_number||''}</td><td>${r.vendor_id||''}</td><td>${r.status}</td><td>${r.created_at}</td><td>`;
       if(r.status === 'draft') html += `<button class="sendBtn" data-id="${r.id}">Send</button>`;

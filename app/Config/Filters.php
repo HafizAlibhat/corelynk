@@ -39,6 +39,8 @@ class Filters extends BaseFilters
         'permission'    => \App\Filters\PermissionFilter::class,
         'rbac'          => \App\Filters\RbacFilter::class,
         'httpsredirect' => \App\Filters\HttpsRedirectFilter::class,
+        'setup'         => \App\Filters\SetupFilter::class,
+        'tenantcontext' => \App\Filters\TenantContextFilter::class,
     ];
 
     /**
@@ -75,6 +77,11 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
+            // Establish the control DB and authorize any selected company before all DB-backed filters.
+            'tenantcontext',
+            // Redirects every request to the first-run wizard until an admin
+            // account exists — must run before auth/rbac.
+            'setup',
             // Feature-flag-controlled HTTPS redirect (no-op when flag is off)
             'httpsredirect',
             'auth' => ['except' => [
@@ -83,6 +90,12 @@ class Filters extends BaseFilters
                 // API routes handle their own token-based authentication
                 'api/*',
                 'api',
+                'setup/*',
+                'setup',
+                'companies',
+                'companies/*',
+                'vendor-receive/verify',
+                'vendor-receive/verify/*',
             ]],
             // Global RBAC enforcement — runs after auth, checks route permissions
             'rbac' => ['except' => [
@@ -94,6 +107,12 @@ class Filters extends BaseFilters
                 // Landing page
                 '/',
                 '',
+                'setup/*',
+                'setup',
+                'companies',
+                'companies/*',
+                'vendor-receive/verify',
+                'vendor-receive/verify/*',
             ]],
             // 'honeypot',
             // 'csrf',

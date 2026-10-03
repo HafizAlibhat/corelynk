@@ -73,7 +73,11 @@
         return (t === 'fixed' ? 'fixed' : 'percent');
     }
 
-    function buildStaticRowHtml(line){
+    function buildStaticRowHtml(line, lineNo){
+        if (String(line.display_type || '').toLowerCase() === 'section') {
+            return buildSectionRowHtml(line);
+        }
+
         var discType = lineDiscountTypeNormalized(line.discount_type);
         var discLabel = (discType === 'fixed' ? 'Fix' : '%');
         var appBase = window.location.pathname.split('/quotations/')[0] || '';
@@ -98,6 +102,7 @@
         var lineTotal = toNumber(line.line_total).toFixed(2);
 
         return '' +
+            '<td class="text-center text-muted">' + escapeHtml(lineNo != null ? lineNo : '') + '</td>' +
             '<td class="line-code">' + escapeHtml(code) + '</td>' +
             '<td><img src="' + escapeHtml(img) + '" alt="" class="quote-line-image quote-image-thumb js-product-hover-thumb" data-preview-src="' + escapeHtml(img) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.onerror=null;this.src=\'' + escapeHtml(fallbackImg) + '\';this.setAttribute(\'data-preview-src\',\'' + escapeHtml(fallbackImg) + '\');"></td>' +
             '<td class="line-desc">' +
@@ -119,16 +124,166 @@
             '<td class="text-end line-tax-amt col-tax">' + taxAmt + '</td>' +
             '<td class="text-end line-total">' + lineTotal + '</td>' +
             '<td><div class="btn-group" role="group">' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary btn-move-line-up" title="Move up"><i class="bi bi-arrow-up"></i></button>' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary btn-move-line-down" title="Move down"><i class="bi bi-arrow-down"></i></button>' +
                 '<button type="button" class="btn btn-sm btn-outline-secondary btn-edit-line">Edit</button>' +
                 '<button type="button" class="btn btn-sm btn-success btn-save-line" style="display:none">Save</button>' +
                 '<button type="button" class="btn btn-sm btn-outline-danger btn-cancel-line" style="display:none">Cancel</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-line" title="Delete this line"><i class="bi bi-trash"></i></button>' +
             '</div></td>';
+    }
+
+    function buildSectionRowHtml(line){
+        var title = String(line.section_title || line.product_name || line.description || 'Section').trim() || 'Section';
+        return '' +
+            '<td colspan="13">' +
+                '<div class="doc-section-title">' +
+                    '<span class="doc-drag-handle me-2" title="Drag section" style="cursor:grab;opacity:.75;"><i class="bi bi-grip-vertical"></i></span>' +
+                    '<input type="text" class="form-control form-control-sm doc-section-input" value="' + escapeHtml(title) + '" aria-label="Section heading" style="max-width:520px;font-weight:700;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#fff;">' +
+                    '<div class="btn-group btn-group-sm ms-auto doc-section-actions" role="group">' +
+                        '<button type="button" class="btn btn-outline-light btn-move-line-up" title="Move heading up"><i class="bi bi-arrow-up"></i></button>' +
+                        '<button type="button" class="btn btn-outline-light btn-move-line-down" title="Move heading down"><i class="bi bi-arrow-down"></i></button>' +
+                        '<button type="button" class="btn btn-outline-danger" data-delete-section-btn="1" title="Delete this heading"><i class="bi bi-trash"></i></button>' +
+                    '</div>' +
+                '</div>' +
+            '</td>';
+    }
+
+    function renumberLineRows(tbody){
+        var n = 0;
+        qsa('tr[data-display-type="line"]', tbody).forEach(function(row){
+            n += 1;
+            var first = row.querySelector('td:first-child');
+            if (first) first.textContent = n;
+        });
+    }
+
+    function appBasePath(){ return window.location.pathname.split('/quotations/')[0] || ''; }
+
+    function currentQuoteId(){
+        var quoteId = ((typeof window !== 'undefined' && window.quoteId) ? window.quoteId : 0) || 0;
+        if (!quoteId) {
+            var pathParts = window.location.pathname.split('/');
+            quoteId = pathParts[pathParts.length - 1] || 0;
+        }
+        return quoteId;
+    }
+
+    function lineOrder(tbody){
+        return qsa('tr[data-line-id]', tbody).map(function(row){
+            return parseInt(row.getAttribute('data-line-id') || '0', 10);
+        }).filter(function(id){ return id > 0; });
+    }
+
+    function refreshRowsHtml(tbody, html){
+        if (typeof html !== 'string' || !html) return false;
+        tbody.innerHTML = html;
+        document.dispatchEvent(new CustomEvent('doc-lines:rows-updated', {
+            detail: { docType: 'quotation', documentId: currentQuoteId(), tbody: tbody }
+        }));
+        return true;
+    }
+
+    function persistLineOrder(tbody){
+        return fetch(window.location.origin + appBasePath() + '/document-lines/reorder', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            body: JSON.stringify({ doc_type: 'quotation', document_id: String(currentQuoteId()), line_ids: lineOrder(tbody) })
+        }).then(function(resp){ return resp.text(); }).then(function(text){
+            var json = null;
+            try { json = JSON.parse(text); } catch (e) {
+                notify('Invalid response while saving order.', 'error');
+                return;
+            }
+            if (!json || !json.success) {
+                notify('Move failed: ' + (json && json.error ? json.error : 'unknown'), 'error');
+                return;
+            }
+            refreshRowsHtml(tbody, json.rows_html || '');
+            renumberLineRows(tbody);
+            notify('Line order saved.', 'success');
+        }).catch(function(e){ notify('Move failed: ' + e.toString(), 'error'); });
+    }
+
+    function moveRow(row, direction){
+        var tbody = row ? row.parentNode : null;
+        if (!tbody) return;
+        var rows = qsa('tr[data-line-id]', tbody);
+        var index = rows.indexOf(row);
+        if (index < 0) return;
+        if (direction < 0 && index > 0) {
+            tbody.insertBefore(row, rows[index - 1]);
+        } else if (direction > 0 && index < rows.length - 1) {
+            tbody.insertBefore(rows[index + 1], row);
+        } else {
+            return;
+        }
+        renumberLineRows(tbody);
+        persistLineOrder(tbody);
+    }
+
+    function ensureMoveButtons(row){
+        if (!row || row.querySelector('.btn-move-line-up')) return;
+        if (row.getAttribute('data-display-type') === 'section') {
+            var sectionTitle = row.querySelector('.doc-section-title');
+            if (!sectionTitle) return;
+            var deleteBtn = sectionTitle.querySelector('[data-delete-section-btn]');
+            var group = document.createElement('div');
+            group.className = 'btn-group btn-group-sm ms-auto doc-section-actions';
+            group.setAttribute('role', 'group');
+            group.innerHTML =
+                '<button type="button" class="btn btn-outline-light btn-move-line-up" title="Move heading up"><i class="bi bi-arrow-up"></i></button>' +
+                '<button type="button" class="btn btn-outline-light btn-move-line-down" title="Move heading down"><i class="bi bi-arrow-down"></i></button>';
+            if (deleteBtn) {
+                deleteBtn.classList.remove('ms-auto');
+                group.appendChild(deleteBtn);
+            }
+            sectionTitle.appendChild(group);
+            return;
+        }
+        var actionGroup = row.querySelector('td:last-child .btn-group');
+        if (!actionGroup) return;
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.className = 'btn btn-sm btn-outline-secondary btn-move-line-up';
+        up.title = 'Move up';
+        up.innerHTML = '<i class="bi bi-arrow-up"></i>';
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.className = 'btn btn-sm btn-outline-secondary btn-move-line-down';
+        down.title = 'Move down';
+        down.innerHTML = '<i class="bi bi-arrow-down"></i>';
+        actionGroup.insertBefore(down, actionGroup.firstChild);
+        actionGroup.insertBefore(up, actionGroup.firstChild);
+    }
+
+    function placeCreateRow(row, sourceBtn){
+        if (!row || !sourceBtn || !row.parentNode) return;
+        var tbody = row.parentNode;
+        var fromTopToolbar = !!(sourceBtn.closest && sourceBtn.closest('[data-doc-line-toolbar]'));
+        if (fromTopToolbar) {
+            var firstSection = tbody.querySelector('tr[data-display-type="section"]');
+            var firstLine = tbody.querySelector('tr[data-line-id]');
+            var before = null;
+            if (firstSection && firstSection.nextElementSibling) before = firstSection.nextElementSibling;
+            else if (firstLine) before = firstLine;
+            if (before && before !== row) tbody.insertBefore(row, before);
+        }
+        try { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch(e) { row.scrollIntoView(); }
+    }
+
+    function focusCreateRow(row){
+        var input = row ? row.querySelector('input.product-code, input.product-name, .new-section-title') : null;
+        if (input) setTimeout(function(){ input.focus(); }, 80);
     }
 
     function createInlineNewRow(tbody){
         var tr = document.createElement('tr');
         tr.className = 'line-new-row';
+        var nextLineNo = qsa('tr[data-line-id]', tbody).length + 1;
         tr.innerHTML = '' +
+            '<td class="text-center text-muted">' + nextLineNo + '</td>' +
             '<td>' +
                 '<input type="text" class="form-control form-control-sm new-line-code product-code" placeholder="Code">' +
                 '<input type="hidden" class="product-id" value="">' +
@@ -150,18 +305,18 @@
             '<td><input type="number" step="0.01" min="0.01" class="form-control form-control-sm text-end new-line-qty line-qty" value="1"></td>' +
             '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end new-line-price line-price" value="0"></td>' +
             '<td class="col-disc">' +
-                '<div class="d-flex gap-1 justify-content-end align-items-center">' +
-                    '<select class="form-select form-select-sm new-line-disc-type line-discount-type" style="width:74px; min-width:74px;">' +
+                '<div class="line-discount-editor">' +
+                    '<select class="form-select form-select-sm new-line-disc-type line-discount-type">' +
                         '<option value="percent" selected>%</option>' +
                         '<option value="fixed">Fix</option>' +
                     '</select>' +
-                    '<input type="number" step="0.01" min="0" class="form-control form-control-sm text-end new-line-disc line-discount" style="width:86px; min-width:86px;" value="0">' +
+                    '<input type="number" step="0.01" min="0" class="form-control form-control-sm text-end new-line-disc line-discount" value="0">' +
                 '</div>' +
             '</td>' +
             '<td class="text-end col-disc">0.00</td>' +
             '<td class="col-tax">' +
-                '<div class="d-flex gap-1 justify-content-end align-items-center">' +
-                    '<select class="form-select form-select-sm new-line-tax-type line-tax-type" style="width:74px; min-width:74px;">' +
+                '<div class="line-tax-editor">' +
+                    '<select class="form-select form-select-sm new-line-tax-type line-tax-type">' +
                         '<option value="percent" selected>%</option>' +
                         '<option value="fixed">Fix</option>' +
                     '</select>' +
@@ -176,6 +331,25 @@
             '</div></td>';
 
         tbody.appendChild(tr);
+        return tr;
+    }
+
+    function createInlineNewSectionRow(tbody){
+        var tr = document.createElement('tr');
+        tr.className = 'line-new-row section-new-row';
+        tr.innerHTML = '' +
+            '<td colspan="13">' +
+                '<div class="d-flex align-items-center gap-2 p-2" style="background:#111827;border-top:1px solid rgba(148,163,184,.2);border-bottom:1px solid rgba(148,163,184,.2);">' +
+                    '<input type="text" class="form-control form-control-sm new-section-title" placeholder="Heading, e.g. Extra Pieces Sent with Last Order">' +
+                    '<button type="button" class="btn btn-sm btn-success btn-create-section">Save</button>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger btn-cancel-create-line">Cancel</button>' +
+                '</div>' +
+            '</td>';
+        tbody.appendChild(tr);
+        setTimeout(function(){
+            var input = tr.querySelector('.new-section-title');
+            if (input) input.focus();
+        }, 0);
         return tr;
     }
 
@@ -207,13 +381,96 @@
         var btnSave = row.querySelector('.btn-save-line');
         var btnCancel = row.querySelector('.btn-cancel-line');
         var btnDelete = row.querySelector('.btn-delete-line');
+        var btnDeleteSection = row.querySelector('[data-delete-section-btn]');
 
         if (!editingAllowed) {
             if (btnEdit) btnEdit.disabled = true;
             if (btnSave) btnSave.style.display = 'none';
             if (btnCancel) btnCancel.style.display = 'none';
             if (btnDelete) btnDelete.disabled = true;
+            if (btnDeleteSection) btnDeleteSection.disabled = true;
             return;
+        }
+
+        function deleteRowFromServer(message, successMessage){
+            if (!confirm(message)) {
+                return;
+            }
+
+            var appBase = window.location.pathname.split('/quotations/')[0] || '';
+            var quoteId = (typeof window !== 'undefined' && window.quoteId) ? window.quoteId : 0;
+
+            fetch(window.location.origin + appBase + '/quotations/delete-line/' + quoteId, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ line_id: id })
+            }).then(function(resp){ return resp.text(); }).then(function(text){
+                var json = null;
+                try { json = JSON.parse(text); } catch(e){ notify('Invalid response from server', 'error'); console.error(text); return; }
+                if (!json || !json.success){ notify('Delete failed: ' + (json && json.error ? json.error : 'unknown'), 'error'); return; }
+
+                if (row && row.parentNode) {
+                    var parentBody = row.parentNode;
+                    parentBody.removeChild(row);
+                    renumberLineRows(parentBody);
+                }
+
+                if (json.totals) {
+                    var s = parseFloat(json.totals.subtotal).toFixed(2);
+                    var d = parseFloat(json.totals.discount).toFixed(2);
+                    var t = parseFloat(json.totals.tax).toFixed(2);
+                    var wt = json.totals.total_weight != null ? (parseFloat(json.totals.total_weight).toFixed(3)) : null;
+                    var g = parseFloat(json.totals.total).toFixed(2);
+
+                    var subEl = document.getElementById('view-subtotal');
+                    if (subEl) subEl.textContent = s;
+
+                    var rowDisc = document.getElementById('row-discount');
+                    var discEl = document.getElementById('view-discount');
+                    if (rowDisc && discEl) {
+                        if (parseFloat(d) > 0) {
+                            rowDisc.style.display = '';
+                            discEl.textContent = '-' + parseFloat(d).toFixed(2);
+                        } else {
+                            rowDisc.style.display = 'none';
+                        }
+                    }
+
+                    var rowTax = document.getElementById('row-tax');
+                    var taxEl = document.getElementById('view-tax');
+                    if (rowTax && taxEl) {
+                        if (parseFloat(t) > 0) {
+                            rowTax.style.display = '';
+                            taxEl.textContent = parseFloat(t).toFixed(2);
+                        } else {
+                            rowTax.style.display = 'none';
+                        }
+                    }
+
+                    var wtEl = document.getElementById('view-weight');
+                    if (wtEl && wt !== null && wtEl.dataset.weightMode !== 'draft') {
+                        wtEl.textContent = (wt >= 1 ? parseFloat(wt).toFixed(3) + ' kg' : Math.round(parseFloat(wt) * 1000) + ' g');
+                        wtEl.dataset.weightMode = 'calculated';
+                    }
+
+                    var totalEl = document.getElementById('view-total');
+                    if (totalEl) totalEl.textContent = g;
+                }
+
+                notify(successMessage, 'success');
+            }).catch(function(e){ notify('Delete failed: ' + e.toString(), 'error'); });
+        }
+
+        if (btnDeleteSection) {
+            btnDeleteSection.addEventListener('click', function(e){
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                }
+                deleteRowFromServer('Delete this heading?', 'Heading deleted successfully.');
+            });
         }
 
         if (!btnEdit) return;
@@ -221,71 +478,7 @@
         // Delete button handler
         if (btnDelete) {
             btnDelete.addEventListener('click', function(){
-                if (!confirm('Are you sure you want to delete this line? This action cannot be undone.')) {
-                    return;
-                }
-
-                var appBase = window.location.pathname.split('/quotations/')[0] || '';
-                var quoteId = (typeof window !== 'undefined' && window.quoteId) ? window.quoteId : 0;
-                
-                fetch(window.location.origin + appBase + '/quotations/delete-line/' + quoteId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-                    body: JSON.stringify({ line_id: id })
-                }).then(function(resp){ return resp.text(); }).then(function(text){
-                    var json = null;
-                    try { json = JSON.parse(text); } catch(e){ notify('Invalid response from server', 'error'); console.error(text); return; }
-                    if (!json || !json.success){ notify('Delete failed: ' + (json && json.error ? json.error : 'unknown'), 'error'); return; }
-
-                    // Remove row from table
-                    if (row && row.parentNode) {
-                        row.parentNode.removeChild(row);
-                    }
-
-                    // Update totals
-                    if (json.totals) {
-                        var s = parseFloat(json.totals.subtotal).toFixed(2);
-                        var d = parseFloat(json.totals.discount).toFixed(2);
-                        var t = parseFloat(json.totals.tax).toFixed(2);
-                        var wt = json.totals.total_weight != null ? (parseFloat(json.totals.total_weight).toFixed(3)) : null;
-                        var g = parseFloat(json.totals.total).toFixed(2);
-                        
-                        document.getElementById('view-subtotal').textContent = s;
-                        
-                        // discount: show as negative and toggle row
-                        var rowDisc = document.getElementById('row-discount');
-                        if (rowDisc) {
-                            if (parseFloat(d) > 0) {
-                                rowDisc.style.display = '';
-                                document.getElementById('view-discount').textContent = '-' + parseFloat(d).toFixed(2);
-                            } else {
-                                rowDisc.style.display = 'none';
-                            }
-                        }
-                        
-                        // tax: toggle row
-                        var rowTax = document.getElementById('row-tax');
-                        if (rowTax) {
-                            if (parseFloat(t) > 0) {
-                                rowTax.style.display = '';
-                                document.getElementById('view-tax').textContent = parseFloat(t).toFixed(2);
-                            } else {
-                                rowTax.style.display = 'none';
-                            }
-                        }
-                        
-                        var wtEl = document.getElementById('view-weight');
-                        if (wtEl && wt !== null && wtEl.dataset.weightMode !== 'draft') {
-                            wtEl.textContent = (wt >= 1 ? parseFloat(wt).toFixed(3) + ' kg' : Math.round(parseFloat(wt) * 1000) + ' g');
-                            wtEl.dataset.weightMode = 'calculated';
-                        }
-                        
-                        document.getElementById('view-total').textContent = g;
-                    }
-
-                    notify('Line deleted successfully.', 'success');
-                }).catch(function(e){ notify('Delete failed: ' + e.toString(), 'error'); });
+                deleteRowFromServer('Are you sure you want to delete this line? This action cannot be undone.', 'Line deleted successfully.');
             });
         }
 
@@ -319,16 +512,16 @@
             qtyCell.innerHTML = '<input type="number" step="0.01" class="form-control form-control-sm inline-qty" value="' + qtyCell._orig + '">';
             priceCell.innerHTML = '<input type="number" step="0.01" class="form-control form-control-sm inline-price text-end" value="' + priceCell._orig.replace(/,/g,'') + '">';
             discCell.innerHTML =
-                '<div class="d-flex gap-1 justify-content-end align-items-center">' +
-                    '<select class="form-select form-select-sm inline-disc-type" style="width:74px; min-width:74px;">' +
+                '<div class="line-discount-editor">' +
+                    '<select class="form-select form-select-sm inline-disc-type">' +
                         '<option value="percent"' + (discCell._origType === 'percent' ? ' selected' : '') + '>%</option>' +
                         '<option value="fixed"' + (discCell._origType === 'fixed' ? ' selected' : '') + '>Fix</option>' +
                     '</select>' +
-                    '<input type="number" step="0.01" class="form-control form-control-sm inline-disc text-end" style="width:86px; min-width:86px;" value="' + discNum + '">' +
+                    '<input type="number" step="0.01" class="form-control form-control-sm inline-disc text-end" value="' + discNum + '">' +
                 '</div>';
             taxCell.innerHTML =
-                '<div class="d-flex gap-1 justify-content-end align-items-center">' +
-                    '<select class="form-select form-select-sm inline-tax-type" style="width:74px; min-width:74px;">' +
+                '<div class="line-tax-editor">' +
+                    '<select class="form-select form-select-sm inline-tax-type">' +
                         '<option value="percent"' + (taxCell._origType === 'fixed' ? '' : ' selected') + '>%</option>' +
                         '<option value="fixed"' + (taxCell._origType === 'fixed' ? ' selected' : '') + '>Fix</option>' +
                     '</select>' +
@@ -391,7 +584,10 @@
                 if (lineTaxType !== 'fixed') lineTaxType = 'percent';
                 var lineTaxLabel = lineTaxType === 'fixed' ? 'Fix' : '%';
                 var lineTaxValue = (line.tax_value != null ? line.tax_value : line.tax_rate);
-                row.querySelector('.line-tax-percent').innerHTML = '<span class="badge bg-secondary-subtle text-light-emphasis me-1" style="font-size:0.68rem;">' + lineTaxLabel + '</span><span>' + (lineTaxValue != null ? lineTaxValue : '') + '</span>';
+                var taxCellOut = row.querySelector('.line-tax-percent');
+                taxCellOut.innerHTML = '<span class="badge bg-secondary-subtle text-light-emphasis me-1" style="font-size:0.68rem;">' + lineTaxLabel + '</span><span>' + (lineTaxValue != null ? lineTaxValue : '') + '</span>';
+                taxCellOut.setAttribute('data-tax-type', lineTaxType);
+                row.setAttribute('data-tax-type', lineTaxType);
                 row.querySelector('.line-tax-amt').textContent = parseFloat((line.tax_amount != null ? line.tax_amount : 0)).toFixed(2);
                 row.querySelector('.line-total').textContent = parseFloat(line.line_total).toFixed(2);
                 row.querySelector('.line-desc').textContent = (line.description != null ? line.description : '');
@@ -409,7 +605,7 @@
                     if (rowDisc) {
                         if (parseFloat(d) > 0) {
                             rowDisc.style.display = '';
-                            document.getElementById('view-discount').textContent = '-' + parseFloat(d).toFixed(2);
+                            document.getElementById('view-discount').textContent = '-' + d;
                         } else {
                             rowDisc.style.display = 'none';
                         }
@@ -419,7 +615,7 @@
                     if (rowTax) {
                         if (parseFloat(t) > 0) {
                             rowTax.style.display = '';
-                            document.getElementById('view-tax').textContent = parseFloat(t).toFixed(2);
+                            document.getElementById('view-tax').textContent = t;
                         } else {
                             rowTax.style.display = 'none';
                         }
@@ -450,18 +646,41 @@
 
         bindAllQuoteRows();
 
-        var addBtn = document.getElementById('btn-add-line');
+        var addBtns = qsa('[data-add-line-btn]');
+        var sectionBtns = qsa('[data-add-section-btn]');
         var linesBody = qs('table.so-lines-table tbody');
-        if (!editingAllowed && addBtn) {
-            addBtn.style.display = 'none';
+        if (!editingAllowed) {
+            addBtns.concat(sectionBtns).forEach(function(btn){ btn.style.display = 'none'; });
         }
-        if (!addBtn || !linesBody) return;
+        if (!addBtns.length || !linesBody) return;
 
         var creating = false;
+
+        function removeEmptyPlaceholder(){
+            var emptyRow = linesBody.querySelector('tr:not([data-line-id]):not(.line-new-row)');
+            if (emptyRow) emptyRow.parentNode.removeChild(emptyRow);
+        }
+
+        function closeCreateRow(row){
+            if (row && row.parentNode) row.parentNode.removeChild(row);
+            creating = false;
+        }
+
+        function ensurePlaceholderIfEmpty(){
+            if (!qs('tr[data-line-id]', linesBody)) {
+                var placeholder = document.createElement('tr');
+                placeholder.innerHTML = '<td colspan="13" class="text-muted">No lines</td>';
+                linesBody.appendChild(placeholder);
+            }
+        }
+
+        addBtns.forEach(function(addBtn){
         addBtn.addEventListener('click', function(){
             if (!editingAllowed) return;
             if (creating) return;
             creating = true;
+
+            removeEmptyPlaceholder();
 
             var row = createInlineNewRow(linesBody);
             attachCreateRowAutocomplete(row);
@@ -469,12 +688,12 @@
             var btnCancel = row.querySelector('.btn-cancel-create-line');
 
             function closeRow(){
-                if (row && row.parentNode) row.parentNode.removeChild(row);
-                creating = false;
+                closeCreateRow(row);
             }
 
             btnCancel.addEventListener('click', function(){
                 closeRow();
+                ensurePlaceholderIfEmpty();
             });
 
             btnSave.addEventListener('click', function(){
@@ -537,16 +756,22 @@
                         return;
                     }
 
+                    var noLinesRow = linesBody.querySelector('tr:not([data-line-id]):not(.line-new-row)');
+                    if (noLinesRow) noLinesRow.parentNode.removeChild(noLinesRow);
+
                     var line = json.line;
+                    var lineNo = qsa('tr[data-display-type="line"]', linesBody).length + 1;
                     var staticRow = document.createElement('tr');
                     staticRow.setAttribute('data-line-id', line.id);
+                    staticRow.setAttribute('data-display-type', 'line');
                     staticRow.setAttribute('data-unit-weight', toNumber(line.unit_weight || 0));
                     staticRow.setAttribute('data-discount-type', lineDiscountTypeNormalized(line.discount_type));
-                    staticRow.innerHTML = buildStaticRowHtml(line);
+                    staticRow.innerHTML = buildStaticRowHtml(line, lineNo);
 
                     linesBody.insertBefore(staticRow, row);
                     attachRowHandlers(staticRow);
                     closeRow();
+                    renumberLineRows(linesBody);
 
                     var toggleDiscTax = document.getElementById('toggle-discount-tax');
                     if (toggleDiscTax) {
@@ -589,6 +814,77 @@
                     notify('Line added successfully.', 'success');
                 }).catch(function(e){
                     notify('Add line failed: ' + e.toString(), 'error');
+                });
+            });
+        });
+        });
+
+        sectionBtns.forEach(function(sectionBtn){
+            sectionBtn.addEventListener('click', function(e){
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                }
+                if (!editingAllowed) return;
+                if (creating) return;
+                creating = true;
+
+                removeEmptyPlaceholder();
+                var row = createInlineNewSectionRow(linesBody);
+                var btnSave = row.querySelector('.btn-create-section');
+                var btnCancel = row.querySelector('.btn-cancel-create-line');
+
+                btnCancel.addEventListener('click', function(){
+                    closeCreateRow(row);
+                    ensurePlaceholderIfEmpty();
+                });
+
+                btnSave.addEventListener('click', function(){
+                    var input = row.querySelector('.new-section-title');
+                    var title = input ? input.value.trim() : '';
+                    if (!title) {
+                        notify('Heading is required.', 'error');
+                        return;
+                    }
+
+                    var quoteId = ((typeof window !== 'undefined' && window.quoteId) ? window.quoteId : 0) || 0;
+                    if (!quoteId) {
+                        var pathParts = window.location.pathname.split('/');
+                        quoteId = pathParts[pathParts.length - 1] || 0;
+                    }
+                    var appBase = window.location.pathname.split('/quotations/')[0] || '';
+
+                    fetch(window.location.origin + appBase + '/quotations/add-line/' + quoteId, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                        body: JSON.stringify({ display_type: 'section', section_title: title })
+                    }).then(function(resp){ return resp.text(); }).then(function(text){
+                        var json = null;
+                        try { json = JSON.parse(text); } catch (e) {
+                            notify('Invalid response from server', 'error');
+                            return;
+                        }
+                        if (!json || !json.success || !json.line) {
+                            notify('Add heading failed: ' + (json && json.error ? json.error : 'unknown'), 'error');
+                            return;
+                        }
+
+                        var line = json.line;
+                        var staticRow = document.createElement('tr');
+                        staticRow.className = 'doc-section-row';
+                        staticRow.setAttribute('data-line-id', line.id);
+                        staticRow.setAttribute('data-display-type', 'section');
+                        staticRow.innerHTML = buildSectionRowHtml(line);
+                        linesBody.insertBefore(staticRow, row);
+                        attachRowHandlers(staticRow);
+                        closeCreateRow(row);
+                        renumberLineRows(linesBody);
+                        notify('Heading added successfully.', 'success');
+                    }).catch(function(e){
+                        notify('Add heading failed: ' + e.toString(), 'error');
+                    });
                 });
             });
         });

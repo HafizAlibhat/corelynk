@@ -149,6 +149,7 @@ return [
     // -----------------------------------------------------------------
     'GET:customers'              => 'customers.read',
     'GET:customers/*'            => 'customers.read',
+    'GET:customers/*/relations'  => 'customers.read',
     'GET:customers/*/edit'       => 'customers.edit',
     'GET:customers/create'       => 'customers.write',
     'POST:customers/create'      => 'customers.write',
@@ -158,6 +159,16 @@ return [
     'POST:customers/**'          => 'customers.edit',
     'GET:customers/*/delete'     => 'customers.delete',
     'POST:customers/*/delete'    => 'customers.delete',
+
+    // -----------------------------------------------------------------
+    //  PRICE LISTS
+    // -----------------------------------------------------------------
+    'GET:price-lists'            => 'settings.read',
+    'GET:price-lists/manage'     => 'settings.write',
+    'GET:price-lists/manage/*'   => 'settings.write',
+    'POST:price-lists/save'      => 'settings.write',
+    'POST:price-lists/save/*'    => 'settings.write',
+    'POST:price-lists/delete/*'  => 'settings.delete',
 
     // -----------------------------------------------------------------
     //  QUOTATIONS
@@ -175,6 +186,9 @@ return [
     'DELETE:quotations/delete-line/*'  => 'quotations.edit',
     'POST:quotations/delete-line/*'    => 'quotations.edit',
     'POST:quotations/update-shipping/*'=> 'quotations.edit',
+    'POST:quotations/refresh-customer-address/*' => 'quotations.edit',
+    'POST:quotations/duplicate/*'      => 'quotations.write',
+    'POST:quotations/payment-terms/*' => 'quotations.edit',
     'quotations/delete/*'        => 'quotations.delete',
     'GET:quotations/search-products'   => 'quotations.read',
     'GET:quotations/search-customers'  => 'quotations.read',
@@ -209,9 +223,25 @@ return [
     'GET:sales-orders/invoice/*' => 'sales_orders.read',
     'POST:sales-orders/cancel/*' => 'sales_orders.edit',
     'POST:sales-orders/reset-to-quotation/*' => 'sales_orders.edit',
+    'POST:sales-orders/refresh-customer-address/*' => 'sales_orders.edit',
     'POST:sales-orders/create-purchase-drafts/*' => 'purchase_orders.write',
+    'POST:sales-orders/create-material-rfq/*' => 'purchase_orders.write',
     'POST:sales-orders/preparation/send-to-vendor' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/bulk-send-to-vendor' => 'sales_orders.edit',
     'POST:sales-orders/preparation/start-inhouse' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/reserve-stock' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/release-reservation' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/complete-step' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/add-vendor-location' => 'sales_orders.edit',
+    'POST:sales-orders/preparation/reroute-to-vendor' => 'sales_orders.edit',
+    'GET:sales-orders/preparation/trail/**' => 'sales_orders.read',
+    'GET:vendor-receive/*/send-slip' => 'sales_orders.read',
+    'GET:vendor-receive/order/*/combined-send-slip' => 'sales_orders.read',
+    'GET:vendor-receive/order/*/lot-stickers' => 'sales_orders.read',
+    'GET:vendor-receive/combined-send-slip/*' => 'sales_orders.read',
+    'GET:vendor-receive/note/*/slip' => 'sales_orders.read',
+    'GET:vendor-receive/verify/*' => true,
+    'GET:vendor-receive/verify' => true,
 
     // -----------------------------------------------------------------
     //  CUSTOMER INVOICES
@@ -259,6 +289,7 @@ return [
     'GET:new-purchase-rfqs/*'          => 'rfq.read',
     'GET:new-purchase-rfqs/*/pdf'      => 'rfq.read',
     'POST:new-purchase-rfqs/create'    => 'rfq.write',
+    'POST:new-purchase-rfqs/*/duplicate' => 'rfq.write',
     'POST:new-purchase-rfqs/*/update'  => 'rfq.edit',
     'POST:new-purchase-rfqs/*/confirm' => 'rfq.edit',
     'POST:new-purchase-rfqs/*/send'    => 'rfq.edit',
@@ -272,6 +303,7 @@ return [
     'POST:new-purchase-orders/from-rfq/*'    => 'purchase_orders.write',
     'POST:new-purchase-orders/*/update'      => 'purchase_orders.edit',
     'POST:new-purchase-orders/*/set-draft'   => 'purchase_orders.edit',
+    'POST:new-purchase-orders/*/reset-to-rfq' => 'purchase_orders.edit',
     'POST:new-purchase-orders/*/cancel'      => 'purchase_orders.edit',
     'POST:new-purchase-orders/*/close'       => 'purchase_orders.edit',
     'POST:new-purchase-orders/confirm/*'     => 'purchase_orders.edit',
@@ -306,6 +338,7 @@ return [
     'POST:inventory/quick-adjust'=> 'inventory.edit',
     'POST:inventory/stock-take'  => 'inventory.edit',
     'POST:inventory/adjustments/save'  => 'inventory.edit',
+    'POST:inventory/adjustments/sales-order/*' => 'inventory.edit',
     'POST:inventory/**'          => 'inventory.edit',
 
     // Components

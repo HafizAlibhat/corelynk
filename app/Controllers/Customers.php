@@ -121,6 +121,384 @@ class Customers extends BaseController
         return view('customers/index', $data);
     }
 
+    /**
+     * Upserts the contact-person rows posted by the customer form. A customer can
+     * have many people attached (consignee, buyer, agent) and exactly one primary.
+     */
+    private function syncCustomerPersons(int $customerId, array $post): void
+    {
+        $rows       = (array) ($post['contacts'] ?? []);
+        $primaryIdx = (string) ($post['primary_contact_idx'] ?? '0');
+        $model      = new \App\Models\CustomerPersonModel();
+
+        foreach ($rows as $idx => $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            if ($name === '') {
+                continue; // a blank row is an abandoned one, not a delete
+            }
+
+            $data = [
+                'customer_id'        => $customerId,
+                'name'               => $name,
+                'title'              => trim((string) ($row['title'] ?? '')) ?: null,
+                'email'              => trim((string) ($row['email'] ?? '')) ?: null,
+                'phone'              => trim((string) ($row['phone'] ?? '')) ?: null,
+                'mobile'             => trim((string) ($row['mobile'] ?? '')) ?: null,
+                'is_primary_contact' => ((string) $idx === $primaryIdx) ? 1 : 0,
+                'is_active'          => 1,
+            ];
+
+            $existingId = (int) ($row['id'] ?? 0);
+            if ($existingId > 0) {
+                $model->update($existingId, $data);
+            } else {
+                $model->insert($data);
+            }
+        }
+
+        $deleted = array_filter(array_map('intval', (array) ($post['deleted_contact_ids'] ?? [])));
+        if ($deleted !== []) {
+            $model->where('customer_id', $customerId)->whereIn('id', $deleted)->delete();
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+     * Inline contact / address maintenance used by the customer detail page.
+     * Each endpoint answers with the full, freshly-read lists so the caller
+     * simply repaints instead of patching its own copy of the state.
+     * ------------------------------------------------------------------- */
+
+    /**
+     * The contact captured on the customer record itself at create time (name, email,
+     * phone, mobile) is a contact person like any other -- it just predates the
+     * customer_persons table. Promote it the first time the customer is opened so it
+     * can be edited, and chosen as primary, alongside contacts added later.
+     *
+     * Skipped when a contact row already carries the same email/phone/mobile, so
+     * running it on every page load can never duplicate one.
+     */
+    private function backfillRecordContact(array $customer): void
+    {
+        $customerId = (int) ($customer['id'] ?? 0);
+        if ($customerId <= 0) {
+            return;
+        }
+
+        $email  = trim((string) ($customer['email'] ?? ''));
+        $phone  = trim((string) ($customer['phone'] ?? ''));
+        $mobile = trim((string) ($customer['mobile'] ?? ''));
+        if ($email === '' && $phone === '' && $mobile === '') {
+            return; // nothing was captured on the record
+        }
+
+        try {
+            $model    = new \App\Models\CustomerPersonModel();
+            $existing = $model->where('customer_id', $customerId)->findAll();
+
+            $matches = static function (string $mine, $theirs): bool {
+                $theirs = trim((string) $theirs);
+
+                return $mine !== '' && $theirs !== '' && strcasecmp($mine, $theirs) === 0;
+            };
+            foreach ($existing as $row) {
+                if ($matches($email, $row['email'] ?? '')
+                    || $matches($phone, $row['phone'] ?? '')
+                    || $matches($mobile, $row['mobile'] ?? '')) {
+                    return; // already promoted, or entered by hand
+                }
+            }
+
+            // Only claim primary if nobody else holds it.
+            $primaryTaken = false;
+            foreach ($existing as $row) {
+                if (!empty($row['is_primary_contact'])) {
+                    $primaryTaken = true;
+                    break;
+                }
+            }
+
+            $model->insert([
+                'customer_id'        => $customerId,
+                'name'               => trim((string) ($customer['name'] ?? '')) ?: 'Primary contact',
+                'title'              => 'On customer record',
+                'email'              => $email ?: null,
+                'phone'              => $phone ?: null,
+                'mobile'             => $mobile ?: null,
+                'is_primary_contact' => $primaryTaken ? 0 : 1,
+                'is_active'          => 1,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'Customers::backfillRecordContact failed: ' . $e->getMessage());
+        }
+    }
+
+    /** @return array{contacts: array, addresses: array} */
+    private function customerRelations(int $customerId): array
+    {
+        $db = \Config\Database::connect();
+
+        return [
+            'contacts' => (new \App\Models\CustomerPersonModel())
+                ->where('customer_id', $customerId)
+                ->orderBy('is_primary_contact', 'DESC')
+                ->orderBy('id', 'ASC')
+                ->findAll(),
+            'addresses' => $db->table('customer_addresses')
+                ->where('customer_id', $customerId)
+                ->orderBy('is_default', 'DESC')
+                ->orderBy('id', 'ASC')
+                ->get()->getResultArray(),
+        ];
+    }
+
+    private function relationResponse(int $customerId, string $message = '')
+    {
+        return $this->response->setJSON(
+            ['ok' => true, 'message' => $message] + $this->customerRelations($customerId)
+        );
+    }
+
+    private function relationError(string $message, int $code = 422)
+    {
+        return $this->response->setStatusCode($code)->setJSON(['ok' => false, 'message' => $message]);
+    }
+
+    /**
+     * Resolve the customer or answer with JSON. Returns the numeric id, or null when
+     * a response has already been produced (which the caller must return).
+     */
+    private function relationCustomerId($identifier, &$error): ?int
+    {
+        $cust  = $this->customerModel->findByPublicIdOrId($identifier);
+        $error = $cust ? null : $this->relationError('Customer not found', 404);
+
+        return $cust ? (int) $cust['id'] : null;
+    }
+
+    /** Re-reads contacts and addresses so the document preview can refresh on its own. */
+    public function relations($identifier)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+
+        return $customerId === null ? $error : $this->relationResponse($customerId);
+    }
+
+    public function addContact($identifier)
+    {
+        return $this->saveContact($identifier, 0);
+    }
+
+    public function updateContact($identifier, $contactId)
+    {
+        return $this->saveContact($identifier, (int) $contactId);
+    }
+
+    private function saveContact($identifier, int $contactId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $name = trim((string) $this->request->getPost('name'));
+        if ($name === '') {
+            return $this->relationError('Contact name is required.');
+        }
+
+        $model = new \App\Models\CustomerPersonModel();
+        $data  = [
+            'customer_id' => $customerId,
+            'name'        => $name,
+            'title'       => trim((string) $this->request->getPost('title')) ?: null,
+            'email'       => trim((string) $this->request->getPost('email')) ?: null,
+            'phone'       => trim((string) $this->request->getPost('phone')) ?: null,
+            'mobile'      => trim((string) $this->request->getPost('mobile')) ?: null,
+            'is_active'   => 1,
+        ];
+
+        if ($contactId > 0) {
+            $existing = $model->find($contactId);
+            if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+                return $this->relationError('Contact not found', 404);
+            }
+            $model->update($contactId, $data);
+        } else {
+            // The first contact on file is the primary one by default.
+            $data['is_primary_contact'] = $model->where('customer_id', $customerId)->countAllResults() === 0 ? 1 : 0;
+            $model->insert($data);
+            $contactId = (int) $model->getInsertID();
+        }
+
+        if ($this->request->getPost('is_primary_contact')) {
+            $this->makeContactPrimary($customerId, $contactId);
+        }
+
+        return $this->relationResponse($customerId, 'Contact saved.');
+    }
+
+    public function deleteContact($identifier, $contactId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $model    = new \App\Models\CustomerPersonModel();
+        $existing = $model->find((int) $contactId);
+        if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+            return $this->relationError('Contact not found', 404);
+        }
+
+        $model->delete((int) $contactId);
+
+        // Never leave the customer without a primary once contacts remain.
+        $remaining = $model->where('customer_id', $customerId)->orderBy('id', 'ASC')->first();
+        if ($remaining && ! $model->where('customer_id', $customerId)->where('is_primary_contact', 1)->countAllResults()) {
+            $this->makeContactPrimary($customerId, (int) $remaining['id']);
+        }
+
+        return $this->relationResponse($customerId, 'Contact removed.');
+    }
+
+    public function setContactPrimary($identifier, $contactId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $model    = new \App\Models\CustomerPersonModel();
+        $existing = $model->find((int) $contactId);
+        if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+            return $this->relationError('Contact not found', 404);
+        }
+
+        $this->makeContactPrimary($customerId, (int) $contactId);
+
+        return $this->relationResponse($customerId, 'Primary contact updated.');
+    }
+
+    /** Exactly one primary contact per customer. */
+    private function makeContactPrimary(int $customerId, int $contactId): void
+    {
+        $db = \Config\Database::connect();
+        $db->table('customer_persons')->where('customer_id', $customerId)->update(['is_primary_contact' => 0]);
+        $db->table('customer_persons')->where('id', $contactId)->update(['is_primary_contact' => 1]);
+    }
+
+    public function addAddress($identifier)
+    {
+        return $this->saveAddress($identifier, 0);
+    }
+
+    public function updateAddress($identifier, $addressId)
+    {
+        return $this->saveAddress($identifier, (int) $addressId);
+    }
+
+    private function saveAddress($identifier, int $addressId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $line1 = trim((string) $this->request->getPost('line1'));
+        if ($line1 === '') {
+            return $this->relationError('Address line 1 is required.');
+        }
+
+        $db        = \Config\Database::connect();
+        $countryId = (int) $this->request->getPost('country_id') ?: null;
+        $country   = $countryId
+            ? ($db->table('countries')->select('name')->where('id', $countryId)->get()->getRowArray()['name'] ?? null)
+            : null;
+
+        $data = [
+            'label'        => trim((string) $this->request->getPost('label')) ?: null,
+            'line1'        => $line1,
+            'line2'        => trim((string) $this->request->getPost('line2')) ?: null,
+            'country_id'   => $countryId,
+            'country_name' => $country,
+            'state_name'   => trim((string) $this->request->getPost('state_name')) ?: null,
+            'city_name'    => trim((string) $this->request->getPost('city_name')) ?: null,
+            'postal_code'  => trim((string) $this->request->getPost('postal_code')) ?: null,
+            'is_billing'   => $this->request->getPost('is_billing') ? 1 : 0,
+            'is_shipping'  => $this->request->getPost('is_shipping') ? 1 : 0,
+            'updated_at'   => date('Y-m-d H:i:s'),
+        ];
+
+        if ($addressId > 0) {
+            $existing = $db->table('customer_addresses')->where('id', $addressId)->get()->getRowArray();
+            if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+                return $this->relationError('Address not found', 404);
+            }
+            $db->table('customer_addresses')->where('id', $addressId)->update($data);
+        } else {
+            $data['customer_id'] = $customerId;
+            $data['created_at']  = date('Y-m-d H:i:s');
+            $data['is_default']  = $db->table('customer_addresses')->where('customer_id', $customerId)->countAllResults() === 0 ? 1 : 0;
+            $db->table('customer_addresses')->insert($data);
+            $addressId = (int) $db->insertID();
+        }
+
+        if ($this->request->getPost('is_default')) {
+            $this->makeAddressDefault($customerId, $addressId);
+        }
+
+        return $this->relationResponse($customerId, 'Address saved.');
+    }
+
+    public function deleteAddress($identifier, $addressId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $db       = \Config\Database::connect();
+        $existing = $db->table('customer_addresses')->where('id', (int) $addressId)->get()->getRowArray();
+        if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+            return $this->relationError('Address not found', 404);
+        }
+
+        $db->table('customer_addresses')->where('id', (int) $addressId)->delete();
+
+        $remaining = $db->table('customer_addresses')->where('customer_id', $customerId)->orderBy('id', 'ASC')->get()->getRowArray();
+        $hasDefault = $db->table('customer_addresses')->where('customer_id', $customerId)->where('is_default', 1)->countAllResults();
+        if ($remaining && ! $hasDefault) {
+            $this->makeAddressDefault($customerId, (int) $remaining['id']);
+        }
+
+        return $this->relationResponse($customerId, 'Address removed.');
+    }
+
+    public function setAddressDefault($identifier, $addressId)
+    {
+        $customerId = $this->relationCustomerId($identifier, $error);
+        if ($customerId === null) {
+            return $error;
+        }
+
+        $db       = \Config\Database::connect();
+        $existing = $db->table('customer_addresses')->where('id', (int) $addressId)->get()->getRowArray();
+        if (! $existing || (int) $existing['customer_id'] !== $customerId) {
+            return $this->relationError('Address not found', 404);
+        }
+
+        $this->makeAddressDefault($customerId, (int) $addressId);
+
+        return $this->relationResponse($customerId, 'Default address updated.');
+    }
+
+    /** Exactly one default address per customer. */
+    private function makeAddressDefault(int $customerId, int $addressId): void
+    {
+        $db = \Config\Database::connect();
+        $db->table('customer_addresses')->where('customer_id', $customerId)->update(['is_default' => 0]);
+        $db->table('customer_addresses')->where('id', $addressId)->update(['is_default' => 1]);
+    }
+
     public function create()
     {
         $method = strtolower($this->request->getMethod());
@@ -234,6 +612,8 @@ class Customers extends BaseController
                 }
             }
 
+            $this->syncCustomerPersons((int) $insertId, $this->request->getPost() ?? []);
+
             session()->setFlashdata('success', 'Customer created successfully.');
             return redirect()->to(site_url('customers'));
         }
@@ -281,6 +661,16 @@ class Customers extends BaseController
                 $countries = [];
             }
             $cust['__countries'] = $countries;
+            $this->backfillRecordContact($cust);
+            try {
+                $cust['__contacts'] = (new \App\Models\CustomerPersonModel())
+                    ->where('customer_id', $numericId)
+                    ->orderBy('is_primary_contact', 'DESC')
+                    ->orderBy('id', 'ASC')
+                    ->findAll();
+            } catch (\Throwable $e) {
+                $cust['__contacts'] = [];
+            }
         }
         if ($method === 'post') {
             $post = $this->request->getPost();
@@ -389,6 +779,8 @@ class Customers extends BaseController
                    ->whereIn('id', $deletedIds)
                    ->delete();
             }
+
+            $this->syncCustomerPersons($numericId, $post);
 
             return redirect()->to(site_url('customers'))->with('success', 'Customer updated');
         }
@@ -550,6 +942,47 @@ class Customers extends BaseController
         return redirect()->to(site_url('customers'))->with('success', 'Customer ' . $newStatus);
     }
 
+    /**
+     * A picked year (and optional month) is shorthand for a date range. Anything the
+     * select cannot produce -- junk year, month 13 -- degrades to the whole year, or
+     * to no filter at all.
+     *
+     * @return array{0: ?int, 1: ?int, 2: ?string, 3: ?string} year, month, from, to
+     */
+    private function resolvePeriod(string $year, string $month): array
+    {
+        $year  = trim($year);
+        $month = trim($month);
+        if (!preg_match('/^\d{4}$/', $year)) {
+            return [null, null, null, null];
+        }
+
+        $y = (int) $year;
+        $m = preg_match('/^(0?[1-9]|1[0-2])$/', $month) ? (int) $month : null;
+        if ($m === null) {
+            return [$y, null, sprintf('%04d-01-01', $y), sprintf('%04d-12-31', $y)];
+        }
+
+        $from = sprintf('%04d-%02d-01', $y, $m);
+
+        return [$y, $m, $from, date('Y-m-t', (int) strtotime($from))];
+    }
+
+    /** Plain-English name for the period on screen, e.g. "March 2026" or "All time". */
+    private function periodLabel(?int $year, ?int $month, ?string $from, ?string $to): string
+    {
+        if ($year !== null) {
+            return $month !== null
+                ? date('F Y', (int) mktime(0, 0, 0, $month, 1, $year))
+                : (string) $year;
+        }
+        if ($from !== null && $to !== null) {
+            return date('d M Y', (int) strtotime($from)) . ' – ' . date('d M Y', (int) strtotime($to));
+        }
+
+        return 'All time';
+    }
+
     public function show($id)
     {
         $cust = $this->customerModel->findByPublicIdOrId($id);
@@ -562,9 +995,13 @@ class Customers extends BaseController
         // Try to load contacts/addresses if models exist; otherwise query the tables directly
         $contacts = [];
         $addresses = [];
-        if (class_exists('\App\Models\CustomerContactModel')) {
-            $contactModel = new \App\Models\CustomerContactModel();
-            $contacts = $contactModel->where('customer_id', $numericId)->findAll();
+        if (class_exists('\App\Models\CustomerPersonModel')) {
+            $this->backfillRecordContact($cust);
+            $contactModel = new \App\Models\CustomerPersonModel();
+            $contacts = $contactModel->where('customer_id', $numericId)
+                ->orderBy('is_primary_contact', 'DESC')
+                ->orderBy('id', 'ASC')
+                ->findAll();
         }
         if (class_exists('\App\Models\CustomerAddressModel')) {
             $addressModel = new \App\Models\CustomerAddressModel();
@@ -580,6 +1017,19 @@ class Customers extends BaseController
         // Owner-level business analytics for this customer
         $fromDateInput = trim((string)($this->request->getGet('from') ?? ''));
         $toDateInput = trim((string)($this->request->getGet('to') ?? ''));
+
+        // Picking a year (and optionally a month) is the easy path; it is just a
+        // shorthand for a date range, so it overwrites from/to and everything
+        // downstream keeps reading a single pair.
+        [$pickedYear, $pickedMonth, $pickedFrom, $pickedTo] = $this->resolvePeriod(
+            (string) ($this->request->getGet('year') ?? ''),
+            (string) ($this->request->getGet('month') ?? '')
+        );
+        if ($pickedYear !== null) {
+            $fromDateInput = $pickedFrom;
+            $toDateInput   = $pickedTo;
+        }
+
         $dateFilterError = null;
         $customFrom = null;
         $customTo = null;
@@ -600,25 +1050,28 @@ class Customers extends BaseController
             }
         }
 
+        // Sales orders can be raised in different currencies (USD, PKR, ...). Every figure below
+        // stays grouped by its own currency and is never summed across currencies.
+        helper('currency');
+        $baseCurrency = base_currency_code();
+        $emptyPeriod = ['order_count' => 0, 'units_bought' => 0.0, 'by_currency' => []];
+
         $analytics = [
-            'lifetime' => [
-                'order_count' => 0,
-                'revenue' => 0.0,
-                'avg_order_value' => 0.0,
-                'units_bought' => 0.0,
+            'base_currency' => $baseCurrency,
+            'lifetime' => $emptyPeriod + [
                 'unique_products' => 0,
                 'first_order_date' => null,
                 'last_order_date' => null,
             ],
-            'yearly' => ['order_count' => 0, 'revenue' => 0.0, 'units_bought' => 0.0],
-            'monthly' => ['order_count' => 0, 'revenue' => 0.0, 'units_bought' => 0.0],
-            'custom' => [
-                'order_count' => 0,
-                'revenue' => 0.0,
-                'units_bought' => 0.0,
+            'yearly' => $emptyPeriod,
+            'monthly' => $emptyPeriod,
+            'custom' => $emptyPeriod + [
                 'from' => $customFrom,
                 'to' => $customTo,
                 'enabled' => ($customFrom !== null && $customTo !== null),
+                'year' => $pickedYear,
+                'month' => $pickedMonth,
+                'label' => $this->periodLabel($pickedYear, $pickedMonth, $customFrom, $customTo),
             ],
             'top_products' => [],
             'monthly_trend' => [],
@@ -626,98 +1079,146 @@ class Customers extends BaseController
             'date_error' => $dateFilterError,
         ];
 
+        // Folds one currency-grouped result set into a period bucket.
+        $mergeCurrency = static function (array &$period, array $rows): void {
+            foreach ($rows as $row) {
+                $code = currency_code_or_base($row['currency_code'] ?? null);
+                $slot = $period['by_currency'][$code] ?? [
+                    'currency_code' => $code,
+                    'order_count' => 0,
+                    'revenue' => 0.0,
+                    'avg_order_value' => 0.0,
+                    'units_bought' => 0.0,
+                ];
+                foreach (['order_count', 'revenue', 'avg_order_value', 'units_bought'] as $key) {
+                    if (array_key_exists($key, $row)) {
+                        $slot[$key] = $key === 'order_count' ? (int)$row[$key] : (float)$row[$key];
+                    }
+                }
+                $period['by_currency'][$code] = $slot;
+            }
+            $period['order_count'] = (int)array_sum(array_column($period['by_currency'], 'order_count'));
+            $period['units_bought'] = (float)array_sum(array_column($period['by_currency'], 'units_bought'));
+            uasort($period['by_currency'], static fn ($a, $b) => $b['revenue'] <=> $a['revenue']);
+        };
+
         try {
             if ($db->tableExists('sales_orders')) {
                 $currentYear = (int)date('Y');
                 $currentMonth = (int)date('n');
 
-                $life = $db->query(
-                    'SELECT COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue, COALESCE(AVG(total),0) AS avg_order_value, '
-                    . 'MIN(order_date) AS first_order_date, MAX(order_date) AS last_order_date '
+                $soCols = $db->getFieldNames('sales_orders');
+                $curParts = [];
+                foreach (['currency_code', 'currency'] as $col) {
+                    if (in_array($col, $soCols, true)) {
+                        $curParts[] = "NULLIF(so.{$col}, '')";
+                    }
+                }
+                $curParts[] = $db->escape($baseCurrency);
+                $soCur = 'COALESCE(' . implode(', ', $curParts) . ')';
+                // Grouped by ordinal: under ONLY_FULL_GROUP_BY MySQL rejects the repeated
+                // COALESCE() expression, and the alias 'currency_code' resolves to the raw
+                // sales_orders column instead of this expression.
+
+                $mergeCurrency($analytics['lifetime'], $db->query(
+                    'SELECT ' . $soCur . ' AS currency_code, COUNT(*) AS order_count, '
+                    . 'COALESCE(SUM(so.total),0) AS revenue, COALESCE(AVG(so.total),0) AS avg_order_value '
+                    . 'FROM sales_orders so WHERE so.customer_id = ? '
+                    . 'GROUP BY 1',
+                    [$numericId]
+                )->getResultArray());
+
+                $span = $db->query(
+                    'SELECT MIN(order_date) AS first_order_date, MAX(order_date) AS last_order_date '
                     . 'FROM sales_orders WHERE customer_id = ?',
                     [$numericId]
                 )->getRowArray() ?? [];
-                $analytics['lifetime']['order_count'] = (int)($life['order_count'] ?? 0);
-                $analytics['lifetime']['revenue'] = (float)($life['revenue'] ?? 0);
-                $analytics['lifetime']['avg_order_value'] = (float)($life['avg_order_value'] ?? 0);
-                $analytics['lifetime']['first_order_date'] = $life['first_order_date'] ?? null;
-                $analytics['lifetime']['last_order_date'] = $life['last_order_date'] ?? null;
+                $analytics['lifetime']['first_order_date'] = $span['first_order_date'] ?? null;
+                $analytics['lifetime']['last_order_date'] = $span['last_order_date'] ?? null;
 
-                $yr = $db->query(
-                    'SELECT COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue '
-                    . 'FROM sales_orders WHERE customer_id = ? AND YEAR(order_date) = ?',
+                $mergeCurrency($analytics['yearly'], $db->query(
+                    'SELECT ' . $soCur . ' AS currency_code, COUNT(*) AS order_count, '
+                    . 'COALESCE(SUM(so.total),0) AS revenue, COALESCE(AVG(so.total),0) AS avg_order_value '
+                    . 'FROM sales_orders so WHERE so.customer_id = ? AND YEAR(so.order_date) = ? '
+                    . 'GROUP BY 1',
                     [$numericId, $currentYear]
-                )->getRowArray() ?? [];
-                $analytics['yearly']['order_count'] = (int)($yr['order_count'] ?? 0);
-                $analytics['yearly']['revenue'] = (float)($yr['revenue'] ?? 0);
+                )->getResultArray());
 
-                $mo = $db->query(
-                    'SELECT COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue '
-                    . 'FROM sales_orders WHERE customer_id = ? AND YEAR(order_date) = ? AND MONTH(order_date) = ?',
+                $mergeCurrency($analytics['monthly'], $db->query(
+                    'SELECT ' . $soCur . ' AS currency_code, COUNT(*) AS order_count, '
+                    . 'COALESCE(SUM(so.total),0) AS revenue, COALESCE(AVG(so.total),0) AS avg_order_value '
+                    . 'FROM sales_orders so WHERE so.customer_id = ? AND YEAR(so.order_date) = ? AND MONTH(so.order_date) = ? '
+                    . 'GROUP BY 1',
                     [$numericId, $currentYear, $currentMonth]
-                )->getRowArray() ?? [];
-                $analytics['monthly']['order_count'] = (int)($mo['order_count'] ?? 0);
-                $analytics['monthly']['revenue'] = (float)($mo['revenue'] ?? 0);
+                )->getResultArray());
 
                 if ($customFrom !== null && $customTo !== null) {
-                    $cr = $db->query(
-                        'SELECT COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue '
-                        . 'FROM sales_orders WHERE customer_id = ? AND order_date BETWEEN ? AND ?',
+                    $mergeCurrency($analytics['custom'], $db->query(
+                        'SELECT ' . $soCur . ' AS currency_code, COUNT(*) AS order_count, '
+                        . 'COALESCE(SUM(so.total),0) AS revenue, COALESCE(AVG(so.total),0) AS avg_order_value '
+                        . 'FROM sales_orders so WHERE so.customer_id = ? AND so.order_date BETWEEN ? AND ? '
+                        . 'GROUP BY 1',
                         [$numericId, $customFrom, $customTo]
-                    )->getRowArray() ?? [];
-                    $analytics['custom']['order_count'] = (int)($cr['order_count'] ?? 0);
-                    $analytics['custom']['revenue'] = (float)($cr['revenue'] ?? 0);
+                    )->getResultArray());
                 }
 
                 if ($db->tableExists('sales_order_lines')) {
-                    $lineLife = $db->query(
-                        'SELECT COALESCE(SUM(sol.quantity),0) AS units_bought, '
-                        . 'COUNT(DISTINCT COALESCE(sol.product_id, 0), COALESCE(sol.product_variant_id, 0), COALESCE(sol.description, "")) AS unique_products '
-                        . 'FROM sales_order_lines sol '
-                        . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id '
-                        . 'WHERE so.customer_id = ?',
+                    $lineJoin = 'FROM sales_order_lines sol '
+                        . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id ';
+
+                    $mergeCurrency($analytics['lifetime'], $db->query(
+                        'SELECT ' . $soCur . ' AS currency_code, COALESCE(SUM(sol.quantity),0) AS units_bought '
+                        . $lineJoin . 'WHERE so.customer_id = ? GROUP BY 1',
+                        [$numericId]
+                    )->getResultArray());
+
+                    $uniq = $db->query(
+                        'SELECT COUNT(DISTINCT COALESCE(sol.product_id, 0), COALESCE(sol.product_variant_id, 0), COALESCE(sol.description, "")) AS unique_products '
+                        . $lineJoin . 'WHERE so.customer_id = ?',
                         [$numericId]
                     )->getRowArray() ?? [];
-                    $analytics['lifetime']['units_bought'] = (float)($lineLife['units_bought'] ?? 0);
-                    $analytics['lifetime']['unique_products'] = (int)($lineLife['unique_products'] ?? 0);
+                    $analytics['lifetime']['unique_products'] = (int)($uniq['unique_products'] ?? 0);
 
-                    $lineYr = $db->query(
-                        'SELECT COALESCE(SUM(sol.quantity),0) AS units_bought '
-                        . 'FROM sales_order_lines sol '
-                        . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id '
-                        . 'WHERE so.customer_id = ? AND YEAR(so.order_date) = ?',
+                    $mergeCurrency($analytics['yearly'], $db->query(
+                        'SELECT ' . $soCur . ' AS currency_code, COALESCE(SUM(sol.quantity),0) AS units_bought '
+                        . $lineJoin . 'WHERE so.customer_id = ? AND YEAR(so.order_date) = ? GROUP BY 1',
                         [$numericId, $currentYear]
-                    )->getRowArray() ?? [];
-                    $analytics['yearly']['units_bought'] = (float)($lineYr['units_bought'] ?? 0);
+                    )->getResultArray());
 
-                    $lineMo = $db->query(
-                        'SELECT COALESCE(SUM(sol.quantity),0) AS units_bought '
-                        . 'FROM sales_order_lines sol '
-                        . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id '
-                        . 'WHERE so.customer_id = ? AND YEAR(so.order_date) = ? AND MONTH(so.order_date) = ?',
+                    $mergeCurrency($analytics['monthly'], $db->query(
+                        'SELECT ' . $soCur . ' AS currency_code, COALESCE(SUM(sol.quantity),0) AS units_bought '
+                        . $lineJoin . 'WHERE so.customer_id = ? AND YEAR(so.order_date) = ? AND MONTH(so.order_date) = ? GROUP BY 1',
                         [$numericId, $currentYear, $currentMonth]
-                    )->getRowArray() ?? [];
-                    $analytics['monthly']['units_bought'] = (float)($lineMo['units_bought'] ?? 0);
+                    )->getResultArray());
 
                     if ($customFrom !== null && $customTo !== null) {
-                        $lineCr = $db->query(
-                            'SELECT COALESCE(SUM(sol.quantity),0) AS units_bought '
-                            . 'FROM sales_order_lines sol '
-                            . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id '
-                            . 'WHERE so.customer_id = ? AND so.order_date BETWEEN ? AND ?',
+                        $mergeCurrency($analytics['custom'], $db->query(
+                            'SELECT ' . $soCur . ' AS currency_code, COALESCE(SUM(sol.quantity),0) AS units_bought '
+                            . $lineJoin . 'WHERE so.customer_id = ? AND so.order_date BETWEEN ? AND ? GROUP BY 1',
                             [$numericId, $customFrom, $customTo]
-                        )->getRowArray() ?? [];
-                        $analytics['custom']['units_bought'] = (float)($lineCr['units_bought'] ?? 0);
+                        )->getResultArray());
                     }
 
+                    // A line's description only carries the variant attributes (or is
+                    // empty), so name the product from the catalogue and keep the
+                    // description/variant as the secondary detail line. CONVERT() is
+                    // needed because products and product_variants use different
+                    // collations, and the currency stays an ordinal for the
+                    // ONLY_FULL_GROUP_BY reason noted above.
+                    $nameExpr = 'NULLIF(TRIM(CONVERT(p.name USING utf8mb4)), "")';
+                    $descExpr = 'NULLIF(TRIM(CONVERT(sol.description USING utf8mb4)), "")';
                     $analytics['top_products'] = $db->query(
-                        'SELECT COALESCE(NULLIF(TRIM(sol.description), ""), CONCAT("Product #", COALESCE(sol.product_id,0))) AS product_name, '
+                        'SELECT MIN(COALESCE(' . $nameExpr . ', ' . $descExpr . ', CONCAT("Product #", COALESCE(sol.product_id,0)))) AS product_name, '
+                        . 'MIN(COALESCE(NULLIF(TRIM(CONVERT(pv.name USING utf8mb4)), ""), ' . $descExpr . ')) AS product_detail, '
+                        . 'MIN(COALESCE(NULLIF(TRIM(CONVERT(pv.art_number USING utf8mb4)), ""), NULLIF(TRIM(CONVERT(p.code USING utf8mb4)), ""), NULLIF(TRIM(CONVERT(p.sku USING utf8mb4)), ""))) AS product_code, '
+                        . $soCur . ' AS currency_code, '
                         . 'COALESCE(SUM(sol.quantity),0) AS total_qty, COALESCE(SUM(sol.line_total),0) AS total_sales, '
                         . 'COUNT(DISTINCT so.id) AS order_count '
-                        . 'FROM sales_order_lines sol '
-                        . 'INNER JOIN sales_orders so ON so.id = sol.sales_order_id '
+                        . $lineJoin
+                        . 'LEFT JOIN products p ON p.id = sol.product_id '
+                        . 'LEFT JOIN product_variants pv ON pv.id = sol.product_variant_id '
                         . 'WHERE so.customer_id = ? '
-                        . 'GROUP BY product_name '
+                        . 'GROUP BY sol.product_id, sol.product_variant_id, 4 '
                         . 'ORDER BY total_qty DESC, total_sales DESC '
                         . 'LIMIT 10',
                         [$numericId]
@@ -725,21 +1226,23 @@ class Customers extends BaseController
                 }
 
                 $analytics['monthly_trend'] = $db->query(
-                    'SELECT DATE_FORMAT(order_date, "%Y-%m") AS period, COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue '
-                    . 'FROM sales_orders '
-                    . 'WHERE customer_id = ? AND order_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) '
-                    . 'GROUP BY DATE_FORMAT(order_date, "%Y-%m") '
+                    'SELECT DATE_FORMAT(so.order_date, "%Y-%m") AS period, ' . $soCur . ' AS currency_code, '
+                    . 'COUNT(*) AS order_count, COALESCE(SUM(so.total),0) AS revenue '
+                    . 'FROM sales_orders so '
+                    . 'WHERE so.customer_id = ? AND so.order_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) '
+                    . 'GROUP BY 1, 2 '
                     . 'ORDER BY period ASC',
                     [$numericId]
                 )->getResultArray();
 
                 $analytics['yearly_trend'] = $db->query(
-                    'SELECT YEAR(order_date) AS period, COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue '
-                    . 'FROM sales_orders '
-                    . 'WHERE customer_id = ? '
-                    . 'GROUP BY YEAR(order_date) '
+                    'SELECT YEAR(so.order_date) AS period, ' . $soCur . ' AS currency_code, '
+                    . 'COUNT(*) AS order_count, COALESCE(SUM(so.total),0) AS revenue '
+                    . 'FROM sales_orders so '
+                    . 'WHERE so.customer_id = ? '
+                    . 'GROUP BY 1, 2 '
                     . 'ORDER BY period DESC '
-                    . 'LIMIT 8',
+                    . 'LIMIT 16',
                     [$numericId]
                 )->getResultArray();
             }
@@ -756,8 +1259,11 @@ class Customers extends BaseController
             $receivableSummary = [
                 'open_invoice_count' => $receivablesData['count'],
                 'total_receivable' => $receivablesData['total'],
+                'receivable_by_currency' => $receivablesData['totals_by_currency'] ?? [],
                 'posted_payments_total' => 0.0,
                 'draft_payments_total' => 0.0,
+                'posted_by_currency' => [],
+                'draft_by_currency' => [],
                 'advance_balance' => 0.0,
             ];
             
@@ -765,6 +1271,8 @@ class Customers extends BaseController
             $paymentData = \App\Helpers\CustomerReceivablesHelper::recalculatePendingAmount($numericId, $db);
             $receivableSummary['posted_payments_total'] = $paymentData['posted_payments'];
             $receivableSummary['draft_payments_total'] = $paymentData['draft_payments'];
+            $receivableSummary['posted_by_currency'] = $paymentData['posted_by_currency'] ?? [];
+            $receivableSummary['draft_by_currency'] = $paymentData['draft_by_currency'] ?? [];
             $receivableSummary['advance_balance'] = $paymentData['advance_balance'];
         } catch (\Throwable $e) {
             log_message('error', 'Customers::show receivables calculation failed: ' . $e->getMessage());
@@ -773,8 +1281,11 @@ class Customers extends BaseController
             $receivableSummary = [
                 'open_invoice_count' => 0,
                 'total_receivable' => 0.0,
+                'receivable_by_currency' => [],
                 'posted_payments_total' => 0.0,
                 'draft_payments_total' => 0.0,
+                'posted_by_currency' => [],
+                'draft_by_currency' => [],
                 'advance_balance' => 0.0,
             ];
         }
@@ -784,18 +1295,45 @@ class Customers extends BaseController
         try {
             if ($db->tableExists('customer_payments')) {
                 $payCols = $db->getFieldNames('customer_payments');
-                $statusExpr = in_array('status', $payCols, true) ? 'cp.status' : "'draft' AS status";
+                // A payment with a journal entry behind it is posted; this table has no
+                // status column of its own, and calling every payment a draft made the
+                // history disagree with the totals above it.
+                $statusExpr = in_array('status', $payCols, true)
+                    ? 'cp.status AS status'
+                    : (in_array('posted_entry_id', $payCols, true)
+                        ? "IF(cp.posted_entry_id IS NOT NULL AND cp.posted_entry_id > 0, 'posted', 'draft') AS status"
+                        : "'draft' AS status");
+                $payCurExpr = in_array('currency_code', $payCols, true) ? 'cp.currency_code' : "''";
                 $methodExpr = in_array('payment_method', $payCols, true)
                     ? 'cp.payment_method'
-                    : (in_array('payment_method_id', $payCols, true) ? "CONCAT('method#', cp.payment_method_id)" : "''");
+                    : (in_array('payment_method_id', $payCols, true) && $db->tableExists('payment_methods')
+                        ? '(SELECT pm.method_name FROM payment_methods pm WHERE pm.id = cp.payment_method_id)'
+                        : (in_array('payment_method_id', $payCols, true) ? "CONCAT('method#', cp.payment_method_id)" : "''"));
 
-                $allocExpr = 'COALESCE(cpa.amount, cpa.amount_allocated, cpa.allocated_amount, 0)';
+                // Only columns this database actually has: cp.memo and the guessed
+                // allocation columns did not exist, and the error left the whole
+                // payment history empty on every customer page.
+                $allocCols = $db->tableExists('customer_payment_allocations')
+                    ? $db->getFieldNames('customer_payment_allocations') : [];
+                $allocCol  = null;
+                foreach (['allocated_amount', 'amount_allocated', 'amount'] as $candidate) {
+                    if (in_array($candidate, $allocCols, true)) {
+                        $allocCol = $candidate;
+                        break;
+                    }
+                }
+                $allocSelect = $allocCol
+                    ? '(SELECT COALESCE(SUM(cpa.' . $allocCol . '),0) FROM customer_payment_allocations cpa WHERE cpa.payment_id = cp.id)'
+                    : '0';
+
                 $paymentHistory = $db->query(
                     'SELECT cp.id, cp.payment_date, cp.amount, '
                     . $statusExpr . ', '
                     . $methodExpr . ' AS payment_method, '
-                    . 'cp.memo, cp.notes, cp.posted_entry_id, '
-                    . '(SELECT COALESCE(SUM(' . $allocExpr . '),0) FROM customer_payment_allocations cpa WHERE cpa.payment_id = cp.id) AS allocated_amount '
+                    . $payCurExpr . ' AS currency_code, '
+                    . (in_array('notes', $payCols, true) ? 'cp.notes, ' : "'' AS notes, ")
+                    . (in_array('posted_entry_id', $payCols, true) ? 'cp.posted_entry_id, ' : '0 AS posted_entry_id, ')
+                    . $allocSelect . ' AS allocated_amount '
                     . 'FROM customer_payments cp '
                     . 'WHERE cp.customer_id = ? '
                     . 'ORDER BY cp.payment_date DESC, cp.id DESC '
@@ -806,6 +1344,101 @@ class Customers extends BaseController
         } catch (\Throwable $e) {
             log_message('error', 'Customers::show payment history failed: ' . $e->getMessage());
             $paymentHistory = [];
+        }
+
+        // Almost every customer trades in a single currency, but the system must stay
+        // correct for the ones who do not. The page is therefore read one currency at a
+        // time: the most-used one by default, switchable from the header.
+        $currencyUsage = [];
+        $bump = static function (string $code, int $orders = 0) use (&$currencyUsage): void {
+            $code = currency_code_or_base($code);
+            $currencyUsage[$code] = ($currencyUsage[$code] ?? 0) + $orders;
+        };
+        foreach ($analytics['lifetime']['by_currency'] as $code => $row) {
+            $bump((string) $code, (int) ($row['order_count'] ?? 0));
+        }
+        foreach (array_keys($receivableSummary['receivable_by_currency']) as $code) {
+            $bump((string) $code);
+        }
+        foreach ($paymentHistory as $payment) {
+            $bump((string) ($payment['currency_code'] ?? ''));
+        }
+        // A customer whose only document is a quotation, or whose invoices are all
+        // settled, still trades in that currency -- read every document type.
+        try {
+            $currencyRows = $db->query(
+                "SELECT COALESCE(NULLIF(currency_code, ''), NULLIF(currency, ''), ?) AS c
+                   FROM sales_orders WHERE customer_id = ? AND deleted_at IS NULL
+                  UNION
+                 SELECT COALESCE(NULLIF(quote_currency, ''), NULLIF(base_currency, ''), ?)
+                   FROM quotations WHERE customer_id = ? AND deleted_at IS NULL
+                  UNION
+                 SELECT COALESCE(NULLIF(currency_code, ''), ?)
+                   FROM customer_invoices WHERE customer_id = ?
+                  UNION
+                 SELECT COALESCE(NULLIF(currency_code, ''), ?)
+                   FROM customer_payments WHERE customer_id = ?",
+                [
+                    $baseCurrency, $numericId,
+                    $baseCurrency, $numericId,
+                    $baseCurrency, $numericId,
+                    $baseCurrency, $numericId,
+                ]
+            )->getResultArray();
+            foreach ($currencyRows as $row) {
+                $bump((string) ($row['c'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Customers::show currency scan failed: ' . $e->getMessage());
+        }
+        // A customer with no orders, quotations, invoices or payments has no
+        // currency of their own yet. The page still needs one to format zeroes
+        // with, but it must not be presented as "this customer trades in PKR".
+        $hasCurrencyHistory = $currencyUsage !== [];
+        if ($currencyUsage === []) {
+            $currencyUsage[$baseCurrency] = 0;
+        }
+        arsort($currencyUsage);
+
+        $requested      = strtoupper(trim((string) ($this->request->getGet('currency') ?? '')));
+        $activeCurrency = isset($currencyUsage[$requested]) ? $requested : (string) array_key_first($currencyUsage);
+
+        // Latest sales orders and quotations, limited to the currency on screen so the
+        // list never mixes a USD order in among PKR ones.
+        $recentOrders = $recentQuotes = [];
+        try {
+            $recentOrders = $db->query(
+                "SELECT id, public_id, order_number, order_date, status, total
+                   FROM sales_orders
+                  WHERE customer_id = ? AND deleted_at IS NULL
+                    AND COALESCE(NULLIF(currency_code, ''), NULLIF(currency, ''), ?) = ?
+               ORDER BY order_date DESC, id DESC
+                  LIMIT 5",
+                [$numericId, $baseCurrency, $activeCurrency]
+            )->getResultArray();
+        } catch (\Throwable $e) {
+            log_message('error', 'Customers::show recent orders failed: ' . $e->getMessage());
+        }
+        try {
+            $recentQuotes = $db->query(
+                "SELECT id, public_id, quote_number, issue_date, valid_until, status, total,
+                        converted_to_sales_order_id
+                   FROM quotations
+                  WHERE customer_id = ? AND deleted_at IS NULL
+                    AND COALESCE(NULLIF(quote_currency, ''), NULLIF(base_currency, ''), ?) = ?
+               ORDER BY issue_date DESC, id DESC
+                  LIMIT 5",
+                [$numericId, $baseCurrency, $activeCurrency]
+            )->getResultArray();
+        } catch (\Throwable $e) {
+            log_message('error', 'Customers::show recent quotations failed: ' . $e->getMessage());
+        }
+
+        // Country list for the inline "add address" dialog.
+        try {
+            $countries = $db->table('countries')->select('id,name')->orderBy('name')->get()->getResultArray();
+        } catch (\Throwable $e) {
+            $countries = [];
         }
 
         usort($orderReceivables, static function ($a, $b) {
@@ -821,6 +1454,12 @@ class Customers extends BaseController
             'orderReceivables' => $orderReceivables,
             'receivableSummary' => $receivableSummary,
             'analytics' => $analytics,
+            'currencyUsage' => $currencyUsage,
+            'activeCurrency' => $activeCurrency,
+            'hasCurrencyHistory' => $hasCurrencyHistory,
+            'recentOrders' => $recentOrders,
+            'recentQuotes' => $recentQuotes,
+            'countries' => $countries,
         ]);
     }
 
@@ -874,7 +1513,7 @@ class Customers extends BaseController
                 
                 // Check 4: Raw invoices WITHOUT any filters
                 $diagnostics['invoices_raw'] = $db->table('customer_invoices')
-                    ->select('id, invoice_number, customer_id, status, total_amount, deleted_at')
+                    ->select('id, invoice_number, customer_id, status, total_amount, deleted_at, created_at')
                     ->where('customer_id', $customerId)
                     ->orderBy('id', 'DESC')
                     ->limit(10)
@@ -907,8 +1546,10 @@ class Customers extends BaseController
                         'SELECT COALESCE(SUM(' . $allocExpr . '),0) AS paid_amount '
                         . 'FROM customer_payment_allocations cpa '
                         . 'INNER JOIN customer_payments cp ON cp.id = cpa.payment_id '
-                        . "WHERE cpa.invoice_id = ? AND LOWER(COALESCE(cp.status, '')) = 'posted'",
-                        [(int)$inv['id']]
+                        . 'WHERE cpa.invoice_id = ? AND cp.customer_id = ? '
+                        . 'AND COALESCE(cpa.created_at, cp.created_at, "1970-01-01 00:00:00") >= COALESCE(?, "1970-01-01 00:00:00") '
+                        . "AND LOWER(COALESCE(cp.status, '')) = 'posted'",
+                        [(int)$inv['id'], (int)($inv['customer_id'] ?? $customerId), (string)($inv['created_at'] ?? '1970-01-01 00:00:00')]
                     )->getRow();
                     
                     $total = (float)($inv['total_amount'] ?? 0);
@@ -972,18 +1613,31 @@ class Customers extends BaseController
             $input = $this->request->getPost();
         }
 
-        if (empty($input['name'])) {
+        $name = trim($input['name'] ?? '');
+        if ($name === '') {
             return $this->response->setStatusCode(400)
                 ->setJSON(['success' => false, 'message' => 'Name is required']);
         }
 
+        $existing = $this->customerModel->where('LOWER(name)', strtolower($name))->first();
+        if ($existing) {
+            return $this->response->setStatusCode(409)
+                ->setJSON(['success' => false, 'message' => 'A customer with this name already exists']);
+        }
+
         $payload = [
             'customer_code' => $this->customerModel->generateCustomerCode(),
-            'name' => $input['name'],
+            'name' => $name,
             'type' => $input['type'] ?? 'retail',
             'status' => $input['status'] ?? 'active',
             'created_by' => session()->get('user_id') ?? null,
         ];
+        if (!empty($input['phone'])) {
+            $payload['phone'] = trim($input['phone']);
+        }
+        if (!empty($input['email'])) {
+            $payload['email'] = trim($input['email']);
+        }
         if (isset($input['metadata']) && is_array($input['metadata'])) {
             $payload['metadata'] = json_encode($input['metadata']);
         }
@@ -993,6 +1647,34 @@ class Customers extends BaseController
             return $this->response->setStatusCode(500)
                 ->setJSON(['success' => false, 'message' => 'Failed to create customer']);
         }
-        return $this->response->setJSON(['success' => true, 'message' => 'Created', 'id' => $insertId]);
+
+        // Quick-add address: stored as the customer's default billing/shipping
+        // address so quotations and invoices can print it immediately.
+        $addr = $input['address'] ?? [];
+        if (is_array($addr) && (trim((string)($addr['line1'] ?? '')) !== '' || !empty($addr['country_id']))) {
+            try {
+                (new \App\Models\CustomerAddressModel())->insert([
+                    'customer_id' => (int)$insertId,
+                    'label'       => 'Primary',
+                    'line1'       => trim((string)($addr['line1'] ?? '')),
+                    'line2'       => trim((string)($addr['line2'] ?? '')) ?: null,
+                    'country_id'  => !empty($addr['country_id']) ? (int)$addr['country_id'] : null,
+                    'city_name'   => trim((string)($addr['city_name'] ?? '')) ?: null,
+                    'postal_code' => trim((string)($addr['postal_code'] ?? '')) ?: null,
+                    'is_billing'  => 1,
+                    'is_shipping' => 1,
+                    'is_default'  => 1,
+                ]);
+            } catch (\Throwable $e) {
+                log_message('error', 'Quick customer address save failed: ' . $e->getMessage());
+            }
+        }
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Created',
+            'id' => $insertId,
+            'code' => $payload['customer_code'],
+            'name' => $payload['name'],
+        ]);
     }
 }

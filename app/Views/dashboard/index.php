@@ -1,7 +1,10 @@
 <?= $this->extend('layouts/main') ?>
 
+<?= $this->section('title') ?>Dashboard<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
-<div class="row">
+<div class="cl-saas-dashboard">
+<div class="row cl-dashboard-intro">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0">
@@ -24,7 +27,7 @@
 </div>
 
 <!-- Summary Cards -->
-<div class="row mb-4">
+<div class="row mb-4 cl-dashboard-metrics">
     <div class="col-lg-3 col-md-6 mb-3">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
@@ -117,7 +120,7 @@
 </div>
 
 <!-- Shipment Follow-up -->
-<div class="row mb-4">
+<div class="row mb-4 cl-dashboard-shipment">
     <div class="col-12">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -194,7 +197,7 @@
 </div>
 
 <!-- Role-specific Content -->
-<div class="row">
+<div class="row cl-dashboard-role-grid">
     <?php if (in_array($dashboard_data['role'], ['admin', 'planner'])): ?>
         <!-- Planner Dashboard -->
         <div class="col-lg-8 mb-4">
@@ -450,7 +453,7 @@
 </div>
 
 <!-- Recent Work Orders -->
-<div class="row">
+<div class="row cl-dashboard-recent">
     <div class="col-12">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white">
@@ -541,6 +544,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 <?= view('components/modules_drawer') ?>
 <?= $this->endSection() ?>

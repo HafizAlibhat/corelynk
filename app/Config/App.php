@@ -16,7 +16,7 @@ class App extends BaseConfig
      *
      * E.g., http://example.com/
      */
-    public string $baseURL = 'http://192.168.100.10/corelynk/';
+    public string $baseURL = 'http://192.168.100.110/corelynk-dev/';
 
     /**
      * Allowed Hostnames in the Site URL other than the hostname in the baseURL.

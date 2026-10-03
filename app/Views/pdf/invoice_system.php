@@ -303,6 +303,14 @@ $companyLines = array_filter([
     !empty($company['email']) ? trim($company['email']) : null,
 ]);
 
+// Printed company contact block for the invoice header. This is presentation
+// content only; it does not change the company record or invoice payload.
+$headerCompanyAddressLines = [
+    'REHMAT PURA, NEAR CHIRAGAH MASJID DALOWALI',
+    'PO BOX 51310, SIALKOT',
+];
+$headerCompanyPhone = '+92 300 6111 852';
+
 // Build professional footer with company info
 $footerParts = [];
 if (!$hideCompanyWebsite && !empty($company['website'])) $footerParts[] = $company['website'];
@@ -314,6 +322,18 @@ if ($footerText === '' && !empty($footerParts)) {
     $footerText = implode('  |  ', $footerParts);
 }
 $showCompanyNameInLogoArea = (empty($logoSrc) && !empty($company['name']));
+$companyInitials = '';
+foreach (preg_split('/\s+/', trim((string)($company['name'] ?? ''))) ?: [] as $companyWord) {
+    if ($companyWord !== '') {
+        $companyInitials .= strtoupper(substr($companyWord, 0, 1));
+    }
+    if (strlen($companyInitials) >= 2) {
+        break;
+    }
+}
+if ($companyInitials === '') {
+    $companyInitials = 'CO';
+}
 
 $paymentSnapshot = $paymentSnapshot ?? ($payload['paymentSnapshot'] ?? []);
 $paymentStatus = strtolower(trim((string)($paymentSnapshot['status'] ?? 'unpaid')));
@@ -333,6 +353,47 @@ if ($paymentStatus === 'paid') {
 } elseif ($paymentStatus === 'partial') {
     $paymentStatusLabel = 'Partially Paid';
 }
+
+// Milestone payment terms: instalment schedule, bank details and T&C blocks.
+$paymentSchedule  = $paymentSchedule ?? ($payload['paymentSchedule'] ?? []);
+$scheduleRows     = is_array($paymentSchedule['rows'] ?? null) ? $paymentSchedule['rows'] : [];
+$hasSchedule      = !empty($paymentSchedule['has_schedule']) && !empty($scheduleRows);
+$scheduleTermName = trim((string)($paymentSchedule['term']['name'] ?? ''));
+$scheduleTotal    = (float)($paymentSchedule['total'] ?? 0);
+$schedulePaid     = (float)($paymentSchedule['paid'] ?? 0);
+$scheduleDue      = (float)($paymentSchedule['due'] ?? 0);
+$scheduleNowDue   = (float)($paymentSchedule['now_due'] ?? 0);
+$scheduleNowLabel = trim((string)($paymentSchedule['now_due_label'] ?? ''));
+$scheduleNowPct   = (float)($paymentSchedule['now_due_percentage'] ?? 0);
+helper('invoice_terms');
+$scheduleTermNote = invoice_short_note((string)($paymentSchedule['term']['description'] ?? ''));
+if ($scheduleNowPct > 0) {
+    $scheduleNowLabel = trim($scheduleNowLabel . ' (' . rtrim(rtrim(number_format($scheduleNowPct, 2), '0'), '.') . '%)');
+}
+
+// The named term is more useful in the meta strip than a bare terms code.
+if ($scheduleTermName !== '') {
+    $paymentTerms = $scheduleTermName;
+}
+
+$bankDetailsText  = trim((string)($bankDetailsText ?? ($company['bank_details'] ?? '')));
+$invoiceTermsText = trim((string)($invoiceTermsText ?? ($company['invoice_terms'] ?? '')));
+helper('invoice_terms');
+$bankDetailsHtml  = invoice_bank_details_html($bankDetailsText);
+$invoiceTermsHtml = invoice_terms_html($invoiceTermsText);
+
+// The block below is pinned to the foot of the page, so the flow has to keep
+// that band free or a long invoice would print its last rows underneath it.
+$termsRowCount = static function (string $html): int {
+    return max(
+        substr_count($html, '<tr'),
+        substr_count($html, '<li') + substr_count($html, '<p') + substr_count($html, '<br')
+    );
+};
+$termsReserve = 156
+    + ($termsRowCount($bankDetailsHtml) * 11)
+    + ($termsRowCount($invoiceTermsHtml) * 18);
+$termsReserve = max(170, min(400, $termsReserve));
 ?>
 <!DOCTYPE html>
 <html>
@@ -363,6 +424,38 @@ if ($paymentStatus === 'paid') {
             color: #0f172a;
             letter-spacing: 0.02em;
         }
+        .brand-lockup {
+            white-space: nowrap;
+        }
+        .brand-lockup .company-name-text {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .brand-fallback {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            margin-right: 7px;
+            line-height: 30px;
+            vertical-align: middle;
+            text-align: center;
+            background: #183153;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .company-header-details {
+            margin-top: 4px;
+            font-size: 8.5px;
+            line-height: 1.35;
+            color: #64748b;
+        }
+        .company-header-details .phone {
+            margin-top: 2px;
+            color: #334155;
+            font-weight: 600;
+        }
         .company-info { text-align: right; }
         .company-name-right {
             font-size: 13px;
@@ -391,52 +484,101 @@ if ($paymentStatus === 'paid') {
             text-transform: uppercase;
         }
 
-        /* === META STRIP === */
+        /* === META TABLE ===
+           A labelled table, so the reader looks up the invoice number, date
+           and terms in one place instead of reading a run-on strip. */
+        .header-split {
+            width: 100%;
+            max-width: 100%;
+            margin: 12px 0 14px 0;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .header-split,
+        .header-split td,
+        .header-split table,
+        .terms-block,
+        .terms-block table,
+        .terms-block td,
+        .terms-block th,
+        .terms-block div {
+            box-sizing: border-box;
+        }
+        .header-split .hs-left {
+            width: 30%;
+            vertical-align: top;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+        }
+        .header-split .hs-gap {
+            width: 45%;
+        }
+        .header-split .hs-right {
+            width: 25%;
+            vertical-align: top;
+            border: 0;
+            background: transparent;
+        }
         .invoice-meta {
             width: 100%;
-            padding: 0;
-            margin: 12px 0 16px 0;
+            max-width: 100%;
+            margin: 0;
+            border: 1px solid #cbd5e1;
             border-collapse: collapse;
+            table-layout: fixed;
         }
-        .meta-strip-left, .meta-strip-right {
-            vertical-align: middle;
-            font-size: 10px;
-            color: #475569;
-        }
-        .meta-strip-left { text-align: left; width: 50%; }
-        .meta-strip-right { text-align: right; width: 50%; }
-        .meta-strip-left .lbl, .meta-strip-right .lbl {
-            font-weight: 600;
-            color: #374151;
-        }
-        .meta-strip-left strong, .meta-strip-right strong {
+        .invoice-meta td {
+            font-size: 7.2px;
             color: #0f172a;
-            font-size: 11px;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 3px 4px;
+            vertical-align: top;
+        }
+        .invoice-meta td.meta-lbl {
+            border-right: 1px solid #cbd5e1;
+        }
+        .invoice-meta tr.meta-last td {
+            border-bottom: none;
+        }
+        .invoice-meta td.meta-lbl {
+            width: 43%;
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 7.2px;
+            white-space: nowrap;
+        }
+        .invoice-meta td.meta-val {
+            width: 57%;
+            font-weight: bold;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+            word-break: normal;
         }
 
         /* === BILL TO === */
         .billto-wrap {
-            width: 44%;
-            min-width: 260px;
-            margin-bottom: 16px;
+            width: 100%;
+            margin-bottom: 0;
         }
         .customer-card {
-            border: 1px solid #cbd5e1;
-            padding: 10px 12px;
-            background: #f8fafc;
+            padding: 7px 8px;
             margin-bottom: 0;
             word-wrap: break-word;
         }
         .customer-card .title {
-            font-size: 9px;
+            font-size: 7.4px;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             font-weight: 700;
             color: #64748b;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
         .customer-card .customer-code-line {
-            font-size: 9px;
+            font-size: 7.4px;
             color: #64748b;
             margin-bottom: 3px;
         }
@@ -445,22 +587,23 @@ if ($paymentStatus === 'paid') {
             font-weight: 600;
         }
         .customer-card .name {
-            font-size: 13px;
+            font-size: 10.5px;
             font-weight: 700;
             color: #0f172a;
             margin-bottom: 4px;
         }
         .customer-card p {
-            margin: 2px 0;
-            font-size: 9.5px;
+            margin: 1px 0;
+            font-size: 7.8px;
             color: #475569;
-            line-height: 1.3;
+            line-height: 1.25;
         }
 
         /* === ITEMS TABLE === */
         .items-table {
             width: 100%;
             border-collapse: collapse;
+            margin-top: 60px;
             margin-bottom: 14px;
         }
         .items-table th {
@@ -481,6 +624,26 @@ if ($paymentStatus === 'paid') {
             line-height: 1.3;
             background: #fff;
             vertical-align: middle;
+        }
+        .items-table .section-row td {
+            padding: 6px 7px;
+            background: #4f555b;
+            border-top: 1px solid #3f4449;
+            border-bottom: 1px solid #3f4449;
+            color: #ffffff;
+            font-weight: 700;
+            letter-spacing: .01em;
+        }
+        .items-table .section-subtotal-row td {
+            padding: 6px 7px;
+            background: #f7f8f9;
+            border-top: 1px solid #9ca3af;
+            border-bottom: 1px solid #d1d5db;
+            font-weight: 700;
+        }
+        .items-table .section-subtotal-label {
+            text-align: right;
+            color: #4b5563;
         }
 
         .items-table .image-cell {
@@ -518,15 +681,17 @@ if ($paymentStatus === 'paid') {
             border-collapse: collapse;
             font-size: 10px;
             margin-top: 0;
+            border: 1px solid #cbd5e1;
         }
         .totals td {
             padding: 5px 8px;
-            border-bottom: 1px solid #e2e8f0;
+            border: 1px solid #cbd5e1;
         }
         .totals .label {
             text-align: right;
             color: #64748b;
             font-weight: 500;
+            background: #f8fafc;
         }
         .totals .value {
             text-align: right;
@@ -535,9 +700,13 @@ if ($paymentStatus === 'paid') {
             min-width: 110px;
         }
         .total-row td {
-            border-top: 2px solid #374151;
-            border-bottom: none;
+            border: 1px solid #b7dfc5;
             padding: 7px 8px;
+            background: #ecfdf3;
+        }
+        .shipping-row td {
+            background: #f1f5f9;
+            color: #334155;
         }
         .total-row .label {
             font-weight: 700;
@@ -555,6 +724,209 @@ if ($paymentStatus === 'paid') {
             width: 44%;
             margin-left: auto;
             margin-top: 8px;
+        }
+        .schedule-block {
+            margin-top: 16px;
+            page-break-inside: avoid;
+        }
+        .schedule-block h4 {
+            margin: 0 0 4px 0;
+            font-size: 9.6px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #0f172a;
+        }
+        .sched-note-inline {
+            font-weight: normal;
+            text-transform: none;
+            letter-spacing: 0;
+            color: #64748b;
+            font-size: 8.6px;
+        }
+        .schedule-note {
+            font-size: 8.4px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .schedule-table th {
+            font-size: 8.2px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #475569;
+            background: #f1f5f9;
+            padding: 3px 5px;
+            text-align: left;
+            border-bottom: 1px solid #cbd5e1;
+        }
+        .schedule-table td {
+            font-size: 8.6px;
+            color: #0f172a;
+            padding: 3px 5px;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .schedule-table .num {
+            text-align: right;
+        }
+        .schedule-table tr.sched-overdue td {
+            color: #b91c1c;
+        }
+        .schedule-table tfoot td {
+            font-weight: bold;
+            border-top: 1px solid #94a3b8;
+            border-bottom: none;
+            background: #f8fafc;
+        }
+        .sched-status {
+            font-weight: bold;
+            font-size: 8.2px;
+            letter-spacing: 0.03em;
+        }
+        /* A plain right-aligned list: the customer reads what is owed now
+           without the totals looking like a second invoice. */
+        .sched-totals {
+            width: 46%;
+            margin-left: auto;
+            margin-top: 6px;
+            border-collapse: collapse;
+        }
+        .sched-totals td {
+            font-size: 8.8px;
+            color: #475569;
+            padding: 2px 0;
+        }
+        .sched-totals td.val {
+            text-align: right;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        .sched-totals tr.now td {
+            font-size: 10px;
+            color: #111827;
+            font-weight: bold;
+            border: 1px solid #b7dfc5;
+            background: #ecfdf3;
+            padding: 5px 6px;
+        }
+        .sched-paidon {
+            font-size: 7.6px;
+            color: #64748b;
+        }
+        /* Pinned to the foot of the page so the schedule above it is not
+           crowded. Dompdf places an absolute block on the page its normal
+           flow position falls on, so a spilled invoice keeps it on the last
+           page. */
+        .terms-block {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 40px;
+            width: 100%;
+            page-break-inside: avoid;
+        }
+        .terms-layout {
+            width: 100%;
+            max-width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .terms-layout .bank-spacer {
+            width: 70%;
+            padding: 0;
+            border: 0;
+        }
+        .terms-cell {
+            vertical-align: top;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            padding: 0;
+        }
+        .terms-cell-left { width: 30%; }
+        .terms-cell-full { width: 100%; }
+        .terms-below {
+            width: 100%;
+        }
+        .terms-below-spaced {
+            margin-top: 100px;
+        }
+        .terms-cell h4 {
+            margin: 0;
+            background: #f1f5f9;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 3px 5px;
+            font-size: 7.8px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #0f172a;
+        }
+        .terms-cell .terms-body {
+            padding: 3px 5px;
+            font-size: 7px;
+            line-height: 1.25;
+            color: #334155;
+            min-width: 0;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+            word-break: normal;
+        }
+        .terms-cell .terms-body table {
+            width: 100% !important;
+            max-width: 100%;
+            table-layout: fixed;
+        }
+        .conditions-cell .terms-body table {
+            table-layout: auto;
+        }
+        .terms-below .terms-body {
+            font-size: 7.4px;
+        }
+        .terms-cell .terms-body td,
+        .terms-cell .terms-body th,
+        .terms-cell .terms-body p,
+        .terms-cell .terms-body li,
+        .terms-cell .terms-body div,
+        .terms-cell .terms-body span,
+        .terms-cell .terms-body strong {
+            max-width: 100%;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+            word-break: normal;
+        }
+        .bank-details-cell .terms-body td:first-child {
+            width: 40%;
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            border-right: 1px solid #dbe4ee !important;
+        }
+        .bank-details-cell .terms-body td:last-child {
+            width: 60%;
+            background: #ffffff;
+            color: #0f172a;
+            font-weight: 700;
+        }
+        .bank-details-cell .terms-body {
+            padding: 0;
+        }
+        .bank-details-cell .terms-body table {
+            border-collapse: collapse;
+        }
+        .bank-details-cell .terms-body td {
+            padding: 4px 6px !important;
+            border-bottom: 1px solid #dbe4ee !important;
+            vertical-align: middle;
+        }
+        .bank-details-cell .terms-body tr:last-child td {
+            border-bottom: 0 !important;
+        }
+        .bank-details-cell .terms-body td:first-child::after {
+            content: ':';
         }
         .payment-summary {
             border: 1px solid #d4dde8;
@@ -695,7 +1067,16 @@ if ($paymentStatus === 'paid') {
                             <img src="<?= esc($logoSrc) ?>" alt="Logo">
                         </div>
                     <?php elseif ($showCompanyNameInLogoArea): ?>
-                        <div class="company-name-text"><?= esc($company['name']) ?></div>
+                        <div class="brand-lockup">
+                            <span class="brand-fallback" aria-hidden="true"><?= esc($companyInitials) ?></span>
+                            <span class="company-name-text"><?= esc($company['name']) ?></span>
+                        </div>
+                        <div class="company-header-details">
+                            <?php foreach ($headerCompanyAddressLines as $headerLine): ?>
+                                <div><?= esc($headerLine) ?></div>
+                            <?php endforeach; ?>
+                            <div class="phone">Mobile: <?= esc($headerCompanyPhone) ?></div>
+                        </div>
                     <?php endif; ?>
                 </td>
                 <td width="50%" align="right" valign="top">
@@ -704,9 +1085,14 @@ if ($paymentStatus === 'paid') {
                         <?php if (!$showCompanyNameInLogoArea): ?>
                             <div class="company-name-right"><?= esc($company['name'] ?? 'Company Name') ?></div>
                         <?php endif; ?>
-                        <?php foreach ($companyLines as $line): ?>
-                            <div class="company-line"><?= esc($line) ?></div>
-                        <?php endforeach; ?>
+                        <?php if (!empty($logoSrc) && $canRenderImages): ?>
+                            <div class="company-header-details">
+                                <?php foreach ($headerCompanyAddressLines as $headerLine): ?>
+                                    <div><?= esc($headerLine) ?></div>
+                                <?php endforeach; ?>
+                                <div class="phone">Mobile: <?= esc($headerCompanyPhone) ?></div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </td>
@@ -718,44 +1104,62 @@ if ($paymentStatus === 'paid') {
             <div class="doc-type-title"><?= esc($documentTitle) ?></div>
         </div>
 
-        <!-- META: Document Number + Date -->
-        <table class="invoice-meta" cellpadding="0" cellspacing="0">
+        <!-- HEADER: customer on the left, document facts on the right -->
+        <table class="header-split" cellpadding="0" cellspacing="0">
             <tr>
-                <td class="meta-strip-left">
-                    <?php if ($invoiceNo !== ''): ?>
-                        <span class="lbl"><?= esc($documentNumberLabel) ?></span>&nbsp;<strong><?= esc($invoiceNo) ?></strong>
+                <td class="hs-left">
+            <!-- BILL TO -->
+            <div class="billto-wrap">
+                <div class="customer-card">
+                    <div class="title"><?= esc($partyLabel) ?></div>
+                    <?php if ($customerCode !== ''): ?>
+                        <div class="customer-code-line">Customer #: <strong><?= esc($customerCode) ?></strong></div>
                     <?php endif; ?>
-                    <?php if ($paymentTerms !== '' && $paymentTerms !== $currency): ?>
-                        &nbsp;&nbsp;&nbsp;<span class="lbl">Terms:</span>&nbsp;<?= esc($paymentTerms) ?>
-                    <?php endif; ?>
+                    <div class="name"><?= esc($customerLabel) ?></div>
+                    <?php foreach ($customerLines as $line): ?>
+                        <p><?= esc($line) ?></p>
+                    <?php endforeach; ?>
+                </div>
+            </div>
                 </td>
-                <td class="meta-strip-right">
-                    <?php if ($issueDate !== ''): ?>
-                        <span class="lbl"><?= esc($documentDateLabel) ?></span>&nbsp;<strong><?= esc($issueDate) ?></strong>
-                    <?php endif; ?>
-                    <?php if (!empty($invoice['delivery_date']) && strpos($invoice['delivery_date'], '0000') === false): ?>
-                        <br><br><span class="lbl">Delivery Date:</span>&nbsp;<strong><?= esc($fmtDate($invoice['delivery_date'])) ?></strong>
-                    <?php endif; ?>
-                    <?php if (!empty($invoice['salesperson'])): ?>
-                        <br><br><span class="lbl">Salesperson:</span>&nbsp;<?= esc($invoice['salesperson']) ?>
-                    <?php endif; ?>
+                <td class="hs-gap"></td>
+                <td class="hs-right">
+            <!-- META: the document facts, beside the customer -->
+            <?php
+            // Built as a list so the last row can drop its divider: the cell
+            // border already closes the box, whatever rows the invoice has.
+            $metaRows = [];
+            if ($issueDate !== '') {
+                $metaRows[] = [rtrim($documentDateLabel, ':'), $issueDate];
+            }
+            if ($invoiceNo !== '') {
+                $metaRows[] = [rtrim($documentNumberLabel, ':'), $invoiceNo];
+            }
+            if ($paymentTerms !== '' && $paymentTerms !== $currency) {
+                $metaRows[] = ['Payment Terms', $paymentTerms];
+            }
+            if (!empty($invoice['customer_po_number'])) {
+                $metaRows[] = ['Customer PO #', $invoice['customer_po_number']];
+            }
+            if (!empty($invoice['delivery_date']) && strpos($invoice['delivery_date'], '0000') === false) {
+                $metaRows[] = ['Delivery Date', $fmtDate($invoice['delivery_date'])];
+            }
+            if (!empty($invoice['salesperson'])) {
+                $metaRows[] = ['Salesperson', $invoice['salesperson']];
+            }
+            $metaLast = count($metaRows) - 1;
+            ?>
+            <table class="invoice-meta" cellpadding="0" cellspacing="0">
+                <?php foreach ($metaRows as $mi => $mr): ?>
+                <tr class="<?= $mi === $metaLast ? 'meta-last' : '' ?>">
+                    <td class="meta-lbl"><?= esc($mr[0]) ?></td>
+                    <td class="meta-val"><?= esc($mr[1]) ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </table>
                 </td>
             </tr>
         </table>
-
-        <!-- BILL TO -->
-        <div class="billto-wrap">
-            <div class="customer-card">
-                <div class="title"><?= esc($partyLabel) ?></div>
-                <?php if ($customerCode !== ''): ?>
-                    <div class="customer-code-line">Customer #: <strong><?= esc($customerCode) ?></strong></div>
-                <?php endif; ?>
-                <div class="name"><?= esc($customerLabel) ?></div>
-                <?php foreach ($customerLines as $line): ?>
-                    <p><?= esc($line) ?></p>
-                <?php endforeach; ?>
-            </div>
-        </div>
 
         <!-- LINE ITEMS -->
         <table class="items-table">
@@ -788,6 +1192,25 @@ if ($paymentStatus === 'paid') {
                         $displayType = strtolower((string)($ln['display_type'] ?? 'line'));
                         $isSection = $displayType === 'section';
                         if ($isSection):
+                            if ($activeSectionTitle !== ''):
+                    ?>
+                        <tr class="section-subtotal-row">
+                            <td colspan="<?= (int)($totalColumns - 1) ?>" class="section-subtotal-label">Section Subtotal</td>
+                            <td class="numeric"><?= esc($fmtMoney($activeSectionSubtotal)) ?></td>
+                        </tr>
+                    <?php
+                            endif;
+                            $sectionTitle = trim((string)($ln['section_title'] ?? $ln['product_name'] ?? $ln['description'] ?? ''));
+                            if ($sectionTitle === '') {
+                                $sectionTitle = 'Section';
+                            }
+                            $activeSectionTitle = $sectionTitle;
+                            $activeSectionSubtotal = 0.0;
+                    ?>
+                        <tr class="section-row">
+                            <td colspan="<?= (int)$totalColumns ?>"><?= esc($sectionTitle) ?></td>
+                        </tr>
+                    <?php
                             continue;
                         endif;
                         $qty = (float)($ln['quantity'] ?? 0);
@@ -804,6 +1227,9 @@ if ($paymentStatus === 'paid') {
                         $lineTotal = ($lineTotalRaw !== null && $lineTotalRaw > 0)
                             ? $lineTotalRaw
                             : $lineTotalComputed;
+                        if ($activeSectionTitle !== '') {
+                            $activeSectionSubtotal += $lineTotal;
+                        }
 
 
                         // PRODUCT IMAGE: Prefer controller-enriched paths (variant first, then product).
@@ -815,10 +1241,23 @@ if ($paymentStatus === 'paid') {
 
                         // Resolve local file from controller-enriched file:// path
                         $_enrichedPath = $ln['variant_image_path'] ?? ($ln['product_image_path'] ?? '');
-                        if (!empty($_enrichedPath) && strncmp($_enrichedPath, 'file:', 5) === 0) {
-                            $_localTmp = preg_replace('#^file://+#', '', $_enrichedPath);
-                            $_localTmp = str_replace('/', DIRECTORY_SEPARATOR, $_localTmp);
-                            if (is_file($_localTmp)) {
+                        if (!empty($_enrichedPath)) {
+                            $_localTmp = (string)$_enrichedPath;
+                            if (strncmp($_localTmp, 'file://', 7) === 0) {
+                                // Strip only the scheme. Stripping every slash (old '#^file://+#')
+                                // turned 'file:///var/www/...' into a relative 'var/www/...' and the
+                                // image silently vanished from the PDF on POSIX hosts.
+                                $_localTmp = substr($_localTmp, 7);
+                                if ($_localTmp !== '' && $_localTmp[0] !== '/' && !preg_match('#^[A-Za-z]:#', $_localTmp)) {
+                                    $_localTmp = '/' . $_localTmp;
+                                }
+                                // 'file:///D:/path' -> '/D:/path' -> 'D:/path'
+                                if (preg_match('#^/[A-Za-z]:#', $_localTmp)) {
+                                    $_localTmp = ltrim($_localTmp, '/');
+                                }
+                            }
+                            $_localTmp = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $_localTmp);
+                            if ($_localTmp !== '' && is_file($_localTmp)) {
                                 $resolvedLocalFile = $_localTmp;
                             }
                         }
@@ -836,6 +1275,14 @@ if ($paymentStatus === 'paid') {
                             }
                             if ($filename === '' && !empty($ln['image'])) {
                                 $filename = basename((string)$ln['image']);
+                            }
+                            // Document lines store the picture as a full URL - use its basename
+                            // when the enriched absolute path could not be resolved.
+                            foreach (['variant_image_path', 'product_image_path', 'product_image_url', 'image_url'] as $_urlKey) {
+                                if ($filename !== '') break;
+                                if (!empty($ln[$_urlKey])) {
+                                    $filename = basename(parse_url((string)$ln[$_urlKey], PHP_URL_PATH) ?: (string)$ln[$_urlKey]);
+                                }
                             }
                             if ($filename !== '') {
                                 foreach (['variants', 'products'] as $_imgFolder) {
@@ -917,6 +1364,12 @@ if ($paymentStatus === 'paid') {
                             <td class="numeric"><?= esc($fmtMoney($lineTotal)) ?></td>
                         </tr>
                     <?php endforeach; ?>
+                    <?php if ($activeSectionTitle !== ''): ?>
+                        <tr class="section-subtotal-row">
+                            <td colspan="<?= (int)($totalColumns - 1) ?>" class="section-subtotal-label">Section Subtotal</td>
+                            <td class="numeric"><?= esc($fmtMoney($activeSectionSubtotal)) ?></td>
+                        </tr>
+                    <?php endif; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="<?= 4 + ($canRenderImages ? 1 : 0) + ($hasAnyDiscount ? 1 : 0) + ($hasAnyTax ? 1 : 0) ?>" class="numeric">No lines</td>
@@ -961,7 +1414,7 @@ if ($paymentStatus === 'paid') {
                 </tr>
                 <?php endif; ?>
                 <?php if ($shipping > 0): ?>
-                <tr>
+                <tr class="shipping-row">
                     <td class="label">Shipping</td>
                     <td class="value"><?= esc($fmtMoney($shipping)) ?></td>
                 </tr>
@@ -1039,10 +1492,123 @@ if ($paymentStatus === 'paid') {
             </div>
         </div>
         <?php endif; ?>
+
+        <?php if ($hasSchedule): ?>
+        <div class="schedule-block">
+            <h4>Payment Schedule<?= $scheduleTermName !== '' ? ' - ' . esc($scheduleTermName) : '' ?><?= $scheduleTermNote !== '' ? ' <span class="sched-note-inline">(' . esc($scheduleTermNote) . ')</span>' : '' ?></h4>
+            <?php
+            // Columns of zeros read as an error to a customer who has not paid
+            // yet, so the paid/balance pair only appears once money has arrived.
+            $scheduleHasPayment = $schedulePaid > 0.005;
+            $scheduleStatus = static function (array $row): array {
+                if ($row['status'] === 'paid') {
+                    return ['Paid', '#15803d'];
+                }
+                if (!empty($row['is_overdue'])) {
+                    return ['Overdue', '#b91c1c'];
+                }
+                if ($row['paid'] > 0.005) {
+                    return ['Part paid', '#b45309'];
+                }
+                return ['Payable', '#475569'];
+            };
+            ?>
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th style="width:4%;">#</th>
+                        <th style="width:<?= $scheduleHasPayment ? '26%' : '34%' ?>;">Instalment</th>
+                        <th class="num" style="width:7%;">%</th>
+                        <th style="width:<?= $scheduleHasPayment ? '18%' : '25%' ?>;">Due</th>
+                        <th class="num" style="width:14%;">Amount</th>
+                        <?php if ($scheduleHasPayment): ?>
+                            <th class="num" style="width:16%;">Received</th>
+                            <th class="num" style="width:13%;">Balance</th>
+                        <?php endif; ?>
+                        <th style="width:<?= $scheduleHasPayment ? '12%' : '16%' ?>; text-align:right;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($scheduleRows as $sr): ?>
+                        <?php
+                        $srOverdue = !empty($sr['is_overdue']) && $sr['status'] !== 'paid';
+                        [$srStatusLabel, $srStatusColor] = $scheduleStatus($sr);
+                        $srPaidOn = !empty($sr['paid_on']) ? date('d M Y', strtotime((string)$sr['paid_on'])) : '';
+                        ?>
+                        <tr class="<?= $srOverdue ? 'sched-overdue' : '' ?>">
+                            <td><?= (int)$sr['seq'] ?></td>
+                            <td><?= esc($sr['label']) ?></td>
+                            <td class="num"><?= esc(rtrim(rtrim(number_format((float)$sr['percentage'], 2), '0'), '.')) ?>%</td>
+                            <td><?= esc($sr['due_label']) ?></td>
+                            <td class="num"><?= esc($fmtMoney($sr['amount'])) ?></td>
+                            <?php if ($scheduleHasPayment): ?>
+                                <td class="num">
+                                    <?php if ($sr['paid'] > 0.005): ?>
+                                        <?= esc($fmtMoney($sr['paid'])) ?>
+                                        <?php if ($srPaidOn !== ''): ?><div class="sched-paidon">paid <?= esc($srPaidOn) ?></div><?php endif; ?>
+                                    <?php else: ?>-<?php endif; ?>
+                                </td>
+                                <td class="num"><?= esc($fmtMoney($sr['balance'])) ?></td>
+                            <?php endif; ?>
+                            <td class="sched-status" style="text-align:right; color:<?= $srStatusColor ?>;"><?= esc($srStatusLabel) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <table class="sched-totals">
+                <tr>
+                    <td><?= esc($documentTitle) ?> Total</td>
+                    <td class="val"><?= esc($fmtMoney($scheduleTotal)) ?></td>
+                </tr>
+                <?php if ($scheduleHasPayment): ?>
+                <tr>
+                    <td>Amount Received</td>
+                    <td class="val"><?= esc($fmtMoney($schedulePaid)) ?></td>
+                </tr>
+                <?php endif; ?>
+                <tr class="now">
+                    <td><?= $scheduleNowDue > 0.005 ? 'Now Payable' . ($scheduleNowLabel !== '' ? ' - ' . esc($scheduleNowLabel) : '') : 'Paid in Full' ?></td>
+                    <td class="val"><?= esc($fmtMoney($scheduleNowDue > 0.005 ? $scheduleNowDue : 0)) ?></td>
+                </tr>
+                <?php if ($scheduleDue - $scheduleNowDue > 0.005): ?>
+                <tr>
+                    <td>Payable Later</td>
+                    <td class="val"><?= esc($fmtMoney($scheduleDue - $scheduleNowDue)) ?></td>
+                </tr>
+                <?php endif; ?>
+            </table>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($bankDetailsText !== '' || $invoiceTermsText !== ''): ?>
+        <div style="height:<?= (int)$termsReserve ?>px;"></div>
+        <div class="terms-block">
+            <?php if ($bankDetailsText !== ''): ?>
+            <table class="terms-layout" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td class="terms-cell bank-details-cell terms-cell-left">
+                        <h4>Bank Details</h4>
+                        <div class="terms-body"><?= $bankDetailsHtml ?></div>
+                    </td>
+                    <td class="bank-spacer"></td>
+                </tr>
+            </table>
+            <?php endif; ?>
+            <?php if ($invoiceTermsText !== ''): ?>
+            <div class="terms-cell conditions-cell terms-cell-full terms-below<?= $bankDetailsText !== '' ? ' terms-below-spaced' : '' ?>">
+                <h4>Terms &amp; Conditions</h4>
+                <div class="terms-body"><?= $invoiceTermsHtml ?></div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
     </div>
-    <?php if ($footerText !== '' && $pdfShowFooter): ?>
+    <?php if ($pdfShowFooter): ?>
         <div class="footer">
-            <div class="footer-inner"><?= esc($footerText) ?></div>
+            <?php if ($footerText !== ''): ?>
+                <div class="footer-inner"><?= esc($footerText) ?></div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
     <script src="<?= base_url('assets/js/product-image-hover-preview.js') ?>?v=1"></script>

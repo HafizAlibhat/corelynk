@@ -22,7 +22,7 @@
                 <p class="text-muted mb-0">No pending vendor send notes found.</p>
             <?php else: ?>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle">
+                    <table class="cl-table table table-sm table-hover align-middle">
                         <thead>
                             <tr>
                                 <th>Reference</th>
@@ -39,11 +39,15 @@
                             <?php foreach (($send_notes ?? []) as $note): ?>
                                 <tr>
                                     <td><?= esc($note['reference_no'] ?? '-') ?></td>
-                                    <td><?= esc($note['vendor_name'] ?? '-') ?></td>
-                                    <td><?= esc(($note['product_name'] ?? '-') . ' (' . ($note['product_code'] ?? '-') . ')') ?></td>
+                                    <td>
+                                        <span class="fw-medium"><?= esc($note['vendor_name'] ?? '-') ?></span><?php if (! empty($note['to_location_name'])): ?> <span class="text-muted small">(<?= esc($note['to_location_name']) ?>)</span><?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if (! empty($note['resolved_code'])): ?><span class="badge bg-secondary-subtle text-secondary-emphasis border me-1 font-monospace" style="font-size: 0.72rem;"><?= esc($note['resolved_code']) ?></span><?php endif; ?><span class="fw-semibold"><?= esc($note['product_name'] ?? '-') ?></span><?php if (! empty($note['resolved_variant_name'])): ?> <span class="text-muted">&mdash; <?= esc($note['resolved_variant_name']) ?></span><?php endif; ?>
+                                    </td>
                                     <td><?= esc($note['step_name'] ?? '-') ?></td>
-                                    <td class="text-end"><?= number_format((float) ($note['qty'] ?? 0), 4) ?></td>
-                                    <td class="text-end"><?= number_format((float) ($note['remaining_qty'] ?? 0), 4) ?></td>
+                                    <td class="text-end"><?= number_format((float) ($note['qty'] ?? 0), 2) ?></td>
+                                    <td class="text-end"><?= number_format((float) ($note['remaining_qty'] ?? 0), 2) ?></td>
                                     <td><span class="badge bg-secondary text-uppercase"><?= esc($note['status'] ?? '-') ?></span></td>
                                     <td class="text-end">
                                         <a href="<?= site_url('vendor-receive/' . (int) ($note['id'] ?? 0)) ?>" class="btn btn-sm btn-primary">

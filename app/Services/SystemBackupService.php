@@ -11,6 +11,11 @@ use RecursiveIteratorIterator;
 use RuntimeException;
 use ZipArchive;
 
+/** Internal signal thrown when a running job's cancel_requested flag is seen — not a real error. */
+class BackupCancelledException extends RuntimeException
+{
+}
+
 class SystemBackupService
 {
     private SystemBackupJobModel $jobModel;
@@ -27,7 +32,7 @@ class SystemBackupService
         $this->ensureBackupDirectories();
     }
 
-    public function createManualBackup(string $backupType = 'full', ?int $initiatedBy = null, ?int $scheduleId = null): array
+    public function createManualBackup(string $backupType = 'full', ?int $initiatedBy = null, ?int $scheduleId = null, bool $excludeMedia = true): array
     {
         $backupType = $this->normalizeBackupType($backupType);
         $publicId = $this->uuid4();
@@ -50,7 +55,80 @@ class SystemBackupService
             throw new RuntimeException('Unable to create backup job record.');
         }
 
-        return $this->processJob((int) $jobId);
+        return $this->processJob((int) $jobId, $excludeMedia);
+    }
+
+    /**
+     * Creates the queued job row only — used when the actual archive work
+     * will be run out-of-band (background CLI process) so the HTTP request
+     * that triggered it can return immediately instead of blocking for the
+     * duration of a large zip.
+     */
+    public function queueManualBackup(string $backupType = 'full', ?int $initiatedBy = null): array
+    {
+        $backupType = $this->normalizeBackupType($backupType);
+        $publicId = $this->uuid4();
+        $dbName = $this->getDefaultDbConfig()['database'] ?? null;
+
+        $jobId = $this->jobModel->insert([
+            'public_id' => $publicId,
+            'job_type' => 'manual',
+            'backup_type' => $backupType,
+            'status' => 'queued',
+            'environment_name' => 'production',
+            'app_root' => $this->appRoot,
+            'db_name' => $dbName,
+            'initiated_by' => $initiatedBy,
+            'health_status' => 'pending',
+        ], true);
+
+        if (!$jobId) {
+            throw new RuntimeException('Unable to create backup job record.');
+        }
+
+        return $this->jobModel->find((int) $jobId) ?? [];
+    }
+
+    /** Runs the archive work for a job row that was previously queued via queueManualBackup(). */
+    public function processQueuedJob(int $jobId, bool $excludeMedia = true): array
+    {
+        return $this->processJob($jobId, $excludeMedia);
+    }
+
+    /**
+     * Flags a queued/running job for cancellation. The background worker
+     * checks this flag between stages (and repeatedly while compressing)
+     * and stops itself at the next safe checkpoint — no partial/corrupt
+     * archive is ever left behind (see processJob()'s cleanup on cancel).
+     */
+    public function requestCancel(string $publicId): array
+    {
+        $job = $this->jobModel->where('public_id', $publicId)->first();
+        if (!$job) {
+            throw new RuntimeException('Backup job not found.');
+        }
+
+        if (!in_array((string) $job['status'], ['queued', 'running'], true)) {
+            throw new RuntimeException('This backup already finished — nothing to cancel.');
+        }
+
+        $this->jobModel->update((int) $job['id'], [
+            'cancel_requested' => 1,
+            // A queued job has no worker running yet to pick this flag up — cancel it immediately.
+            'status' => (string) $job['status'] === 'queued' ? 'cancelled' : 'running',
+            'progress_stage' => (string) $job['status'] === 'queued' ? 'cancelled' : (string) ($job['progress_stage'] ?? ''),
+            'completed_at' => (string) $job['status'] === 'queued' ? date('Y-m-d H:i:s') : null,
+        ]);
+
+        return $this->jobModel->find((int) $job['id']) ?? [];
+    }
+
+    private function assertNotCancelled(int $jobId): void
+    {
+        $job = $this->jobModel->select('cancel_requested')->find($jobId);
+        if ($job && (int) ($job['cancel_requested'] ?? 0) === 1) {
+            throw new BackupCancelledException('Backup cancelled by user.');
+        }
     }
 
     public function processDueSchedules(): int
@@ -106,6 +184,13 @@ class SystemBackupService
 
     public function restoreBackup(string $publicId, string $restoreMode = 'db_only', ?int $initiatedBy = null): array
     {
+        // Restore runs synchronously in the request that triggered it (unlike backup
+        // creation, which is backgrounded) — without these, a slow dump/restore can hit
+        // the web server's execution limit or die on client disconnect mid-restore,
+        // leaving the database partially restored.
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
         $restoreMode = strtolower(trim($restoreMode));
         if (!in_array($restoreMode, ['db_only', 'full'], true)) {
             throw new RuntimeException('Unsupported restore mode.');
@@ -131,29 +216,59 @@ class SystemBackupService
         }
 
         $safetyBackup = $this->createManualBackup($restoreMode === 'full' ? 'full' : 'db_only', $initiatedBy, null);
+
+        return [
+            'backup_public_id' => $publicId,
+            'safety_backup_public_id' => $safetyBackup['public_id'] ?? null,
+        ] + $this->performDatabaseRestore((string) $job['archive_path'], $restoreMode);
+    }
+
+    /**
+     * Restores directly from an uploaded backup archive with no matching
+     * system_backup_jobs row and no prior data to safety-back-up — used by
+     * the first-run setup wizard on a brand-new/empty database, where the
+     * normal job-history-backed restoreBackup() flow has nothing to look up.
+     */
+    public function restoreFromUploadedArchive(string $archivePath, string $restoreMode = 'db_only'): array
+    {
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
+        $restoreMode = strtolower(trim($restoreMode));
+        if (!in_array($restoreMode, ['db_only', 'full'], true)) {
+            throw new RuntimeException('Unsupported restore mode.');
+        }
+        if (!is_file($archivePath)) {
+            throw new RuntimeException('Backup archive file is missing.');
+        }
+
+        $verification = $this->performHealthChecks($archivePath, '');
+        if (($verification['health_status'] ?? 'failed') === 'failed') {
+            throw new RuntimeException('The uploaded file is not a valid CoreLynk backup archive.');
+        }
+
+        return ['restore_mode' => $restoreMode] + $this->performDatabaseRestore($archivePath, $restoreMode);
+    }
+
+    private function performDatabaseRestore(string $archivePath, string $restoreMode): array
+    {
         $restoreRoot = $this->backupRoot . DIRECTORY_SEPARATOR . 'working' . DIRECTORY_SEPARATOR . 'restore_' . $this->uuid4();
         $this->ensureDirectory($restoreRoot);
 
         try {
-            $sqlPath = $this->extractDatabaseDumpFromArchive((string) $job['archive_path'], $restoreRoot);
-            $restoreSummary = [
-                'backup_public_id' => $publicId,
-                'restore_mode' => $restoreMode,
-                'safety_backup_public_id' => $safetyBackup['public_id'] ?? null,
-            ];
-
+            $sqlPath = $this->extractDatabaseDumpFromArchive($archivePath, $restoreRoot);
             if ($sqlPath === null) {
                 throw new RuntimeException('Database dump not found in backup archive.');
             }
 
             $this->restoreDatabaseDump($sqlPath);
-            $restoreSummary['database_restored'] = true;
+            $summary = ['restore_mode' => $restoreMode, 'database_restored' => true];
 
             if ($restoreMode === 'full') {
-                $restoreSummary['application_files_restored'] = $this->restoreApplicationFromArchive((string) $job['archive_path']);
+                $summary['application_files_restored'] = $this->restoreApplicationFromArchive($archivePath);
             }
 
-            return $restoreSummary;
+            return $summary;
         } finally {
             $this->deleteDirectory($restoreRoot);
         }
@@ -190,7 +305,7 @@ class SystemBackupService
         return $candidate->format('Y-m-d H:i:s');
     }
 
-    private function processJob(int $jobId): array
+    private function processJob(int $jobId, bool $excludeMedia = true): array
     {
         $job = $this->jobModel->find($jobId);
         if (!$job) {
@@ -209,6 +324,11 @@ class SystemBackupService
         $archiveBaseName = sprintf('corelynk_%s_%s', (string) $job['backup_type'], $timestamp);
         $archiveName = $archiveBaseName . '.zip';
         $archivePath = $archiveDir . DIRECTORY_SEPARATOR . $archiveName;
+        // Written under a .building name and only renamed to the final name
+        // once close()+verification succeed — a crash, cancel, or interrupted
+        // process can never leave a corrupt/partial file sitting at a name
+        // that looks like a finished backup.
+        $buildingPath = $archivePath . '.building';
         $manifestPath = $archiveDir . DIRECTORY_SEPARATOR . $archiveBaseName . '.manifest.json';
         $workingManifestPath = $metaDir . DIRECTORY_SEPARATOR . 'manifest.json';
         $dbDumpPath = $dbDir . DIRECTORY_SEPARATOR . ((string) ($job['db_name'] ?? 'database') . '.sql');
@@ -221,6 +341,8 @@ class SystemBackupService
             'status' => 'running',
             'started_at' => date('Y-m-d H:i:s'),
             'error_message' => null,
+            'progress_percent' => 1,
+            'progress_stage' => 'starting',
         ]);
 
         try {
@@ -235,16 +357,21 @@ class SystemBackupService
             ];
 
             if (in_array((string) $job['backup_type'], ['full', 'db_only'], true)) {
+                $this->assertNotCancelled($jobId);
+                $this->updateProgress($jobId, 5, 'dumping_database');
                 $dbInfo = $this->createDatabaseDump($dbDumpPath);
                 $manifest['components']['database'] = $dbInfo;
             }
 
             $applicationFiles = [];
             if (in_array((string) $job['backup_type'], ['full', 'code_only'], true)) {
-                $applicationFiles = $this->collectApplicationFiles();
+                $this->assertNotCancelled($jobId);
+                $this->updateProgress($jobId, 15, 'collecting_files');
+                $applicationFiles = $this->collectApplicationFiles($excludeMedia);
                 $manifest['components']['application'] = [
                     'file_count' => count($applicationFiles),
                     'root' => $this->appRoot,
+                    'media_excluded' => $excludeMedia,
                 ];
             }
 
@@ -252,20 +379,38 @@ class SystemBackupService
             file_put_contents($workingManifestPath, $manifestJson);
             file_put_contents($manifestPath, $manifestJson);
 
+            $this->assertNotCancelled($jobId);
+            $this->updateProgress($jobId, 20, 'compressing');
+
             if (in_array((string) $job['backup_type'], ['full', 'code_only'], true)) {
                 $this->createApplicationSnapshot(
-                    $archivePath,
+                    $buildingPath,
                     $workingManifestPath,
                     $applicationFiles,
                     (string) $job['backup_type'] === 'full',
-                    (string) $job['backup_type'] === 'full' ? $dbDumpPath : null
+                    (string) $job['backup_type'] === 'full' ? $dbDumpPath : null,
+                    $jobId
                 );
             } else {
-                $this->createZipWithDatabaseOnly($archivePath, $dbDumpPath, $workingManifestPath);
+                $this->createZipWithDatabaseOnly($buildingPath, $dbDumpPath, $workingManifestPath, $jobId);
+            }
+
+            $this->assertNotCancelled($jobId);
+            $this->updateProgress($jobId, 92, 'verifying');
+
+            // Verify the archive *before* it ever gets the final name/DB
+            // reference — CHECKCONS makes ZipArchive reject a corrupt/
+            // truncated file outright instead of silently opening it.
+            $health = $this->performHealthChecks($buildingPath, $manifestPath, true);
+            if ($health['health_status'] === 'failed') {
+                throw new RuntimeException('Backup archive failed integrity verification — discarded, nothing was saved.');
+            }
+
+            if (!rename($buildingPath, $archivePath)) {
+                throw new RuntimeException('Unable to finalize backup archive on disk.');
             }
 
             $archiveSha256 = hash_file('sha256', $archivePath);
-            $health = $this->performHealthChecks($archivePath, $manifestPath);
 
             $this->jobModel->update($jobId, [
                 'status' => 'completed',
@@ -277,15 +422,29 @@ class SystemBackupService
                 'health_status' => $health['health_status'],
                 'health_details_json' => json_encode($health, JSON_UNESCAPED_SLASHES),
                 'completed_at' => date('Y-m-d H:i:s'),
+                'progress_percent' => 100,
+                'progress_stage' => 'completed',
             ]);
 
             $this->deleteDirectory($jobRoot);
+        } catch (BackupCancelledException $e) {
+            @unlink($buildingPath);
+            $this->jobModel->update($jobId, [
+                'status' => 'cancelled',
+                'health_status' => 'cancelled',
+                'error_message' => 'Cancelled by user.',
+                'completed_at' => date('Y-m-d H:i:s'),
+                'progress_stage' => 'cancelled',
+            ]);
+            $this->deleteDirectory($jobRoot);
         } catch (\Throwable $e) {
+            @unlink($buildingPath);
             $this->jobModel->update($jobId, [
                 'status' => 'failed',
                 'health_status' => 'failed',
                 'error_message' => $e->getMessage(),
                 'completed_at' => date('Y-m-d H:i:s'),
+                'progress_stage' => 'failed',
                 'health_details_json' => json_encode([
                     'health_status' => 'failed',
                     'error' => $e->getMessage(),
@@ -325,10 +484,11 @@ class SystemBackupService
 
         $env = null;
         if (($config['password'] ?? '') !== '') {
-            $env = getenv();
-            if (!is_array($env)) {
-                $env = [];
-            }
+            // Under php-fpm, getenv() also returns non-string entries
+            // (argv, argc, REQUEST_TIME...) that make proc_open() fail
+            // with "Array to string conversion" when building the child
+            // process environment.
+            $env = array_filter(getenv() ?: [], static fn ($value) => is_string($value));
             $env['MYSQL_PWD'] = (string) $config['password'];
         }
 
@@ -357,7 +517,7 @@ class SystemBackupService
         ];
     }
 
-    private function createApplicationSnapshot(string $archivePath, string $manifestPath, array $applicationFiles, bool $includeDatabase = false, ?string $dbDumpPath = null): void
+    private function createApplicationSnapshot(string $archivePath, string $manifestPath, array $applicationFiles, bool $includeDatabase = false, ?string $dbDumpPath = null, ?int $jobId = null): void
     {
         $zip = new ZipArchive();
         $openResult = $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
@@ -384,12 +544,14 @@ class SystemBackupService
             }
         }
 
+        $this->attachZipProgress($zip, $jobId);
+
         if ($zip->close() !== true) {
             throw new RuntimeException('Unable to finalize backup zip archive.');
         }
     }
 
-    private function createZipWithDatabaseOnly(string $archivePath, string $dbDumpPath, string $manifestPath): void
+    private function createZipWithDatabaseOnly(string $archivePath, string $dbDumpPath, string $manifestPath, ?int $jobId = null): void
     {
         $zip = new ZipArchive();
         $openResult = $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
@@ -405,12 +567,72 @@ class SystemBackupService
             $zip->close();
             throw new RuntimeException('Unable to add database dump to archive.');
         }
+
+        $this->attachZipProgress($zip, $jobId);
+
         if ($zip->close() !== true) {
             throw new RuntimeException('Unable to finalize backup zip archive.');
         }
     }
 
-    private function performHealthChecks(string $archivePath, string $manifestPath): array
+    /**
+     * Maps ZipArchive::close()'s internal compression progress (0..1) onto the
+     * job's overall 20-90% "compressing" band, since that's where nearly all
+     * of the wall-clock time for a large backup is actually spent.
+     * Throttled to avoid hammering the DB: at most ~4 writes/sec, and only on
+     * a real percent change.
+     */
+    private function attachZipProgress(ZipArchive $zip, ?int $jobId): void
+    {
+        if ($jobId === null) {
+            return;
+        }
+
+        $lastPercent = -1;
+        $lastCheckAt = 0.0;
+
+        $zip->registerProgressCallback(0.01, function (float $fraction) use ($jobId, &$lastPercent, &$lastCheckAt) {
+            $now = microtime(true);
+            // Cancellation must be checked on its own time-based clock, NOT
+            // gated behind "percent changed" — one large file (e.g. a video)
+            // can hold the percent steady for a long stretch of wall-clock
+            // time while still actively compressing, which would otherwise
+            // make a cancel request invisible for that whole stretch.
+            if (($now - $lastCheckAt) < 0.25) {
+                return;
+            }
+            $lastCheckAt = $now;
+            $this->assertNotCancelled($jobId);
+
+            $percent = 20 + (int) round($fraction * 70);
+            if ($percent !== $lastPercent) {
+                $lastPercent = $percent;
+                $this->updateProgress($jobId, $percent, 'compressing');
+            }
+        });
+    }
+
+    private function updateProgress(int $jobId, int $percent, string $stage): void
+    {
+        try {
+            $this->jobModel->update($jobId, [
+                'progress_percent' => max(0, min(100, $percent)),
+                'progress_stage' => $stage,
+            ]);
+        } catch (\Throwable $e) {
+            // Progress reporting must never break the actual backup.
+        }
+    }
+
+    /**
+     * @param bool $strict When true, opens with CHECKCONS so a corrupt/
+     * truncated zip (bad central directory, interrupted write, etc.) is
+     * rejected outright instead of silently "succeeding". Used right after
+     * building an archive, before it's ever renamed to its final name or
+     * referenced from the DB, so a broken backup can never be mistaken for
+     * a good one.
+     */
+    private function performHealthChecks(string $archivePath, string $manifestPath, bool $strict = false): array
     {
         $result = [
             'health_status' => 'verified',
@@ -423,7 +645,8 @@ class SystemBackupService
 
         $manifestJson = is_file($manifestPath) ? (string) file_get_contents($manifestPath) : '';
         $zip = new ZipArchive();
-        $openOk = $zip->open($archivePath) === true;
+        $openFlags = $strict ? ZipArchive::CHECKCONS : 0;
+        $openOk = $zip->open($archivePath, $openFlags) === true;
         $result['checks']['zip_open'] = $openOk;
         if ($openOk) {
             $result['checks']['entry_count'] = $zip->numFiles;
@@ -454,7 +677,7 @@ class SystemBackupService
         return $result;
     }
 
-    private function collectApplicationFiles(): array
+    private function collectApplicationFiles(bool $excludeMedia = true): array
     {
         $files = [];
         $iterator = new RecursiveIteratorIterator(
@@ -472,7 +695,7 @@ class SystemBackupService
                 continue;
             }
 
-            if ($this->shouldExcludePath($relativePath)) {
+            if ($this->shouldExcludePath($relativePath, $excludeMedia)) {
                 continue;
             }
 
@@ -482,18 +705,34 @@ class SystemBackupService
         return $files;
     }
 
-    private function shouldExcludePath(string $relativePath): bool
+    private function shouldExcludePath(string $relativePath, bool $excludeMedia = true): bool
     {
         $normalized = str_replace('/', '\\', $relativePath);
         $excludedPrefixes = [
             '.git\\',
             'writable\\',
+            // Flutter/mobile build output — huge, regenerable, and its deep
+            // nested paths (Android transform cache) can exceed Windows'
+            // path-length limit or contain filenames ZipArchive rejects.
+            'corelynk_mobile\\build\\',
         ];
+
+        if ($excludeMedia) {
+            // Product images/videos — large and reproducible from the live
+            // server, so they're skipped by default to keep backups small.
+            $excludedPrefixes[] = 'public\\uploads\\';
+        }
 
         foreach ($excludedPrefixes as $prefix) {
             if (stripos($normalized, $prefix) === 0) {
                 return true;
             }
+        }
+
+        // node_modules / build / .dart_tool anywhere in the tree — same
+        // reasoning as above, wherever a nested project keeps them.
+        if (preg_match('/\\\\(node_modules|build|\.dart_tool)\\\\/i', $normalized)) {
+            return true;
         }
 
         return false;
@@ -563,13 +802,39 @@ class SystemBackupService
         return $sqlPath;
     }
 
-    private function restoreDatabaseDump(string $sqlPath): void
+    /**
+     * Builds a brand-new database from the bundled schema snapshot
+     * (app/Database/schema.sql) instead of replaying migration history,
+     * which is unreliable from zero on this project (some tables were
+     * hand-added outside migrations, breaking migration ordering).
+     */
+    public function installFreshSchema(): void
+    {
+        $schemaPath = APPPATH . 'Database' . DIRECTORY_SEPARATOR . 'schema.sql';
+        if (!is_file($schemaPath)) {
+            throw new RuntimeException('Schema snapshot (app/Database/schema.sql) is missing.');
+        }
+
+        $this->restoreDatabaseDump($schemaPath);
+    }
+
+    /** Install the canonical snapshot into an explicitly provisioned database. */
+    public function installFreshSchemaForDatabase(array $databaseConfig): void
+    {
+        $schemaPath = APPPATH . 'Database' . DIRECTORY_SEPARATOR . 'schema.sql';
+        if (! is_file($schemaPath)) {
+            throw new RuntimeException('Schema snapshot (app/Database/schema.sql) is missing.');
+        }
+        $this->restoreDatabaseDump($schemaPath, $databaseConfig);
+    }
+
+    private function restoreDatabaseDump(string $sqlPath, ?array $databaseConfig = null): void
     {
         if (!is_file($sqlPath)) {
             throw new RuntimeException('Restore SQL file is missing.');
         }
 
-        $config = $this->getDefaultDbConfig();
+        $config = $databaseConfig ?? $this->getDefaultDbConfig();
         $mysql = $this->detectMysqlClient();
         $stderrPath = $sqlPath . '.restore.stderr.log';
         $command = [
@@ -587,10 +852,11 @@ class SystemBackupService
 
         $env = null;
         if (($config['password'] ?? '') !== '') {
-            $env = getenv();
-            if (!is_array($env)) {
-                $env = [];
-            }
+            // Under php-fpm, getenv() also returns non-string entries
+            // (argv, argc, REQUEST_TIME...) that make proc_open() fail
+            // with "Array to string conversion" when building the child
+            // process environment.
+            $env = array_filter(getenv() ?: [], static fn ($value) => is_string($value));
             $env['MYSQL_PWD'] = (string) $config['password'];
         }
 
@@ -681,28 +947,48 @@ class SystemBackupService
         return is_array($dbConfig->default) ? $dbConfig->default : [];
     }
 
+    /**
+     * Locate the actual php-cli executable. Critical: under Apache mod_php
+     * (SAPI apache2handler, what this server runs), the PHP_BINARY constant
+     * resolves to httpd.exe, not php.exe — using it to spawn a background
+     * "php spark ..." process silently launches Apache with garbage
+     * arguments instead of running the backup, leaving the job stuck at
+     * "queued" forever with no error anywhere. Never use PHP_BINARY here.
+     */
+    public function detectPhpCliBinary(): string
+    {
+        return $this->detectXamppBinary('php.exe', 'php', 'php');
+    }
+
     private function detectMysqlDump(): string
     {
-        $candidates = [
-            'C:\\xampp\\mysql\\bin\\mysqldump.exe',
-            'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe',
-        ];
-
-        foreach ($candidates as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
-        }
-
-        throw new RuntimeException('mysqldump executable was not found on this server.');
+        return $this->detectXamppBinary('mysqldump.exe', 'mysqldump', 'mysql' . DIRECTORY_SEPARATOR . 'bin');
     }
 
     private function detectMysqlClient(): string
     {
-        $candidates = [
-            'C:\\xampp\\mysql\\bin\\mysql.exe',
-            'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe',
-        ];
+        return $this->detectXamppBinary('mysql.exe', 'mysql', 'mysql' . DIRECTORY_SEPARATOR . 'bin');
+    }
+
+    /**
+     * Locate a binary that ships with this app's own XAMPP install. Checks
+     * the XAMPP install this app actually lives under (works regardless of
+     * drive letter, e.g. D:\xampp vs C:\xampp), then common fixed install
+     * paths, then PATH.
+     */
+    private function detectXamppBinary(string $winName, string $unixName, string $xamppSubPath): string
+    {
+        $candidates = [];
+
+        $xamppBin = $this->guessXamppBinDir($xamppSubPath);
+        if ($xamppBin !== null) {
+            $candidates[] = $xamppBin . DIRECTORY_SEPARATOR . $winName;
+        }
+
+        $candidates[] = 'C:\\xampp\\' . $xamppSubPath . '\\' . $winName;
+        if ($xamppSubPath === 'mysql' . DIRECTORY_SEPARATOR . 'bin') {
+            $candidates[] = 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\' . $winName;
+        }
 
         foreach ($candidates as $candidate) {
             if (is_file($candidate)) {
@@ -710,7 +996,37 @@ class SystemBackupService
             }
         }
 
-        throw new RuntimeException('mysql executable was not found on this server.');
+        $onPath = $this->findBinaryOnPath($winName, $unixName);
+        if ($onPath !== null) {
+            return $onPath;
+        }
+
+        throw new RuntimeException(ucfirst($unixName) . ' executable was not found on this server (checked ' . implode(', ', $candidates) . ' and PATH).');
+    }
+
+    /**
+     * Derive <xampp_root>\<subPath> from this app's root (…\xampp\htdocs\corelynk).
+     */
+    private function guessXamppBinDir(string $subPath): ?string
+    {
+        $xamppRoot = dirname($this->appRoot, 2);
+        $bin = $xamppRoot . DIRECTORY_SEPARATOR . $subPath;
+
+        return is_dir($bin) ? $bin : null;
+    }
+
+    private function findBinaryOnPath(string $winName, string $unixName): ?string
+    {
+        $isWindows = DIRECTORY_SEPARATOR === '\\';
+        $command = $isWindows ? 'where ' . escapeshellarg($winName) : 'which ' . escapeshellarg($unixName);
+        $output = @shell_exec($command);
+        if (!is_string($output) || trim($output) === '') {
+            return null;
+        }
+
+        $first = trim(strtok($output, "\r\n"));
+
+        return ($first !== '' && is_file($first)) ? $first : null;
     }
 
     private function normalizeBackupType(string $backupType): string

@@ -1,0 +1,41 @@
+/**
+ * Products list alignment
+ * Keeps the Products filter stack on the same content rail as its header,
+ * tabs, table, and the canonical Inventory Stock list.
+ */
+html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar > .pl-filter-toolbar,
+html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar > .pl-filter-chipbar {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar > .pl-more-filters {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .pl-tabs-bar {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+@media (max-width: 767.98px) {
+  html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar,
+  html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar > .pl-filter-toolbar,
+  html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar > .pl-filter-chipbar,
+  html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .pl-tabs-bar {
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .app-layout > .main-content.cl-list-host-page > .cl-products-list > .cl-products-toolbar * {
+    transition-duration: .01ms !important;
+  }
+}

@@ -32,7 +32,7 @@
         <div class="p-4 text-muted">No matching records found for "<?= esc($query) ?>".</div>
       <?php else: ?>
         <div class="table-responsive">
-          <table class="table mb-0">
+          <table class="cl-table table mb-0">
             <thead>
               <tr>
                 <th style="width:180px">Module</th>

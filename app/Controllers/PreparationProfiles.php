@@ -71,6 +71,7 @@ class PreparationProfiles extends BaseController
             'step_options' => [],
             'material_items' => $this->getMaterialSelectableItems(),
             'vendors' => $this->vendorModel->where('is_active', 1)->orderBy('name', 'ASC')->findAll(),
+            'services' => $this->getServiceProducts($this->contextVendorIds()),
             'validation' => \Config\Services::validation(),
         ]);
 
@@ -127,6 +128,7 @@ class PreparationProfiles extends BaseController
             'step_options' => [],
             'material_items' => $this->getMaterialSelectableItems(),
             'vendors' => $this->vendorModel->where('is_active', 1)->orderBy('name', 'ASC')->findAll(),
+            'services' => $this->getServiceProducts($this->contextVendorIds()),
             'validation' => \Config\Services::validation(),
         ]);
 
@@ -163,6 +165,8 @@ class PreparationProfiles extends BaseController
                 'name' => $stepData['name'],
                 'description' => $stepData['description'],
                 'is_optional' => $stepData['is_optional'],
+                'service_product_id' => $stepData['service_product_id'],
+                'service_variant_id' => $stepData['service_variant_id'],
                 'created_at' => date('Y-m-d H:i:s'),
             ];
 
@@ -181,7 +185,7 @@ class PreparationProfiles extends BaseController
 
         $redirectUrl = ! empty($profileData['variant_id'])
             ? base_url('product-variants/' . (int) $profileData['variant_id'] . '/edit')
-            : base_url('products/' . (int) $profileData['product_id'] . '?tab=preparation');
+            : $this->productPreparationUrl($profileData['product_id']);
 
         return redirect()->to($redirectUrl)
             ->with('success', 'Preparation profile created successfully.');
@@ -216,6 +220,7 @@ class PreparationProfiles extends BaseController
             'step_options' => $stepOptions,
             'material_items' => $this->getMaterialSelectableItems(),
             'vendors' => $this->vendorModel->where('is_active', 1)->orderBy('name', 'ASC')->findAll(),
+            'services' => $this->getServiceProducts($this->contextVendorIds($stepOptions)),
             'validation' => \Config\Services::validation(),
         ]);
 
@@ -268,6 +273,8 @@ class PreparationProfiles extends BaseController
                 'name' => $stepData['name'],
                 'description' => $stepData['description'],
                 'is_optional' => $stepData['is_optional'],
+                'service_product_id' => $stepData['service_product_id'],
+                'service_variant_id' => $stepData['service_variant_id'],
                 'created_at' => date('Y-m-d H:i:s'),
             ];
 
@@ -286,7 +293,7 @@ class PreparationProfiles extends BaseController
 
         $redirectUrl = ! empty($existing['variant_id'])
             ? base_url('product-variants/' . (int) $existing['variant_id'] . '/edit')
-            : base_url('products/' . (int) $existing['product_id'] . '?tab=preparation');
+            : $this->productPreparationUrl($existing['product_id']);
 
         return redirect()->to($redirectUrl)
             ->with('success', 'Preparation profile updated successfully.');
@@ -306,7 +313,7 @@ class PreparationProfiles extends BaseController
 
         $redirectUrl = ! empty($profile['variant_id'])
             ? base_url('product-variants/' . (int) $profile['variant_id'] . '/edit')
-            : base_url('products/' . (int) $profile['product_id'] . '?tab=preparation');
+            : $this->productPreparationUrl($profile['product_id']);
 
         return redirect()->to($redirectUrl)
             ->with('success', 'Preparation profile deleted successfully.');
@@ -417,6 +424,230 @@ class PreparationProfiles extends BaseController
         ]);
     }
 
+    /**
+     * Service products that a subcontractor can be billed for (gold/black/blue colouring, plating, ...).
+     * Each carries its vendor and per-item price so the step form can filter by the selected vendor.
+     */
+    /**
+     * Everything the given vendors can bill us for. Any active product attached to a vendor
+     * counts, because a colour service is usually a variant (Gold / Black / Purple Plasma)
+     * of one product, each variant carrying its own vendor and per-item price.
+     * Always vendor-scoped: unscoped this is thousands of rows.
+     */
+    /**
+     * Products::show() 404s on numeric ids — the product detail URL is keyed by public_id.
+     */
+    private function productPreparationUrl($productId): string
+    {
+        $product = $this->productModel->find((int) $productId);
+        $publicId = $product['public_id'] ?? '';
+
+        return $publicId !== ''
+            ? base_url('products/' . $publicId . '?tab=preparation')
+            : base_url('products');
+    }
+
+    private function getServiceProducts(array $vendorIds): array
+    {
+        $vendorIds = array_values(array_unique(array_filter(array_map('intval', $vendorIds))));
+        if ($vendorIds === []) {
+            return [];
+        }
+
+        // Variants can be sourced from a different vendor than their product.
+        $vendorVariants = $this->variantModel
+            ->select('id, product_id, name, vendor_id, vendor_price, vendor_currency')
+            ->whereIn('vendor_id', $vendorIds)
+            ->findAll();
+
+        $products = $this->productModel
+            ->select('id, name, detailed_type, vendor_id, vendor_price, vendor_currency')
+            ->where('is_active', 1)
+            ->where('detailed_type', 'service')
+            ->groupStart()
+                ->whereIn('vendor_id', $vendorIds)
+                ->orWhereIn('id', array_map(static fn ($v) => (int) $v['product_id'], $vendorVariants) ?: [0])
+            ->groupEnd()
+            ->orderBy('name', 'ASC')
+            ->findAll();
+
+        if ($products === []) {
+            return [];
+        }
+
+        $productById = array_column($products, null, 'id');
+
+        $variants = $this->variantModel
+            ->select('id, product_id, name, vendor_id, vendor_price, vendor_currency')
+            ->whereIn('product_id', array_column($products, 'id'))
+            ->orderBy('name', 'ASC')
+            ->findAll();
+
+        $byProduct = [];
+        foreach ($variants as $variant) {
+            $byProduct[(int) $variant['product_id']][] = $variant;
+        }
+
+        $services = [];
+        foreach ($products as $product) {
+            $productId = (int) $product['id'];
+            $isService = ($product['detailed_type'] ?? '') === 'service';
+
+            // Same rule as the vendor's own page: list the product itself whenever the
+            // vendor is named directly on it, whether or not it also has variants.
+            if (in_array((int) ($product['vendor_id'] ?? 0), $vendorIds, true)) {
+                $services[] = [
+                    'value' => 'product:' . $productId,
+                    'label' => $product['name'],
+                    'vendor_id' => (int) $product['vendor_id'],
+                    'price' => (float) ($product['vendor_price'] ?? 0),
+                    'currency' => $product['vendor_currency'] ?: 'PKR',
+                    'is_service' => $isService ? 1 : 0,
+                ];
+            }
+
+            foreach ($byProduct[$productId] ?? [] as $variant) {
+                // A variant only belongs to the vendor it actually names — never borrow the
+                // product's vendor, or every sibling variant (other colours, no vendor at all)
+                // would wrongly show up under whichever vendor happens to be on the parent.
+                $vendorId = (int) ($variant['vendor_id'] ?? 0);
+                if (! in_array($vendorId, $vendorIds, true)) {
+                    continue;
+                }
+                $services[] = [
+                    'value' => 'variant:' . (int) $variant['id'],
+                    'label' => $product['name'] . ' - ' . $variant['name'],
+                    'vendor_id' => $vendorId,
+                    'price' => (float) ($variant['vendor_price'] ?: ($product['vendor_price'] ?? 0)),
+                    'currency' => $variant['vendor_currency'] ?: ($product['vendor_currency'] ?: 'PKR'),
+                    'is_service' => $isService ? 1 : 0,
+                ];
+            }
+        }
+
+        // Services first, then everything else, each alphabetically.
+        usort($services, static fn ($a, $b) => [$b['is_service'], $a['label']] <=> [$a['is_service'], $b['label']]);
+
+        return $services;
+    }
+
+    /**
+     * Vendors already referenced by the form being rendered, so only their items are
+     * embedded; every other vendor is fetched on demand from vendorServicesAjax().
+     */
+    private function contextVendorIds(array $stepOptions = []): array
+    {
+        $ids = array_map('intval', (array) (old('execution_vendor_id') ?: []));
+
+        foreach ($stepOptions as $options) {
+            foreach ((array) $options as $option) {
+                if (! empty($option['vendor_id'])) {
+                    $ids[] = (int) $option['vendor_id'];
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    public function vendorServicesAjax($vendorId = 0)
+    {
+        $this->requireAuth();
+
+        return $this->response->setJSON([
+            'success' => true,
+            'services' => $this->getServiceProducts([(int) $vendorId]),
+        ]);
+    }
+
+    private function makeServiceCode(string $name): string
+    {
+        $base = 'SVC-' . strtoupper(substr(preg_replace('/[^A-Za-z0-9]+/', '-', $name), 0, 30));
+        $base = trim($base, '-');
+        $code = $base;
+        $suffix = 1;
+        while ($this->productModel->where('code', $code)->countAllResults() > 0) {
+            $code = $base . '-' . (++$suffix);
+        }
+
+        return $code;
+    }
+
+    /**
+     * Create a service product inline from the preparation step form when the vendor has none yet.
+     */
+    public function createServiceAjax()
+    {
+        $this->requireAuth();
+
+        $name = trim((string) $this->request->getPost('name'));
+        $vendorId = (int) $this->request->getPost('vendor_id');
+        $price = (float) $this->request->getPost('price');
+        $currency = strtoupper(trim((string) $this->request->getPost('currency'))) ?: 'PKR';
+
+        if ($name === '') {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Service name is required.']);
+        }
+        if ($vendorId <= 0 || ! $this->vendorModel->find($vendorId)) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Select a vendor first.']);
+        }
+        if ($price < 0) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Price cannot be negative.']);
+        }
+
+        $existing = $this->productModel
+            ->where('detailed_type', 'service')
+            ->where('vendor_id', $vendorId)
+            ->where('name', $name)
+            ->first();
+
+        if ($existing) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'This vendor already has a service with that name.',
+                'service' => [
+                    'value' => 'product:' . (int) $existing['id'],
+                    'label' => $existing['name'],
+                    'vendor_id' => (int) $existing['vendor_id'],
+                    'price' => (float) $existing['vendor_price'],
+                    'currency' => $existing['vendor_currency'] ?: 'PKR',
+                ],
+            ]);
+        }
+
+        $id = $this->productModel->insert([
+            'name' => $name,
+            'code' => $this->makeServiceCode($name),
+            // Services are simple products flagged by detailed_type, same as the products screen creates them.
+            'product_type' => 'simple',
+            'detailed_type' => 'service',
+            'service_policy' => 'delivered_qty',
+            'unit' => 'pcs',
+            'is_active' => 1,
+            'vendor_id' => $vendorId,
+            'vendor_price' => $price,
+            'vendor_currency' => $currency,
+        ], true);
+
+        if (! $id) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'message' => implode(' ', $this->productModel->errors()) ?: 'Could not create the service.',
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'service' => [
+                'value' => 'product:' . (int) $id,
+                'label' => $name,
+                'vendor_id' => $vendorId,
+                'price' => $price,
+                'currency' => $currency,
+            ],
+        ]);
+    }
+
     private function buildPayloadFromPost(?int $forcedProductId = null, ?int $forcedVariantId = null): array
     {
         $productId = $forcedProductId ?? (int) ($this->request->getPost('product_id') ?? 0);
@@ -497,6 +728,22 @@ class PreparationProfiles extends BaseController
             $vendorId = (int) (($this->request->getPost('execution_vendor_id') ?? [])[$index] ?? 0);
             $notes = trim((string) (($this->request->getPost('execution_notes') ?? [])[$index] ?? ''));
             $defaultType = (string) (($this->request->getPost('execution_default') ?? [])[$index] ?? '');
+            $parsedService = $this->parseMaterialSelection((string) (($this->request->getPost('step_service_product_id') ?? [])[$index] ?? ''));
+            $serviceProductId = (int) ($parsedService['product_id'] ?? 0);
+            $serviceVariantId = (int) ($parsedService['variant_id'] ?? 0);
+            $servicePrice = (float) (($this->request->getPost('execution_service_price') ?? [])[$index] ?? 0);
+            $serviceCurrency = 'PKR';
+            if ($serviceProductId > 0) {
+                $serviceProduct = $this->productModel->find($serviceProductId);
+                if (! $serviceProduct) {
+                    return ['ok' => false, 'message' => 'Invalid service selected on step "' . $stepName . '".'];
+                }
+                $serviceVariant = $serviceVariantId > 0 ? $this->variantModel->find($serviceVariantId) : null;
+                $serviceCurrency = (string) (($serviceVariant['vendor_currency'] ?? null) ?: ($serviceProduct['vendor_currency'] ?: 'PKR'));
+                if ($servicePrice <= 0) {
+                    $servicePrice = (float) (($serviceVariant['vendor_price'] ?? null) ?: ($serviceProduct['vendor_price'] ?? 0));
+                }
+            }
 
             $options = [];
             if ($inhouseSelected) {
@@ -518,6 +765,9 @@ class PreparationProfiles extends BaseController
                     'vendor_id' => $vendorId,
                     'notes' => $notes !== '' ? $notes : null,
                     'is_default' => 0,
+                    'service_price' => $servicePrice > 0 ? number_format($servicePrice, 4, '.', '') : null,
+                    'service_unit' => 'per_item',
+                    'currency' => $serviceCurrency,
                     'created_at' => date('Y-m-d H:i:s'),
                 ];
             }
@@ -548,6 +798,8 @@ class PreparationProfiles extends BaseController
                 'name' => $stepName,
                 'description' => $stepDescription !== '' ? $stepDescription : null,
                 'is_optional' => isset($stepOptional[$index]) ? 1 : 0,
+                'service_product_id' => $serviceProductId > 0 ? $serviceProductId : null,
+                'service_variant_id' => $serviceVariantId > 0 ? $serviceVariantId : null,
                 'options' => $options,
             ];
         }

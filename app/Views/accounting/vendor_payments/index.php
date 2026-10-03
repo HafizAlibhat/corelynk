@@ -186,7 +186,7 @@
         <div class="empty-msg"><i class="bi bi-inbox me-1"></i>No pending drafts</div>
       <?php else: ?>
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead>
             <tr>
               <th style="width:45px">#</th>
@@ -268,7 +268,7 @@
         <div class="empty-msg"><i class="bi bi-inbox me-1"></i>No posted payments yet</div>
       <?php else: ?>
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead>
             <tr>
               <th style="width:45px">#</th>
@@ -344,7 +344,7 @@
     <?php if ($hasVoided): ?>
     <div class="vpl-tab-panel" id="panel-voided">
       <div class="table-responsive">
-        <table>
+        <table class="cl-table">
           <thead>
             <tr>
               <th style="width:45px">#</th>

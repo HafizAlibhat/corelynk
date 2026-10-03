@@ -1,6 +1,7 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('content') ?>
+<div class="cl-list-page cl-list-page--dashboard">
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -19,7 +20,7 @@
 <!-- Search and Filter Bar -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-0 shadow-sm">
+        <div class="card cl-list-filters">
             <div class="card-body">
                 <form method="GET" action="<?= base_url('/product-categories') ?>" class="row g-3">
                     <div class="col-md-4">
@@ -55,7 +56,7 @@
 <!-- Categories Table -->
 <div class="row">
     <div class="col-12">
-        <div class="card border-0 shadow-sm">
+        <div class="card cl-list-table-card">
             <div class="card-header bg-white">
                 <h5 class="card-title mb-0">
                     <i class="bi bi-list me-2"></i>
@@ -65,8 +66,8 @@
             <div class="card-body p-0">
                 <?php if (!empty($categories)): ?>
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
+                        <table class="cl-table table table-hover mb-0">
+                            <thead>
                                 <tr>
                                     <th>#</th>
                                     <th>Name</th>
@@ -95,7 +96,7 @@
                                         </td>
                                         <td class="text-center">
                                             <?php if (!empty($category['suffix'])): ?>
-                                                <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold"><?= esc($category['suffix']) ?></span>
+                                                <span class="cl-status-badge cl-status-badge--info"><?= esc($category['suffix']) ?></span>
                                             <?php else: ?>
                                                 <span class="text-muted">—</span>
                                             <?php endif; ?>
@@ -127,11 +128,11 @@
                                         <td class="text-center">
                                             <?php if ($category['product_count'] > 0): ?>
                                                 <a href="<?= base_url('/products?category_id=' . $category['id']) ?>" 
-                                                   class="badge bg-info text-decoration-none">
+                                                   class="cl-count-badge text-decoration-none">
                                                     <?= $category['product_count'] ?> product<?= $category['product_count'] > 1 ? 's' : '' ?>
                                                 </a>
                                             <?php else: ?>
-                                                <span class="badge bg-light text-muted">0 products</span>
+                                                <span class="cl-count-badge">0 products</span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
@@ -149,16 +150,16 @@
                                             </small>
                                         </td>
                                         <td class="text-center actions-col">
-                                            <a class="btn btn-sm btn-outline-secondary" href="<?= base_url('/products?category_id=' . $category['id']) ?>" title="View products" aria-label="View products">
+                                            <a class="btn btn-sm btn-outline-secondary cl-icon-action" href="<?= base_url('/products?category_id=' . $category['id']) ?>" title="View products" aria-label="View products">
                                                 <i class="bi bi-eye"></i>
                                             </a>
                                             <?php if ($can_edit): ?>
-                                                <a class="btn btn-sm btn-outline-primary" href="<?= base_url('/product-categories/' . $category['id'] . '/edit') ?>" title="Edit" aria-label="Edit">
+                                                <a class="btn btn-sm btn-outline-primary cl-icon-action" href="<?= base_url('/product-categories/' . $category['id'] . '/edit') ?>" title="Edit" aria-label="Edit">
                                                     <i class="bi bi-pencil"></i>
                                                 </a>
                                             <?php endif; ?>
                                             <?php if ($can_delete && $category['product_count'] == 0): ?>
-                                                <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteCategory(<?= $category['id'] ?>)" title="Delete" aria-label="Delete">
+                                                <button class="btn btn-sm btn-outline-danger cl-icon-action" type="button" onclick="deleteCategory(<?= $category['id'] ?>)" title="Delete" aria-label="Delete">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
                                             <?php endif; ?>
@@ -169,10 +170,10 @@
                         </table>
                     </div>
                 <?php else: ?>
-                    <div class="text-center py-5">
-                        <i class="bi bi-tags display-1 text-muted"></i>
-                        <h5 class="mt-3 text-muted">No Categories Found</h5>
-                        <p class="text-muted">Start by creating your first product category.</p>
+                    <div class="cl-list-empty">
+                        <span class="cl-list-empty__icon"><i class="bi bi-tags"></i></span>
+                        <h6>No Categories Found</h6>
+                        <p>Start by creating your first product category.</p>
                         <?php if ($can_create): ?>
                             <a href="<?= base_url('/product-categories/create') ?>" class="btn btn-primary">
                                 <i class="bi bi-plus-circle me-2"></i>
@@ -184,6 +185,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <!-- JavaScript for interactions -->
@@ -236,23 +238,5 @@ function deleteCategory(categoryId) {
     }
 }
 </script>
-
-<style>
-.avatar {
-    width: 32px;
-    height: 32px;
-}
-    /* Fix: allow dropdowns inside table-responsive to be visible (avoid clipping) */
-    .table-responsive {
-        overflow: visible;
-    }
-    /* Ensure dropdowns appear above other elements */
-    .dropdown-menu {
-        z-index: 2050; /* higher than table/toolbars */
-    }
-    .actions-col .dropdown-menu {
-        min-width: 150px;
-    }
-</style>
 
 <?= $this->endSection() ?>

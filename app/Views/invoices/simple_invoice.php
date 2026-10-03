@@ -5,27 +5,40 @@
 <?= $this->section('content') ?>
 <style>
 .so-address-card {
-    max-width: 520px;
-    border-radius: 10px;
-    padding: 16px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    color: #0f172a;
+    padding: 14px 16px;
+    height: 100%;
 }
-.so-address-card textarea {
-    border-radius: 8px;
-    resize: none;
-    background: #ffffff;
-    color: #0f172a;
-    border: 1px solid #d8e0eb;
-    font-size: 13px;
-    min-height: 110px;
+.so-address-card .addr-title {
+    font-size: 0.72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 8px;
 }
-.so-lines-table tbody tr:nth-child(odd) { background: #ffffff; }
-.so-lines-table tbody tr:nth-child(even) { background: #f8fafc; }
+.so-address-card .addr-name { font-weight: 600; line-height: 1.35; }
+.so-address-card .addr-lines { color: #cbd5e1; font-size: 0.88rem; line-height: 1.5; margin-top: 2px; }
+.so-address-card .addr-grid {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 2px 10px;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    align-items: baseline;
+}
+.so-address-card .addr-grid dt { color: #94a3b8; font-weight: 500; }
+.so-address-card .addr-grid dd { margin: 0; color: #e2e8f0; overflow-wrap: anywhere; }
+/* invoice_bank_details_html()/invoice_terms_html() carry inline print colours
+   for the PDF; on this dark page they need screen values. */
+.so-address-card .addr-lines td,
+.so-address-card .addr-lines strong { color: #e2e8f0 !important; }
+.so-address-card .addr-lines td:first-child { color: #94a3b8 !important; }
+.so-address-card .addr-lines td { border-bottom-color: rgba(148, 163, 184, .18) !important; }
+/* The app theme is dark regardless of the OS preference, so these are not
+   behind prefers-color-scheme any more. */
+.so-lines-table tbody tr:nth-child(odd) { background: #0d1726; }
+.so-lines-table tbody tr:nth-child(even) { background: #101c30; }
 .so-totals-box {
-    background: #f1f5f9;
+    background: #101827;
     border-radius: 8px;
 }
 .inv-image-thumb {
@@ -89,35 +102,8 @@
     font-size: 0.76rem;
     letter-spacing: 0.01em;
 }
-@media (prefers-color-scheme: dark) {
-    .so-address-card {
-        border: 1px solid #243b55;
-        background: #0f172a;
-        color: #e2e8f0;
-        box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-    }
-    .so-address-card textarea {
-        background: #111827;
-        color: #e2e8f0;
-        border: 1px solid #1f2a44;
-    }
-    .so-lines-table tbody tr:nth-child(odd) { background: #0d1726; }
-    .so-lines-table tbody tr:nth-child(even) { background: #101c30; }
-    .so-totals-box {
-        background: #101827;
-    }
-}
 </style>
 <style>
-/* Force light address card on invoice pages to avoid dark-mode rendering */
-.so-address-card {
-    border: 1px solid #e2e8f0 !important;
-    background: #f8fafc !important;
-    color: #0f172a !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.04) !important;
-}
-.so-address-card textarea { background: #fff !important; color: #0f172a !important; border: 1px solid #d8e0eb !important; }
-
 /* Invoice status ribbon */
 .inv-ribbon-wrapper {
     position: absolute;
@@ -224,6 +210,10 @@
                 <a class="btn btn-outline-secondary" href="<?= site_url('customer-invoices/edit/' . ($invoice['id'] ?? 0)) ?>">Edit</a>
             <?php endif; ?>
 
+            <?php if (($mode ?? 'view') !== 'edit' && $statusKey !== 'cancelled'): ?>
+                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#paymentTermsModal">Payment Terms</button>
+            <?php endif; ?>
+
                 <?php // Show download/print when at least confirmed
                 if ($statusKey !== 'draft'): ?>
                 <a class="btn btn-outline-primary" href="<?= site_url('customer-invoices/pdf/' . ($invoice['id'] ?? 0)) ?>" target="_blank">Download PDF</a>
@@ -238,7 +228,7 @@
                 <?php endif; ?>
                 <button type="button" class="btn btn-outline-info" onclick="createCustomsInvoiceFromOriginal('VALUE_ONLY')">Create Customs (Value Only)</button>
                 <button type="button" class="btn btn-outline-info" onclick="createCustomsInvoiceFromOriginal('FULL_REWRITE')">Create Customs (Full Rewrite)</button>
-                <a class="btn btn-outline-primary" href="<?= site_url('accounting/customer-payments?invoice_id=' . ($invoice['id'] ?? 0)) ?>">Browse This Invoice Payments</a>
+                <a class="btn btn-outline-primary" href="<?= site_url('accounting/customer-payments?invoice_id=' . ($invoice['id'] ?? 0)) ?>" title="View payments already recorded and allocated to this invoice">Browse This Invoice Payments (<?= count($invoicePayments ?? []) ?>)</a>
                 <form id="createCustomsInvoiceForm" method="post" action="<?= site_url('customs-invoices/create-from-invoice/' . ($invoice['id'] ?? 0)) ?>" style="display:none;">
                     <?= csrf_field() ?>
                     <input type="hidden" name="mode" id="customsModeInput" value="VALUE_ONLY">
@@ -264,48 +254,75 @@
             $fmtMoney = function($val) use ($symbol) {
                 return $symbol . number_format((float)$val, 2);
             };
-            $fmtShipmentWeight = static function($kg) {
-                $kg = max(0.0, (float)$kg);
-                if ($kg >= 1) {
-                    return number_format($kg, 3) . ' kg';
-                }
-                return number_format($kg * 1000, 0) . ' g';
+            $orderedWeightUnit = $orderedWeightUnit ?? null;
+            $fmtShipmentWeight = static function($kg) use ($orderedWeightUnit) {
+                return \App\Helpers\WeightHelper::formatShipment((float)$kg, $orderedWeightUnit);
             };
+            // Address in one block, contact details in the label/value grid, the
+            // same structure the quotation and sales order pages use.
             $addrLines = [];
             if (!empty($customerAddress['line1'])) $addrLines[] = $customerAddress['line1'];
             if (!empty($customerAddress['line2'])) $addrLines[] = $customerAddress['line2'];
             $cityState = trim(($customerAddress['city_name'] ?? '') . ' ' . ($customerAddress['state_name'] ?? ''));
             if ($cityState !== '') $addrLines[] = $cityState;
-            if (!empty($customerAddress['postal_code'])) $addrLines[] = 'Postal: ' . $customerAddress['postal_code'];
-            if (!empty($customer['phone'])) $addrLines[] = 'Phone: ' . $customer['phone'];
-            if (!empty($customer['mobile'])) $addrLines[] = 'Mobile: ' . $customer['mobile'];
-            if (!empty($customer['email'])) $addrLines[] = 'Email: ' . $customer['email'];
-            $addrText = implode("\n", array_filter($addrLines));
+            if (!empty($customerAddress['country_name'])) $addrLines[] = $customerAddress['country_name'];
+            if (!empty($customerAddress['postal_code'])) $addrLines[] = $customerAddress['postal_code'];
+            $customerName = trim((string)($customer['name'] ?? ($customer['company_name'] ?? '')));
+            $customerContactRows = array_filter([
+                'Phone'  => $customer['phone'] ?? '',
+                'Mobile' => $customer['mobile'] ?? '',
+                'Email'  => $customer['email'] ?? '',
+            ]);
         ?>
         <div class="row g-3 mb-3">
             <div class="col-md-6" id="customer-block" style="display:none;">
                 <div class="so-address-card mb-0 shadow-sm">
-                    <div class="fw-semibold mb-2">Address &amp; Contact</div>
-                    <textarea class="form-control" rows="4" readonly>
-<?= esc($addrText ?: 'N/A') ?>
-                    </textarea>
+                    <div class="addr-title">Bill To</div>
+                    <?php if ($customerName !== ''): ?>
+                        <div class="addr-name"><?= esc($customerName) ?></div>
+                    <?php endif; ?>
+                    <?php if ($addrLines): ?>
+                        <div class="addr-lines"><?= esc(implode(', ', $addrLines)) ?></div>
+                    <?php endif; ?>
+                    <?php if ($customerContactRows): ?>
+                        <dl class="addr-grid mb-0">
+                            <?php foreach ($customerContactRows as $label => $value): ?>
+                                <dt><?= esc($label) ?></dt>
+                                <dd><?= esc($value) ?></dd>
+                            <?php endforeach; ?>
+                        </dl>
+                    <?php endif; ?>
+                    <?php if ($customerName === '' && !$addrLines && !$customerContactRows): ?>
+                        <div class="addr-lines">No address on file</div>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="col-md-6" id="seller-block" style="display:none;">
                 <?php
-                    // Build seller address/contact textarea to match the same UI style
-                    $sellerLines = [];
-                    if (!empty($companyName)) $sellerLines[] = $companyName;
-                    if (!empty($companyAddress)) $sellerLines[] = $companyAddress;
-                    if (!empty($companyContact)) $sellerLines[] = 'Phone: ' . $companyContact;
-                    if (!empty($companyEmail)) $sellerLines[] = 'Email: ' . $companyEmail;
-                    $sellerText = implode("\n", array_filter($sellerLines));
+                    $sellerContactRows = array_filter([
+                        'Phone' => $companyContact,
+                        'Email' => $companyEmail,
+                    ]);
                 ?>
                 <div class="so-address-card mb-0 shadow-sm">
-                    <div class="fw-semibold mb-2">Address &amp; Contact</div>
-                    <textarea class="form-control" rows="4" readonly>
-<?= esc($sellerText ?: 'N/A') ?>
-                    </textarea>
+                    <div class="addr-title">From</div>
+                    <?php if (!empty($companyName)): ?>
+                        <div class="addr-name"><?= esc($companyName) ?></div>
+                    <?php endif; ?>
+                    <?php if (!empty($companyAddress)): ?>
+                        <div class="addr-lines"><?= esc($companyAddress) ?></div>
+                    <?php endif; ?>
+                    <?php if ($sellerContactRows): ?>
+                        <dl class="addr-grid mb-0">
+                            <?php foreach ($sellerContactRows as $label => $value): ?>
+                                <dt><?= esc($label) ?></dt>
+                                <dd><?= esc($value) ?></dd>
+                            <?php endforeach; ?>
+                        </dl>
+                    <?php endif; ?>
+                    <?php if (empty($companyName) && empty($companyAddress) && !$sellerContactRows): ?>
+                        <div class="addr-lines">No company details configured</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -325,6 +342,31 @@
                         <label class="form-label">Notes</label>
                         <textarea name="notes" class="form-control" rows="2"><?= esc($invoice['notes'] ?? '') ?></textarea>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Payment Terms</label>
+                        <select name="payment_term_id" class="form-control">
+                            <option value="">No payment terms (single due date)</option>
+                            <?php foreach (($paymentTermOptions ?? []) as $term): ?>
+                                <option value="<?= (int)$term['id'] ?>" <?= (int)($invoice['payment_term_id'] ?? 0) === (int)$term['id'] ? 'selected' : '' ?>>
+                                    <?= esc($term['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text">Saving rebuilds the instalment schedule and the due date from the selected terms.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Customer PO Number <span class="text-muted">(optional)</span></label>
+                        <input type="text" name="customer_po_number" class="form-control" maxlength="100" value="<?= esc($invoice['customer_po_number'] ?? '') ?>" placeholder="e.g. PO-2026-0148">
+                        <div class="form-text">Printed on the invoice so the customer can match it to their purchase order.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Bank Details</label>
+                        <textarea name="bank_details" class="form-control rich-editor" rows="4" placeholder="Leave blank to use the company default from Settings."><?= esc($invoice['bank_details'] ?? '') ?></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Terms &amp; Conditions</label>
+                        <textarea name="terms_conditions" class="form-control rich-editor" rows="4" placeholder="Leave blank to use the company default from Settings."><?= esc($invoice['terms_conditions'] ?? '') ?></textarea>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary">Save</button>
             </form>
@@ -333,7 +375,14 @@
             <div class="row mb-3">
                 <div class="col-md-3"><strong>Issue Date:</strong> <?= esc($invoice['issue_date'] ?? '') ?></div>
                 <div class="col-md-3"><strong>Due Date:</strong> <?= esc($invoice['due_date'] ?? '') ?></div>
-                <div class="col-md-6"></div>
+                <div class="col-md-6">
+                    <?php if (!empty($paymentSchedule['term']['name'])): ?>
+                        <strong>Payment Terms:</strong> <?= esc($paymentSchedule['term']['name']) ?>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice['customer_po_number'])): ?>
+                        <br><strong>Customer PO #:</strong> <?= esc($invoice['customer_po_number']) ?>
+                    <?php endif; ?>
+                </div>
             </div>
             <hr>
         <?php endif; ?>
@@ -418,10 +467,8 @@
             <div class="col-lg-7">
                 <?php if (!empty(trim((string)($invoice['notes'] ?? '')))): ?>
                     <div class="so-address-card shadow-sm">
-                        <div class="fw-semibold mb-2">Notes</div>
-                        <textarea class="form-control" rows="4" readonly>
-<?= esc(trim((string)($invoice['notes'] ?? ''))) ?>
-                        </textarea>
+                        <div class="addr-title">Notes</div>
+                        <div class="addr-lines"><?= nl2br(esc(trim((string)($invoice['notes'] ?? '')))) ?></div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -459,6 +506,138 @@
             </div>
         </div>
 
+        <?php $schedule = $paymentSchedule ?? ['has_schedule' => false, 'rows' => []]; ?>
+        <?php if (!empty($schedule['has_schedule'])): ?>
+            <hr>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <?php
+                    helper('invoice_terms');
+                    $schedNote = invoice_short_note((string)($schedule['term']['description'] ?? ''));
+                ?>
+                <h5 class="mb-0" style="font-size:1rem;">
+                    Payment Schedule<?= !empty($schedule['term']['name']) ? ' - ' . esc($schedule['term']['name']) : '' ?>
+                    <?php if ($schedNote !== ''): ?>
+                        <span class="text-muted fw-normal" style="font-size:.8rem;">(<?= esc($schedNote) ?>)</span>
+                    <?php endif; ?>
+                </h5>
+            </div>
+            <?php
+                // Zero-filled Paid/Pending columns read as an error before the
+                // first payment, so they only appear once money has arrived.
+                $scheduleHasPayment = $schedule['paid'] > 0.005;
+                $scheduleNowDue   = (float)($schedule['now_due'] ?? 0);
+                $scheduleNowLabel = trim((string)($schedule['now_due_label'] ?? ''));
+                $scheduleNowPct   = (float)($schedule['now_due_percentage'] ?? 0);
+                if ($scheduleNowPct > 0) {
+                    $scheduleNowLabel = trim($scheduleNowLabel . ' (' . rtrim(rtrim(number_format($scheduleNowPct, 2), '0'), '.') . '%)');
+                }
+            ?>
+            <div class="table-responsive mb-2">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width:4%;">#</th>
+                            <th>Instalment</th>
+                            <th class="text-end" style="width:8%;">%</th>
+                            <th style="width:18%;">Due</th>
+                            <th class="text-end" style="width:14%;">Amount</th>
+                            <?php if ($scheduleHasPayment): ?>
+                                <th class="text-end" style="width:14%;">Received</th>
+                                <th class="text-end" style="width:14%;">Balance</th>
+                            <?php endif; ?>
+                            <th class="text-end" style="width:12%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($schedule['rows'] as $row): ?>
+                            <?php
+                                $rowOverdue = $row['is_overdue'] && $row['status'] !== 'paid';
+                                if ($row['status'] === 'paid') {
+                                    $rowBadge = 'bg-success';
+                                    $rowLabel = 'PAID';
+                                } elseif ($rowOverdue) {
+                                    $rowBadge = 'bg-danger';
+                                    $rowLabel = 'OVERDUE';
+                                } elseif ($row['paid'] > 0.005) {
+                                    $rowBadge = 'bg-warning text-dark';
+                                    $rowLabel = 'PART PAID';
+                                } else {
+                                    $rowBadge = 'bg-secondary';
+                                    $rowLabel = 'PAYABLE';
+                                }
+                            ?>
+                            <tr class="<?= $rowOverdue ? 'table-danger' : '' ?>">
+                                <td><?= (int)$row['seq'] ?></td>
+                                <td class="fw-semibold"><?= esc($row['label']) ?></td>
+                                <td class="text-end"><?= esc(rtrim(rtrim(number_format($row['percentage'], 2), '0'), '.')) ?>%</td>
+                                <td><?= esc($row['due_label']) ?></td>
+                                <td class="text-end"><?= esc($fmtMoney($row['amount'])) ?></td>
+                                <?php if ($scheduleHasPayment): ?>
+                                    <td class="text-end text-success">
+                                        <?php if ($row['paid'] > 0.005): ?>
+                                            <?= esc($fmtMoney($row['paid'])) ?>
+                                            <?php if (!empty($row['paid_on'])): ?>
+                                                <div class="text-muted" style="font-size:.75rem;">paid <?= esc(date('d M Y', strtotime((string)$row['paid_on']))) ?></div>
+                                            <?php endif; ?>
+                                        <?php else: ?><span class="text-muted">&mdash;</span><?php endif; ?>
+                                    </td>
+                                    <td class="text-end fw-semibold"><?= esc($fmtMoney($row['balance'])) ?></td>
+                                <?php endif; ?>
+                                <td class="text-end"><span class="badge <?= $rowBadge ?>"><?= $rowLabel ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end mb-3">
+                <table style="min-width:280px;font-size:.9rem;">
+                    <tr>
+                        <td class="text-muted py-1">Invoice Total</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($fmtMoney($schedule['total'])) ?></td>
+                    </tr>
+                    <?php if ($scheduleHasPayment): ?>
+                    <tr>
+                        <td class="text-muted py-1">Amount Received</td>
+                        <td class="text-end fw-semibold text-success py-1"><?= esc($fmtMoney($schedule['paid'])) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr style="border-top:1px solid #334155;">
+                        <td class="fw-bold pt-2"><?= $scheduleNowDue > 0.005 ? 'Now Payable' . ($scheduleNowLabel !== '' ? ' - ' . esc($scheduleNowLabel) : '') : 'Paid in Full' ?></td>
+                        <td class="text-end fw-bold pt-2 <?= $scheduleNowDue > 0.005 ? 'text-danger' : 'text-success' ?>" style="font-size:1.05rem;"><?= esc($fmtMoney($scheduleNowDue > 0.005 ? $scheduleNowDue : 0)) ?></td>
+                    </tr>
+                    <?php if ($schedule['due'] - $scheduleNowDue > 0.005): ?>
+                    <tr>
+                        <td class="text-muted py-1">Payable Later</td>
+                        <td class="text-end fw-semibold py-1"><?= esc($fmtMoney($schedule['due'] - $scheduleNowDue)) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+        <?php endif; ?>
+
+        <?php helper('invoice_terms'); ?>
+        <?php if (!empty(trim((string)($bankDetailsText ?? ''))) || !empty(trim((string)($invoiceTermsText ?? '')))): ?>
+            <hr>
+            <div class="row g-3">
+                <?php if (!empty(trim((string)($bankDetailsText ?? '')))): ?>
+                    <div class="col-lg-6">
+                        <div class="so-address-card shadow-sm h-100">
+                            <div class="addr-title">Bank Details</div>
+                            <div class="addr-lines"><?= invoice_bank_details_html((string)$bankDetailsText) ?></div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                <?php if (!empty(trim((string)($invoiceTermsText ?? '')))): ?>
+                    <div class="col-lg-6">
+                        <div class="so-address-card shadow-sm h-100">
+                            <div class="addr-title">Terms &amp; Conditions</div>
+                            <div class="addr-lines"><?= invoice_terms_html((string)$invoiceTermsText) ?></div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <hr>
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0" style="font-size:1rem;">Payments For This Invoice</h5>
@@ -466,7 +645,12 @@
         </div>
         <?php $invoicePayments = $invoicePayments ?? []; ?>
         <?php if (empty($invoicePayments)): ?>
-            <div class="text-muted" style="font-size:.9rem;">No payments have been allocated to this invoice yet.</div>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="text-muted" style="font-size:.9rem;">No payments have been recorded and allocated to this invoice yet.</div>
+                <?php if (!$invoiceIsPaid && $statusKey !== 'draft' && $statusKey !== 'cancelled'): ?>
+                    <a class="btn btn-sm btn-outline-success" href="<?= site_url('accounting/customer-payments/pay?invoice_id=' . ($invoice['id'] ?? 0) . '&customer_id=' . ($invoice['customer_id'] ?? '') . '&amount=' . ($invoice['total_amount'] ?? $invoice['total'] ?? '')) ?>">Receive Payment</a>
+                <?php endif; ?>
+            </div>
         <?php else: ?>
             <div class="table-responsive mb-2">
                 <table class="table table-sm align-middle">
@@ -504,6 +688,53 @@
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (($mode ?? 'view') !== 'edit' && $statusKey !== 'cancelled'): ?>
+<div class="modal fade" id="paymentTermsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <form class="modal-content" method="post" action="<?= site_url('customer-invoices/payment-terms/' . ($invoice['id'] ?? 0)) ?>">
+            <?= csrf_field() ?>
+            <div class="modal-header">
+                <h5 class="modal-title">Payment Terms &amp; Payment Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Payment Terms</label>
+                    <select name="payment_term_id" class="form-select">
+                        <option value="">No payment terms (single due date)</option>
+                        <?php foreach (($paymentTermOptions ?? []) as $term): ?>
+                            <option value="<?= (int)$term['id'] ?>" <?= (int)($invoice['payment_term_id'] ?? 0) === (int)$term['id'] ? 'selected' : '' ?>>
+                                <?= esc($term['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text">
+                        Rebuilds the instalment schedule and the due date. Invoice amounts, lines and any posted
+                        journal entry are not affected. Manage the available terms under Settings &rarr; Payment Terms.
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Customer PO Number <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="customer_po_number" class="form-control" maxlength="100" value="<?= esc($invoice['customer_po_number'] ?? '') ?>" placeholder="e.g. PO-2026-0148">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bank Details</label>
+                    <textarea name="bank_details" class="form-control rich-editor" rows="5" placeholder="Leave blank to use the company default from Settings."><?= esc($invoice['bank_details'] ?? '') ?></textarea>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Terms &amp; Conditions</label>
+                    <textarea name="terms_conditions" class="form-control rich-editor" rows="5" placeholder="Leave blank to use the company default from Settings."><?= esc($invoice['terms_conditions'] ?? '') ?></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Payment Terms</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 
 <script>
 (function(){
@@ -602,4 +833,8 @@
 
 <?= $this->include('partials/_document_log') ?>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('js') ?>
+<?= $this->include('partials/_rich_editor') ?>
 <?= $this->endSection() ?>

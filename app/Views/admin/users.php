@@ -3,7 +3,7 @@
 <?= $this->section('title') ?>User Management<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="container-fluid py-3 cl-list-page">
+<div class="container-fluid py-3 cl-list-page cl-list-page--dashboard">
 
     <!-- Page Header -->
     <div class="cl-list-header">
@@ -46,13 +46,14 @@
     <div class="card">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
+                <table class="cl-table table table-hover mb-0 align-middle">
                     <thead>
                         <tr>
                             <th style="width:50px">#</th>
                             <th>User</th>
                             <th>Email</th>
                             <th>Roles</th>
+                            <th>Employee</th>
                             <th>Status</th>
                             <th>Last Login</th>
                             <th class="text-center" style="width:160px">Actions</th>
@@ -60,7 +61,7 @@
                     </thead>
                     <tbody>
                     <?php if (empty($users)): ?>
-                        <tr><td colspan="7" class="text-center py-4 text-muted">No users found.</td></tr>
+                        <tr><td colspan="8"><div class="cl-list-empty"><span class="cl-list-empty__icon"><i class="bi bi-people"></i></span><h6>No users found</h6><p>Try changing the search or create a new user account.</p></div></td></tr>
                     <?php else: ?>
                         <?php foreach ($users as $u): ?>
                         <tr>
@@ -77,30 +78,43 @@
                             <td><?= esc($u['email']) ?></td>
                             <td>
                                 <?php foreach ($u['roles'] as $r): ?>
-                                    <span class="badge bg-primary-subtle text-primary"><?= esc($r['name']) ?></span>
+                                    <span class="cl-status-badge cl-status-badge--info"><?= esc($r['name']) ?></span>
                                 <?php endforeach; ?>
                                 <?php if (empty($u['roles'])): ?>
-                                    <span class="badge bg-secondary-subtle text-secondary"><?= ucfirst($u['role'] ?? 'none') ?></span>
+                                    <span class="cl-status-badge cl-status-badge--neutral"><?= ucfirst($u['role'] ?? 'none') ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if (! empty($u['employee'])): ?>
+                                    <a href="<?= base_url('employees/' . (int) $u['employee']['id']) ?>" class="text-decoration-none">
+                                        <?= esc(trim($u['employee']['first_name'] . ' ' . $u['employee']['last_name'])) ?>
+                                    </a>
+                                    <div class="small text-muted"><?= esc($u['employee']['employee_code']) ?></div>
+                                <?php else: ?>
+                                    <span class="text-muted small">Not an employee</span>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($u['is_active']): ?>
-                                    <span class="badge bg-success-subtle text-success"><i class="bi bi-check-circle me-1"></i>Active</span>
+                                    <span class="cl-status-badge cl-status-badge--success"><i class="bi bi-check-circle me-1"></i>Active</span>
                                 <?php else: ?>
-                                    <span class="badge bg-danger-subtle text-danger"><i class="bi bi-x-circle me-1"></i>Inactive</span>
+                                    <span class="cl-status-badge cl-status-badge--danger"><i class="bi bi-x-circle me-1"></i>Inactive</span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-muted small"><?= $u['last_login'] ? date('d M Y H:i', strtotime($u['last_login'])) : '—' ?></td>
                             <td class="text-center">
-                                <a href="<?= base_url('admin/users/' . $u['id'] . '/edit') ?>" class="btn btn-sm btn-outline-primary" title="Edit">
+                                <a href="<?= base_url('admin/users/' . $u['id'] . '/edit') ?>" class="btn btn-sm btn-outline-primary cl-icon-action" title="Edit">
                                     <i class="bi bi-pencil"></i>
                                 </a>
-                                <a href="<?= base_url('admin/users/' . $u['id'] . '/toggle') ?>"
-                                   class="btn btn-sm btn-outline-<?= $u['is_active'] ? 'warning' : 'success' ?>"
-                                   title="<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?>"
-                                   onclick="return confirm('<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?> this user?')">
-                                    <i class="bi bi-<?= $u['is_active'] ? 'pause-circle' : 'play-circle' ?>"></i>
-                                </a>
+                                <?= form_open('admin/users/' . $u['id'] . '/toggle', [
+                                    'class'    => 'd-inline',
+                                    'onsubmit' => "return confirm('" . ($u['is_active'] ? 'Deactivate' : 'Activate') . " this user?')",
+                                ]) ?>
+                                    <button class="btn btn-sm btn-outline-<?= $u['is_active'] ? 'warning' : 'success' ?> cl-icon-action"
+                                            title="<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?>">
+                                        <i class="bi bi-<?= $u['is_active'] ? 'pause-circle' : 'play-circle' ?>"></i>
+                                    </button>
+                                <?= form_close() ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -118,13 +132,4 @@
     </div>
 </div>
 
-<style>
-.cl-avatar-sm {
-    width: 36px; height: 36px; border-radius: 50%;
-    background: var(--cl-primary, var(--primary-color, #4f46e5));
-    color: #fff; font-size: 0.75rem; font-weight: 600;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-}
-</style>
 <?= $this->endSection() ?>

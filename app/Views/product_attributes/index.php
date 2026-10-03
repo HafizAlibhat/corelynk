@@ -1,61 +1,91 @@
 <?= $this->extend('layouts/main') ?>
 
+<?php
+    $attributeCount = is_array($attributes ?? null) ? count($attributes) : 0;
+    $valueCount = 0;
+    if (!empty($attributes) && is_array($attributes)) {
+        foreach ($attributes as $__attr) {
+            $vals = json_decode($__attr['values'] ?? '[]', true) ?? [];
+            $valueCount += is_array($vals) ? count($vals) : 0;
+        }
+    }
+?>
+
 <?= $this->section('content') ?>
-<div class="row">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid cl-list-page cl-attributes-page" data-cl-list>
+    <div class="cl-list-page-header">
+        <div class="cl-attributes-title-block">
             <h2 class="mb-0"><i class="bi bi-list-ul me-2"></i>Global Attributes</h2>
-            <div class="d-flex gap-2">
-                <a href="<?= base_url('product-attributes/create?modal=1') ?>" class="btn btn-sm btn-primary open-remote-modal">Add Attribute</a>
+            <div class="small text-muted">Manage shared product attribute groups and values</div>
+            <div class="cl-attributes-header-metrics" aria-label="Attribute summary">
+                <span><strong><?= number_format((int)$attributeCount) ?></strong> groups</span>
+                <span><strong><?= number_format((int)$valueCount) ?></strong> values</span>
             </div>
         </div>
+        <div class="cl-list-page-actions">
+            <a href="<?= base_url('product-attributes/create?modal=1') ?>" class="btn btn-primary cl-attributes-add-btn open-remote-modal">
+                <i class="bi bi-plus-circle me-2"></i>Add Attribute
+            </a>
+        </div>
+    </div>
 
-        <div class="card">
-            <div class="card-body">
-                <?php if (empty($attributes)): ?>
-                    <div class="alert alert-info mb-0">No attributes yet. Use "Add Attribute" to create one.</div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="width:20%">Name</th>
-                                    <th style="width:70%">Values</th>
-                                    <th style="width:10%" class="text-end">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach ($attributes as $a): ?>
-                                <?php $values = json_decode($a['values'] ?? '[]', true) ?? []; ?>
-                                <tr id="attribute-row-<?= esc($a['id']) ?>" data-attribute-id="<?= esc($a['id']) ?>" data-attribute-name="<?= esc($a['name']) ?>">
-                                    <td class="fw-semibold"><?= esc($a['name']) ?></td>
-                                    <td>
-                                        <div class="d-flex flex-wrap gap-2 align-items-center">
-                                            <?php if (empty($values)): ?>
-                                                <span class="text-muted"><em>No values</em></span>
-                                            <?php else: ?>
-                                                <?php foreach ($values as $val): ?>
-                                                    <span class="badge bg-light text-dark attr-value-badge" data-attribute-id="<?= esc($a['id']) ?>" data-value="<?= esc($val) ?>" title="Click to edit">
-                                                        <span class="value-text" style="cursor:pointer;"><?= esc($val) ?></span>
-                                                        <a href="#" class="ms-1 text-decoration-none text-danger value-delete" title="Delete value">&times;</a>
-                                                    </span>
-                                                <?php endforeach; ?>
-                                            <?php endif; ?>
+    <div class="card border-0 shadow-sm cl-list-table-card">
+        <div class="card-body p-0">
+            <?php if (empty($attributes)): ?>
+                <div class="cl-list-empty cl-list-empty--row">
+                    <span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-list-ul"></i></span>
+                    <h6>No attributes yet</h6>
+                    <p>Use Add Attribute to create the first shared attribute group.</p>
+                </div>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="cl-table table table-sm table-hover align-middle cl-attributes-table mb-0">
+                        <caption class="visually-hidden">Global attributes and their values</caption>
+                        <colgroup>
+                            <col style="width: 14%;">
+                            <col style="width: 76%;">
+                            <col style="width: 10%;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th scope="col">Name</th>
+                                <th scope="col">Values</th>
+                                <th scope="col" class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($attributes as $a): ?>
+                            <?php $values = json_decode($a['values'] ?? '[]', true) ?? []; ?>
+                            <tr id="attribute-row-<?= esc($a['id']) ?>" data-attribute-id="<?= esc($a['id']) ?>" data-attribute-name="<?= esc($a['name']) ?>">
+                                <td class="fw-semibold cl-attribute-name"><?= esc($a['name']) ?></td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center cl-attribute-values">
+                                        <?php if (empty($values)): ?>
+                                            <span class="text-muted cl-attribute-empty"><em>No values</em></span>
+                                        <?php else: ?>
+                                            <?php foreach ($values as $val): ?>
+                                                <span class="attr-value-badge" data-attribute-id="<?= esc($a['id']) ?>" data-value="<?= esc($val) ?>" title="Click to edit">
+                                                    <span class="value-text"><?= esc($val) ?></span>
+                                                    <a href="#" class="value-delete" title="Delete value" aria-label="Delete value">&times;</a>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
 
-                                            <button type="button" class="btn btn-outline-primary btn-sm btn-add-value" data-id="<?= esc($a['id']) ?>">+ Value</button>
-                                        </div>
-                                    </td>
-                                    <td class="text-end">
-                                        <a href="<?= base_url('product-attributes/' . (int)$a['id'] . '/edit?modal=1') ?>" class="btn btn-outline-secondary btn-sm open-remote-modal">Edit</a>
-                                        <button type="button" class="btn btn-danger btn-sm btn-delete-attribute" data-id="<?= esc($a['id']) ?>" data-name="<?= esc($a['name']) ?>">Delete</button>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
+                                        <button type="button" class="btn btn-outline-primary btn-sm btn-add-value cl-attribute-add-value" data-id="<?= esc($a['id']) ?>">
+                                            <i class="bi bi-plus-lg me-1"></i>Value
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="text-end cl-attribute-actions">
+                                    <a href="<?= base_url('product-attributes/' . (int)$a['id'] . '/edit?modal=1') ?>" class="btn btn-outline-secondary btn-sm open-remote-modal">Edit</a>
+                                    <button type="button" class="btn btn-danger btn-sm btn-delete-attribute" data-id="<?= esc($a['id']) ?>" data-name="<?= esc($a['name']) ?>">Delete</button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

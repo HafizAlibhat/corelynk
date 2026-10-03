@@ -71,7 +71,7 @@ class InventoryStock extends BaseController
             ->join('warehouses w', 'w.id = sb.warehouse_id', 'left')
             ->join('warehouse_locations l', 'l.id = sb.location_id', 'left')
             ->where('sb.product_id', $productId)
-            ->groupBy('sb.warehouse_id, sb.location_id')
+            ->groupBy('sb.warehouse_id, w.name, sb.location_id, l.name')
             ->orderBy('w.name', 'ASC')
             ->orderBy('l.name', 'ASC');
 
@@ -194,12 +194,29 @@ class InventoryStock extends BaseController
         }
         $select .= ", SUM(sb.quantity) as quantity";
 
+        $groupBy = [
+            'sb.warehouse_id',
+            'w.name',
+            'sb.location_id',
+            'l.name',
+            'sb.product_id',
+            'p.name',
+            'p.sku',
+            'p.images',
+        ];
+        if ($hasVariantStock) {
+            $groupBy[] = 'sb.variant_id';
+            $groupBy[] = 'pv.art_number';
+            $groupBy[] = 'pv.name';
+            $groupBy[] = 'pv.image';
+        }
+
         $builder = $db->table('stock_balances sb')
             ->select($select)
             ->join('warehouses w', 'w.id = sb.warehouse_id', 'left')
             ->join('warehouse_locations l', 'l.id = sb.location_id', 'left')
             ->join('products p', 'p.id = sb.product_id', 'left')
-            ->groupBy($hasVariantStock ? 'sb.warehouse_id, sb.location_id, sb.product_id, sb.variant_id' : 'sb.warehouse_id, sb.location_id, sb.product_id')
+            ->groupBy(implode(', ', $groupBy))
             ->orderBy('w.name', 'ASC')
             ->orderBy('l.name', 'ASC')
             ->orderBy('p.name', 'ASC');
@@ -269,11 +286,44 @@ class InventoryStock extends BaseController
             return implode(' / ', array_reverse($parts));
         };
 
-        // Attach full_path to rows
+                // Fetch all active reservations for the returned products
+        $productIds = array_unique(array_column($rows, 'product_id'));
+        $reservationsGrouped = [];
+        if (!empty($productIds) && $db->tableExists('stock_reservations')) {
+            $resQuery = $db->table('stock_reservations sr')
+                ->select('sr.*, so.order_number')
+                ->join('sales_orders so', 'so.id = sr.sales_order_id', 'left')
+                ->whereIn('sr.product_id', $productIds)
+                ->where('sr.status', 'active')
+                ->get()
+                ->getResultArray();
+                
+            foreach ($resQuery as $resRow) {
+                $rem = (float)$resRow['reserved_quantity'] - (float)$resRow['consumed_quantity'] - (float)$resRow['released_quantity'];
+                if ($rem <= 0.0001) continue;
+                $key = $resRow['warehouse_id'] . '_' . $resRow['location_id'] . '_' . $resRow['product_id'] . '_' . ($resRow['variant_id'] ?: 0);
+                if (!isset($reservationsGrouped[$key])) $reservationsGrouped[$key] = [];
+                $resRow['remaining'] = $rem;
+                $reservationsGrouped[$key][] = $resRow;
+            }
+        }
+
+        // Attach full_path to rows and deduct reservations
         foreach ($rows as &$r) {
             $r['location_path'] = $buildPath($r['location_id']);
-            // ensure quantity is numeric
-            $r['quantity'] = isset($r['quantity']) ? (float)$r['quantity'] : 0;
+            $qty = isset($r['quantity']) ? (float)$r['quantity'] : 0;
+            $r['total_stock'] = $qty;
+            $r['reservations'] = [];
+            $r['reserved_total'] = 0.0;
+            
+            $key = $r['warehouse_id'] . '_' . $r['location_id'] . '_' . $r['product_id'] . '_' . (isset($r['variant_id']) ? $r['variant_id'] : 0);
+            if (isset($reservationsGrouped[$key])) {
+                $r['reservations'] = $reservationsGrouped[$key];
+                foreach ($reservationsGrouped[$key] as $rr) {
+                    $r['reserved_total'] += $rr['remaining'];
+                }
+            }
+            $r['quantity'] = max(0.0, $qty - $r['reserved_total']);
         }
 
         // Warehouse list for filter
@@ -525,3 +575,5 @@ class InventoryStock extends BaseController
         return $this->response->setJSON(['success' => true, 'data' => $final]);
     }
 }
+
+

@@ -96,7 +96,10 @@ class AccountingJournals extends BaseController
                 $rows = $db->query(
                     'SELECT cpa.payment_id, cpa.invoice_id, ci.invoice_number, jei.id AS invoice_journal_id '
                     . 'FROM customer_payment_allocations cpa '
-                    . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+                    . 'INNER JOIN customer_payments cp_guard ON cp_guard.id = cpa.payment_id '
+                    . 'INNER JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+                    . 'AND cp_guard.customer_id = ci.customer_id '
+                    . 'AND COALESCE(cpa.created_at, cp_guard.created_at, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
                     . "LEFT JOIN journal_entries jei ON jei.source_type = 'invoice' AND jei.source_id = cpa.invoice_id "
                     . 'WHERE cpa.payment_id IN (' . implode(',', array_map('intval', $paymentIds)) . ')'
                 )->getResultArray();
@@ -127,6 +130,10 @@ class AccountingJournals extends BaseController
                 $rows = $db->query(
                     'SELECT cpa.invoice_id, cpa.payment_id, jep.id AS payment_journal_id '
                     . 'FROM customer_payment_allocations cpa '
+                    . 'INNER JOIN customer_invoices ci_guard ON ci_guard.id = cpa.invoice_id '
+                    . 'INNER JOIN customer_payments cp_guard ON cp_guard.id = cpa.payment_id '
+                    . 'AND cp_guard.customer_id = ci_guard.customer_id '
+                    . 'AND COALESCE(cpa.created_at, cp_guard.created_at, "1970-01-01 00:00:00") >= COALESCE(ci_guard.created_at, "1970-01-01 00:00:00") '
                     . "LEFT JOIN journal_entries jep ON jep.source_type = 'payment' AND jep.source_id = cpa.payment_id "
                     . 'WHERE cpa.invoice_id IN (' . implode(',', array_map('intval', $invoiceIds)) . ')'
                 )->getResultArray();
@@ -533,6 +540,16 @@ class AccountingJournals extends BaseController
         foreach ($lines as $l) { $sumDebit += (float)($l['debit'] ?? 0); $sumCredit += (float)($l['credit'] ?? 0); }
         $amount = max($sumDebit, $sumCredit);
 
+        // The entry header's currency_code can be stale/wrong relative to what was actually
+        // posted (e.g. legacy rows from before a posting-logic fix). journal_lines.currency_code
+        // is the source of truth for what was actually booked, so derive the display currency
+        // from the lines themselves whenever they all agree, instead of trusting the header blindly.
+        $lineCurrencies = array_unique(array_filter(array_map(
+            static fn($l) => strtoupper(trim((string)($l['currency_code'] ?? ''))),
+            $lines
+        )));
+        $entryCurrencyCode = (count($lineCurrencies) === 1) ? $lineCurrencies[array_key_first($lineCurrencies)] : null;
+
         // Minimal amount to words function (handles up to billions)
         $amount_words = $this->numberToWords((int)floor($amount));
         $fraction = (int)round(($amount - floor($amount)) * 100);
@@ -614,10 +631,12 @@ class AccountingJournals extends BaseController
                 $notesExpr = $hasNotes ? 'cp.notes AS pay_notes, ' : "'' AS pay_notes, ";
                 $hasRef    = in_array('reference_number', $pCols, true);
                 $refExpr   = $hasRef ? 'cp.reference_number AS pay_reference, ' : "'' AS pay_reference, ";
+                $hasFx     = in_array('settlement_fx_rate', $pCols, true) && in_array('bank_charges_fc', $pCols, true) && in_array('withholding_tax_base', $pCols, true);
+                $fxExpr    = $hasFx ? 'cp.settlement_fx_rate AS fx_rate, cp.bank_charges_fc AS fx_bank_charges_fc, cp.withholding_tax_base AS fx_wht_base, cp.bank_charges_currency AS fx_charges_ccy, ' : '';
 
                 $cp = $db->query(
-                    'SELECT cp.id, cp.customer_id, cp.payment_date, cp.amount, cp.payment_method_id, '
-                    . $pmExpr . $accExpr . $currExpr . $notesExpr . $refExpr
+                    'SELECT cp.id, cp.customer_id, cp.payment_date, cp.created_at, cp.amount, cp.payment_method_id, '
+                    . $pmExpr . $accExpr . $currExpr . $notesExpr . $refExpr . $fxExpr
                     . 'c.name AS customer_name '
                     . 'FROM customer_payments cp '
                     . 'LEFT JOIN customers c ON c.id = cp.customer_id '
@@ -635,12 +654,18 @@ class AccountingJournals extends BaseController
                     $allocations = $db->query(
                         'SELECT cpa.invoice_id, cpa.' . $amtCol . ' AS allocated_amount, ' . $invNoExpr2 . ' '
                         . 'FROM customer_payment_allocations cpa '
-                        . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id '
+                        . 'LEFT JOIN customer_invoices ci ON ci.id = cpa.invoice_id AND ci.customer_id = ? '
+                        . 'AND COALESCE(cpa.created_at, ?, "1970-01-01 00:00:00") >= COALESCE(ci.created_at, "1970-01-01 00:00:00") '
                         . 'WHERE cpa.payment_id = ? ORDER BY cpa.id ASC',
-                        [$sourceId]
+                        [(int)$cp['customer_id'], $cp['created_at'] ?? null, $sourceId]
                     )->getResultArray();
 
-                    $invoiceList = array_map(fn($a) => ($a['invoice_number'] ?? ('INV-' . $a['invoice_id'])), $allocations);
+                    $invoiceList = array_map(
+                        fn($a) => !empty($a['invoice_number'])
+                            ? $a['invoice_number']
+                            : ('Historical allocation #' . (int)$a['invoice_id']),
+                        $allocations
+                    );
                     $method      = ucwords(str_replace('_', ' ', $cp['payment_method_name'] ?: 'Online Transfer'));
                     $recvAcc     = trim((string)($cp['receiving_account_name'] ?? ''));
                     $custName    = trim((string)($cp['customer_name'] ?? ('Customer #' . $cp['customer_id'])));
@@ -668,6 +693,41 @@ class AccountingJournals extends BaseController
                         . $recvPhrase
                         . $refPhrase . '.';
 
+                    $fxRate       = (float)($cp['fx_rate'] ?? 0);
+                    $fxChargesFc  = (float)($cp['fx_bank_charges_fc'] ?? 0);
+                    $fxWhtBase    = (float)($cp['fx_wht_base'] ?? 0);
+                    $fxChargesCcy = strtoupper(trim((string)($cp['fx_charges_ccy'] ?? '')));
+                    $payAmount    = (float)($cp['amount'] ?? 0);
+
+                    // Derive the two rates and the plain-language "how did we get this number" line
+                    // an owner/non-accountant needs — the AR (booked) rate from what actually cleared
+                    // the receivable, the bank (settlement) rate from the FX fields, tax as a %.
+                    $bookedRate = 0.0;
+                    $exchangeGain = 0.0;
+                    foreach ($lines as $gl) {
+                        $glName = strtolower($gl['account_name'] ?? '');
+                        if ($bookedRate <= 0 && strpos($glName, 'receivable') !== false && (float)($gl['credit'] ?? 0) > 0 && $payAmount > 0) {
+                            $bookedRate = (float)$gl['credit'] / $payAmount;
+                        }
+                        if (strpos($glName, 'exchange gain') !== false) { $exchangeGain = (float)($gl['credit'] ?? 0); }
+                        if (strpos($glName, 'exchange loss') !== false) { $exchangeGain = -(float)($gl['debit'] ?? 0); }
+                    }
+                    $chargesBase = $fxChargesFc * $fxRate;
+                    $grossBase   = ($payAmount - $fxChargesFc) * $fxRate;
+                    $whtPct      = $grossBase > 0 ? ($fxWhtBase / $grossBase) * 100 : 0;
+                    $netBanked   = $grossBase - $fxWhtBase;
+
+                    $calcExplainer = '';
+                    if ($fxRate > 0) {
+                        $calcExplainer = $payCurr . ' ' . number_format($payAmount, 2)
+                            . ($bookedRate > 0 ? ' booked @ Rs' . number_format($bookedRate, 2) . '/' . $payCurr : '')
+                            . '; bank settled @ Rs' . number_format($fxRate, 2) . '/' . $payCurr
+                            . ($exchangeGain != 0 ? ' (Rs' . number_format(abs($exchangeGain), 2) . ' exchange ' . ($exchangeGain > 0 ? 'gain' : 'loss') . ')' : '')
+                            . '; less bank charges ' . $fxChargesCcy . ' ' . number_format($fxChargesFc, 2) . ' x Rs' . number_format($fxRate, 2) . ' = Rs' . number_format($chargesBase, 2)
+                            . ' & tax Rs' . number_format($fxWhtBase, 2) . ' (' . number_format($whtPct, 2) . '%)'
+                            . ' = Rs' . number_format($netBanked, 2) . ' received in bank.';
+                    }
+
                     $narrativeContext = [
                         'customer_name'      => $custName,
                         'amount_display'     => $payCurr . ' ' . $payAmt,
@@ -678,6 +738,18 @@ class AccountingJournals extends BaseController
                         'invoice_numbers'    => $invoiceList,
                         'human_narration'    => $humanNarration,
                         'source_label'       => 'Customer Payment #' . $sourceId,
+                        // FX-settlement breakdown, used to explain *why* the bank/charges lines
+                        // convert to the PKR amounts shown (rate applied, source currency amount).
+                        'fx_rate'            => $fxRate,
+                        'fx_bank_charges_fc' => $fxChargesFc,
+                        'fx_bank_charges_ccy'=> $fxChargesCcy ?: $payCurr,
+                        'fx_wht_base'        => $fxWhtBase,
+                        'pay_currency'       => $payCurr,
+                        'pay_amount'         => $payAmount,
+                        'booked_rate'        => $bookedRate,
+                        'bank_rate'          => $fxRate,
+                        'wht_pct'            => $whtPct,
+                        'calc_explainer'     => $calcExplainer,
                     ];
                 }
             } catch (\Throwable $_) { /* best effort */ }
@@ -711,7 +783,7 @@ class AccountingJournals extends BaseController
             'source_type' => $entry['source_type'] ?? '',
             'source_id' => (int)($entry['source_id'] ?? 0),
             'amount' => $amount,
-            'currency_code' => $entry['currency_code'] ?? 'PKR',
+            'currency_code' => $entryCurrencyCode ?? ($entry['currency_code'] ?? 'PKR'),
             'amount_words' => $amount_words,
             'amount_in_words' => $amount_words,
             'payer' => $party_value,

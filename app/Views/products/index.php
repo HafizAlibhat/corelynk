@@ -1,5 +1,13 @@
 ﻿<?= $this->extend('layouts/main') ?>
 
+<?= $this->section('title') ?>
+Products
+<?= $this->endSection() ?>
+
+<?= $this->section('styles') ?>
+<link rel="stylesheet" href="<?= base_url('assets/css/components/products-list-alignment.css') ?>?v=1">
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
 <?php
     $pager         = $products['pager'] ?? null;
@@ -36,6 +44,16 @@
     $pgBase    = base_url('/products') . '?' . http_build_query($pgParams) . '&page=';
     $attributeOptions = $attribute_options ?? [];
     $matchedVariantsByProduct = $matched_variants_by_product ?? [];
+    $activeFilterCount = 0;
+    if (trim((string)($current_search ?? '')) !== '') $activeFilterCount++;
+    if (!empty($current_category ?? '')) $activeFilterCount++;
+    if (!empty($current_status ?? '')) $activeFilterCount++;
+    if (!empty($current_type ?? '')) $activeFilterCount++;
+    if (!empty($current_has_assets ?? '')) $activeFilterCount++;
+    if (($current_sort_by ?? 'recent') !== 'recent') $activeFilterCount++;
+    if ((int)($per_page ?? 20) !== 20) $activeFilterCount++;
+    if (!empty($current_attributes) && is_array($current_attributes)) $activeFilterCount += count($current_attributes);
+    $moreFiltersOpen = !empty($current_attributes) && is_array($current_attributes);
     $allAttributeValues = [];
     foreach ($attributeOptions as $__vals) {
         if (!is_array($__vals)) {
@@ -53,24 +71,16 @@
 ?>
 
 <style>
-    .pl-wrap { padding: .75rem 1rem; }
+    .pl-wrap { padding: .4rem .85rem .75rem; }
     .pl-card { border: 1px solid var(--cl-border); border-radius: 6px; overflow: visible; box-shadow: var(--cl-shadow-xs); background: var(--cl-surface); }
     .pl-card .table-responsive { overflow-x: auto; }
-    .pl-card-header { display: flex; align-items: center; justify-content: space-between; padding: .45rem .75rem; border-bottom: 1px solid var(--cl-border); gap: .5rem; }
+    .pl-card-header { display: flex; align-items: center; justify-content: space-between; padding: .35rem .75rem; border-bottom: 1px solid var(--cl-border); gap: .5rem; }
     .pl-card-header-title { font-size: .82rem; font-weight: 700; color: var(--cl-text-primary); line-height: 1; }
     .pl-card-header-sub { font-size: .66rem; color: var(--cl-text-muted); margin-top: .1rem; }
     .pl-btn { display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 .55rem; font-size: .72rem; border-radius: 4px; border: 1px solid var(--cl-border); background: var(--cl-surface); color: var(--cl-text-secondary); cursor: pointer; gap: .28rem; text-decoration: none; white-space: nowrap; transition: all .12s; }
     .pl-btn:hover { border-color: var(--cl-primary); color: var(--cl-primary); background: var(--cl-primary-50); }
     .pl-btn.pl-btn-primary { background: var(--cl-primary); border-color: var(--cl-primary); color: #fff; }
     .pl-btn.pl-btn-primary:hover { opacity: .88; color: #fff; }
-    .pl-table { margin-bottom: 0; font-size: .76rem; }
-    .pl-card .pl-table thead th { font-size: .62rem !important; text-transform: uppercase; letter-spacing: .05em; color: var(--cl-text-muted); background: var(--cl-surface-alt); border-bottom: 1px solid var(--cl-border); padding: .26rem .45rem !important; white-space: nowrap; font-weight: 700 !important; }
-    body.theme-dark .pl-card .pl-table thead th { color: #94a3b8 !important; background: #162033 !important; border-bottom-color: #334155 !important; }
-    .pl-card .pl-table tbody td { padding: .18rem .45rem !important; border-bottom: 1px solid var(--cl-border-light); vertical-align: middle; font-size: .76rem !important; }
-    .pl-table tbody tr:last-child td { border-bottom: none; }
-    body.theme-dark .pl-table tbody tr:nth-child(even) td { background: #0f1a2b !important; }
-    body.theme-dark .pl-table tbody tr:nth-child(odd) td  { background: #1a2740 !important; }
-    body.theme-dark .pl-table tbody tr:hover td { background: rgba(37,99,235,.1) !important; }
     .pl-thumb { width: 40px; height: 40px; border-radius: 4px; border: 1px solid var(--cl-border); object-fit: cover; flex-shrink: 0; cursor: zoom-in; }
     .pl-thumb-empty { width: 24px; height: 24px; border-radius: 3px; border: 1px solid var(--cl-border); background: var(--cl-surface-alt); display: inline-flex; align-items: center; justify-content: center; color: var(--cl-text-muted); font-size: .62rem; flex-shrink: 0; }
     .pl-name { font-size: .76rem; font-weight: 600; line-height: 1.1; }
@@ -276,23 +286,46 @@
         box-shadow: 0 1px 4px rgba(37,99,235,.16);
     }
     .pl-filter-toggle {
+        position: relative;
         display: inline-flex;
         align-items: center;
-        gap: .26rem;
-        padding: .18rem .4rem;
+        gap: .35rem;
+        min-height: 32px;
+        padding: 0 .65rem 0 .55rem;
         border: 1px solid var(--cl-border);
-        border-radius: 7px;
+        border-radius: 999px;
         background: var(--cl-surface-alt);
-        font-size: .64rem;
-        font-weight: 700;
+        font-size: .66rem;
+        font-weight: 800;
         color: var(--cl-text-secondary);
         margin-right: .05rem;
         white-space: nowrap;
+        box-shadow: none;
     }
     .pl-filter-toggle .form-check-input {
-        margin-top: 0;
-        width: .9rem;
-        height: .9rem;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+    .pl-filter-toggle:has(.form-check-input:checked) {
+        background: rgba(37,99,235,.08);
+        border-color: rgba(37,99,235,.24);
+        color: #1d4ed8;
+    }
+    .pl-filter-toggle .pl-filter-toggle-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+        color: currentColor;
+    }
+    .pl-filter-toggle .pl-filter-toggle-track {
+        flex: 0 0 24px;
     }
     .pl-filter-advanced {
         margin-top: 0;
@@ -331,8 +364,8 @@
     .pl-tabs-bar {
         display: flex;
         align-items: center;
-        gap: .45rem;
-        padding: .5rem .65rem;
+        gap: .4rem;
+        padding: .4rem .65rem;
         border-bottom: 1px solid var(--cl-border);
         background: var(--cl-surface);
         overflow-x: auto;
@@ -342,10 +375,11 @@
         display: inline-flex;
         align-items: center;
         gap: .3rem;
-        padding: .35rem .6rem;
+        min-height: 30px;
+        padding: .3rem .6rem;
         border: none;
         border-bottom: 2px solid transparent;
-        border-radius: 0;
+        border-radius: 999px;
         background: none;
         font-size: .74rem;
         font-weight: 700;
@@ -357,12 +391,12 @@
     }
     .pl-tab-btn:hover {
         color: var(--cl-text-secondary);
-        background: rgba(15,118,110,.06);
+        background: rgba(15,118,110,.08);
     }
     .pl-tab-btn.active {
         color: #0f766e;
         border-bottom-color: #0f766e;
-        background: transparent;
+        background: rgba(15,118,110,.08);
     }
     body.theme-dark .pl-tab-btn.active {
         color: #14b8a6;
@@ -375,127 +409,514 @@
         color: #cbd5e1;
         background: rgba(20,184,166,.08);
     }
+    body.theme-dark .pl-card {
+        background: #0f172a;
+        border-color: #334155;
+    }
+    body.theme-dark .pl-card-header,
+    body.theme-dark .pl-filter-form,
+    body.theme-dark .pl-tabs-bar {
+        background: #0f172a;
+        border-color: #334155;
+    }
+    body.theme-dark .pl-filter-form {
+        background:
+            radial-gradient(120% 120% at 100% -20%, rgba(37,99,235,.08) 0%, rgba(37,99,235,0) 45%),
+            linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+    }
+    body.theme-dark .pl-filter-toolbar,
+    body.theme-dark .pl-filter-chipbar,
+    body.theme-dark .pl-more-filters {
+        background: #0f172a;
+        border-color: #334155;
+    }
+    body.theme-dark .pl-filter-search-label,
+    body.theme-dark .pl-chip-label,
+    body.theme-dark .pl-more-filters-summary,
+    body.theme-dark .pl-card-header-title {
+        color: #e2e8f0;
+    }
+    body.theme-dark .pl-filter-search-label span:last-child,
+    body.theme-dark .pl-filter-tip,
+    body.theme-dark .pl-sort-hint,
+    body.theme-dark .pl-card-header-sub,
+    body.theme-dark .pl-more-filters-meta {
+        color: #94a3b8;
+    }
+    body.theme-dark .pl-filter-toggle {
+        background: #162033;
+        border-color: #334155;
+        color: #dbe7f7;
+    }
+    body.theme-dark .pl-filter-toggle:has(.form-check-input:checked) {
+        background: rgba(59,130,246,.16);
+        border-color: rgba(96,165,250,.36);
+        color: #bfdbfe;
+    }
+    body.theme-dark .pl-filter-toggle .pl-filter-toggle-track {
+        background: #334155;
+    }
+    body.theme-dark .pl-tab-btn.active {
+        color: #bfdbfe;
+        border-bottom-color: #60a5fa;
+        background: rgba(59,130,246,.12);
+    }
+    body.theme-dark .pl-tab-btn:hover {
+        background: rgba(59,130,246,.08);
+    }
+    body.theme-dark .pl-filter-control-search,
+    body.theme-dark .pl-filter-chipbar .pl-filter-control {
+        background: #111827;
+        border-color: #334155;
+        color: #e2e8f0;
+    }
+    body.theme-dark .pl-filter-control-search::placeholder,
+    body.theme-dark .pl-filter-chipbar .pl-filter-control::placeholder {
+        color: #64748b;
+        opacity: 1;
+    }
     @media (max-width: 991px) {
         .pl-sort-hint {
             text-align: left;
         }
     }
+    .pl-filter-form {
+        margin: 0;
+        padding: .35rem .45rem .45rem;
+        border-bottom: 1px solid var(--cl-border);
+        background:
+            radial-gradient(120% 120% at 100% -20%, rgba(37,99,235,.05) 0%, rgba(37,99,235,0) 45%),
+            linear-gradient(180deg, rgba(248,250,252,.94) 0%, var(--cl-surface) 100%);
+    }
+    body.theme-dark .pl-filter-form {
+        background:
+            radial-gradient(120% 120% at 100% -20%, rgba(37,99,235,.08) 0%, rgba(37,99,235,0) 45%),
+            linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+    }
+    .pl-filter-toolbar,
+    .pl-filter-chipbar,
+    .pl-more-filters {
+        border: 1px solid var(--cl-border);
+        border-radius: 12px;
+        background: var(--cl-surface);
+        box-shadow: var(--cl-shadow-xs);
+    }
+    .pl-filter-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        column-gap: .55rem;
+        row-gap: .28rem;
+        align-items: end;
+        padding: .35rem .45rem;
+    }
+    .pl-filter-toolbar-search {
+        display: grid;
+        gap: .2rem;
+        min-width: 0;
+    }
+    .pl-filter-search-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+        margin-bottom: 0;
+        font-size: .61rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--cl-text-secondary);
+    }
+    .pl-filter-search-label span:last-child {
+        font-size: .56rem;
+        font-weight: 700;
+        color: var(--cl-text-muted);
+        text-transform: none;
+        letter-spacing: 0;
+        white-space: nowrap;
+    }
+    .pl-filter-search-label label {
+        margin: 0;
+    }
+    .pl-filter-control-search {
+        min-height: 34px;
+        font-size: .8rem;
+        border-radius: 10px;
+        padding-left: 2rem;
+    }
+    .pl-filter-toolbar-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-end;
+        align-self: end;
+        gap: .28rem;
+    }
+    .pl-filter-toolbar .pl-filter-toggle,
+    .pl-filter-toolbar .pl-filter-btn {
+        height: 32px;
+        min-height: 32px;
+        border-radius: 999px;
+        box-shadow: none;
+    }
+    .pl-filter-toolbar .pl-filter-btn {
+        padding-inline: .64rem;
+        font-size: .68rem;
+    }
+    .pl-filter-toolbar .pl-filter-btn.pl-filter-btn-soft {
+        padding-inline: .6rem;
+    }
+    .pl-more-filters {
+        margin-top: .35rem;
+        padding: .4rem .5rem;
+    }
+    .pl-more-filters[open] {
+        padding-bottom: .65rem;
+    }
+    .pl-more-filters > summary {
+        list-style: none;
+    }
+    .pl-more-filters > summary::-webkit-details-marker {
+        display: none;
+    }
+    .pl-more-filters-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+        cursor: pointer;
+        user-select: none;
+        font-size: .66rem;
+        font-weight: 800;
+        letter-spacing: .035em;
+        text-transform: uppercase;
+        color: var(--cl-text-secondary);
+    }
+    .pl-more-filters-summary::after {
+        content: '\f282';
+        font-family: 'bootstrap-icons';
+        font-size: .8rem;
+        font-weight: 400;
+        color: var(--cl-text-muted);
+        transition: transform .16s ease;
+    }
+    .pl-more-filters[open] > .pl-more-filters-summary::after {
+        transform: rotate(180deg);
+    }
+    .pl-more-filters-meta {
+        font-size: .56rem;
+        font-weight: 700;
+        color: var(--cl-text-muted);
+        text-transform: none;
+        letter-spacing: 0;
+        white-space: nowrap;
+    }
+    .pl-filter-chipbar {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: .4rem;
+        overflow-x: auto;
+        padding: .34rem .4rem;
+        margin-top: .3rem;
+        scrollbar-width: thin;
+    }
+    .pl-filter-chipbar::-webkit-scrollbar {
+        height: 8px;
+    }
+    .pl-filter-chipbar::-webkit-scrollbar-thumb {
+        background: rgba(148,163,184,.45);
+        border-radius: 999px;
+    }
+    .pl-chip-field {
+        flex: 0 0 11.75rem;
+        min-width: 9.75rem;
+    }
+    .pl-chip-field.pl-chip-field-sm {
+        flex-basis: 8.25rem;
+        min-width: 7.25rem;
+    }
+    .pl-chip-field.pl-chip-field-md {
+        flex-basis: 9.25rem;
+        min-width: 8rem;
+    }
+    .pl-chip-field.pl-chip-field-lg {
+        flex-basis: 13.5rem;
+        min-width: 12rem;
+    }
+    .pl-chip-label {
+        display: block;
+        margin: 0 0 .14rem;
+        font-size: .58rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .035em;
+        color: var(--cl-text-secondary);
+    }
+    .pl-filter-chipbar .pl-filter-control {
+        min-height: 32px;
+        border-radius: 10px;
+        font-size: .72rem;
+    }
+    .pl-filter-chipbar .pl-filter-control:focus {
+        box-shadow: 0 0 0 .12rem rgba(15,118,110,.12);
+    }
+    .pl-filter-chipbar .pl-filter-tip {
+        margin-top: .2rem;
+    }
+    .pl-filter-chip-actions {
+        flex: 0 0 7rem;
+        min-width: 6.5rem;
+        display: flex;
+        align-items: end;
+    }
+    .pl-filter-chip-actions .pl-filter-btn {
+        width: 100%;
+        height: 32px;
+        border-radius: 999px;
+        padding-inline: .55rem;
+        font-size: .68rem;
+    }
+    .pl-filter-chipbar .pl-filter-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: .25rem;
+        height: 32px;
+        min-height: 32px;
+        padding: 0 .55rem;
+        border: 1px solid var(--cl-border);
+        border-radius: 999px;
+        background: var(--cl-surface);
+        font-size: .62rem;
+        font-weight: 800;
+        color: var(--cl-text-secondary);
+        box-shadow: none;
+        white-space: nowrap;
+    }
+    .pl-filter-chipbar .pl-filter-toggle .form-check-input {
+        margin-top: 0;
+        width: .88rem;
+        height: .88rem;
+    }
+    .pl-filter-tip {
+        margin-top: .18rem;
+        font-size: .58rem;
+    }
+    .pl-more-filters-panel {
+        margin-top: .2rem;
+    }
+    .pl-filter-attributes {
+        margin-top: .35rem;
+    }
+    .pl-filter-attributes-row {
+        align-items: end;
+    }
+    .pl-filter-attributes-actions {
+        display: flex;
+        align-items: end;
+        height: 100%;
+    }
+    #plAttrAddBtn {
+        height: 32px;
+        border-radius: 999px;
+        padding-inline: .7rem;
+        width: 100%;
+    }
+    @media (max-width: 767.98px) {
+        .pl-filter-toolbar {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 38px auto;
+        }
+        .pl-filter-search-label,
+        .pl-search-shell,
+        .pl-filter-toolbar-actions {
+            grid-column: 1;
+        }
+        .pl-filter-search-label { grid-row: 1; }
+        .pl-search-shell { grid-row: 2; }
+        .pl-filter-toolbar-actions {
+            display: grid;
+            grid-row: 3;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            justify-content: flex-start;
+            margin-top: .45rem;
+            flex-wrap: wrap;
+        }
+        .pl-filter-form {
+            padding: .55rem;
+        }
+        .pl-filter-toolbar,
+        .pl-more-filters {
+            border-radius: 11px;
+        }
+        .pl-filter-toolbar {
+            padding: .55rem;
+        }
+        .pl-filter-toolbar .pl-filter-toggle,
+        .pl-filter-toolbar .pl-filter-btn {
+            width: 100%;
+            justify-content: center;
+        }
+        .pl-filter-toolbar .pl-filter-toggle {
+            grid-column: 1 / -1;
+            justify-content: center;
+            padding-inline: .55rem;
+        }
+        .pl-filter-chipbar {
+            flex-wrap: wrap;
+            overflow: visible;
+        }
+        .pl-chip-field,
+        .pl-chip-field.pl-chip-field-sm,
+        .pl-chip-field.pl-chip-field-md,
+        .pl-chip-field.pl-chip-field-lg,
+        .pl-filter-chip-actions {
+            flex: 1 1 calc(50% - .3rem);
+            min-width: 0;
+        }
+        .pl-filter-chip-actions {
+            align-items: stretch;
+        }
+        .pl-filter-chip-actions .pl-filter-btn {
+            width: 100%;
+        }
+        .pl-more-filters-summary {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+    }
 </style>
 
-<div class="pl-wrap container-fluid">
-<div class="pl-card">
+<div class="container-fluid cl-list-page cl-products-page cl-products-list" data-cl-list>
 
     <!-- Card Header -->
-    <div class="pl-card-header">
-        <div>
-            <div class="pl-card-header-title"><i class="bi bi-box me-1"></i>Products</div>
-            <div class="pl-card-header-sub">Inventory items and components</div>
+    <div class="cl-list-page-header">
+        <div class="d-flex align-items-center">
+            <span class="cl-products-icon-badge" aria-hidden="true"><i class="bi bi-box"></i></span>
+            <div>
+                <h2 class="mb-0">Products</h2>
+                <div class="small text-muted">Inventory items and components</div>
+            </div>
         </div>
         <?php if ($can_create): ?>
-            <div class="d-flex gap-2 align-items-center flex-wrap">
-                <button type="button" class="pl-btn" id="syncServicesBtn" title="Create service products for any shipping carriers missing one" style="opacity:.75">
-                    <i class="bi bi-arrow-repeat"></i> Sync Services
-                </button>
-                <a href="<?= base_url('/products/create') ?>" class="pl-btn pl-btn-primary"><i class="bi bi-plus-circle"></i> New Product</a>
+            <div class="cl-list-page-actions">
+                <a href="<?= base_url('/products/create') ?>" class="btn btn-primary cl-products-new-btn"><i class="bi bi-plus-circle me-2"></i>New Product</a>
             </div>
         <?php endif; ?>
     </div>
 
     <!-- Search & Filter -->
-    <form method="get" class="row g-2 align-items-end pl-filter-form">
-        <div class="col-12">
-            <div class="pl-filter-head">
-                <div class="pl-filter-head-title"><i class="bi bi-sliders"></i>Smart Product Filters</div>
-                <div class="pl-filter-head-sub">Sort and per-page changes apply instantly</div>
+    <form method="get" class="pl-filter-form cl-list-toolbar cl-products-toolbar">
+        <div class="pl-filter-toolbar">
+            <div class="pl-filter-toolbar-search">
+                <div class="pl-filter-search-label">
+                    <label for="productSearch">Search products</label>
+                    <span>Press Enter to search</span>
+                </div>
+                <div class="pl-search-shell">
+                    <i class="bi bi-search"></i>
+                    <input type="search" name="search" id="productSearch" list="productList" class="form-control pl-filter-control pl-filter-control-search" placeholder="Search name, code, SKU, or variant" value="<?= esc($current_search ?? '') ?>">
+                    <datalist id="productList"></datalist>
+                </div>
+            </div>
+            <div class="pl-filter-toolbar-actions">
+                <label class="pl-filter-toggle" for="plHasAssets">
+                    <input class="pl-filter-toggle-input" type="checkbox" id="plHasAssets" name="has_assets" value="1" <?= ($current_has_assets ?? '') === '1' ? 'checked' : '' ?>>
+                    <span class="pl-filter-toggle-icon" aria-hidden="true"><i class="bi bi-images"></i></span>
+                    <span>Has assets</span>
+                    <span class="pl-filter-toggle-track" aria-hidden="true"></span>
+                </label>
+                <button type="submit" class="btn btn-primary pl-filter-btn pl-filter-btn-primary">
+                    <i class="bi bi-funnel-fill me-1"></i>Filter
+                    <?php if ($activeFilterCount > 0): ?><span class="pl-filter-count"><?= (int)$activeFilterCount ?></span><?php endif; ?>
+                </button>
+                <a href="<?= base_url('/products') ?>" class="btn btn-outline-secondary pl-filter-btn pl-filter-btn-soft">Reset</a>
+                <button type="button" class="btn btn-outline-secondary pl-filter-btn pl-filter-btn-soft" onclick="exportToCSV()" title="Export products" aria-label="Export products"><i class="bi bi-download"></i></button>
             </div>
         </div>
 
-        <div class="col-lg-2 col-md-4">
-            <label class="form-label pl-filter-label">Category</label>
-            <select class="form-select pl-filter-control" name="category">
-                <option value="">All Categories</option>
-                <?php foreach ($categories as $categoryId => $categoryName): ?>
-                    <option value="<?= esc($categoryId) ?>" <?= $current_category == $categoryId ? 'selected' : '' ?>><?= esc($categoryName) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-lg-1 col-md-2">
-            <label class="form-label pl-filter-label">Status</label>
-            <select class="form-select pl-filter-control" name="status">
-                <option value="">All</option>
-                <option value="1" <?= ($current_status ?? '') === '1' ? 'selected' : '' ?>>Active</option>
-                <option value="0" <?= ($current_status ?? '') === '0' ? 'selected' : '' ?>>Inactive</option>
-            </select>
-        </div>
-        <div class="col-lg-1 col-md-2">
-            <label class="form-label pl-filter-label">Type</label>
-            <select class="form-select pl-filter-control" name="type">
-                <option value="">All</option>
-                <option value="storable" <?= ($current_type ?? '') === 'storable' ? 'selected' : '' ?>>Storable</option>
-                <option value="consumable" <?= ($current_type ?? '') === 'consumable' ? 'selected' : '' ?>>Consumable</option>
-                <option value="service" <?= ($current_type ?? '') === 'service' ? 'selected' : '' ?>>Service</option>
-            </select>
-        </div>
-        <div class="col-lg-2 col-md-8">
-            <label class="form-label pl-filter-label">Product</label>
-            <input type="search" name="search" id="productSearch" list="productList" class="form-control pl-filter-control" placeholder="Name, code, SKU, variant code/name, attributes" value="<?= esc($current_search ?? '') ?>">
-            <datalist id="productList"></datalist>
-        </div>
-        <div class="col-lg-1 col-md-2">
-            <label class="form-label pl-filter-label">Per Page</label>
-            <select class="form-select pl-filter-control" id="plPerPageSel" name="per_page">
-                <option value="20" <?= (int)$per_page === 20 ? 'selected' : '' ?>>20</option>
-                <option value="50" <?= (int)$per_page === 50 ? 'selected' : '' ?>>50</option>
-                <option value="100" <?= (int)$per_page === 100 ? 'selected' : '' ?>>100</option>
-                <option value="200" <?= (int)$per_page === 200 ? 'selected' : '' ?>>200</option>
-            </select>
-        </div>
-        <div class="col-lg-1 col-md-2">
-            <label class="form-label pl-filter-label">Sort By</label>
-            <select class="form-select pl-filter-control" id="plSortBySel" name="sort_by">
-                <option value="recent" <?= ($current_sort_by ?? 'recent') === 'recent' ? 'selected' : '' ?>>Recently Added</option>
-                <option value="oldest" <?= ($current_sort_by ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest Added</option>
-                <option value="most_sold" <?= ($current_sort_by ?? '') === 'most_sold' ? 'selected' : '' ?>>Most Sold</option>
-                <option value="ready_stock" <?= ($current_sort_by ?? '') === 'ready_stock' ? 'selected' : '' ?>>Ready Stock</option>
-                <option value="most_purchased" <?= ($current_sort_by ?? '') === 'most_purchased' ? 'selected' : '' ?>>Most Purchased</option>
-                <option value="name_az" <?= ($current_sort_by ?? '') === 'name_az' ? 'selected' : '' ?>>Name A-Z</option>
-            </select>
-        </div>
-        <div class="col-lg-2 col-md-8 pl-filter-actions">
-            <label class="pl-filter-toggle" for="plHasAssets">
-                <input class="form-check-input" type="checkbox" id="plHasAssets" name="has_assets" value="1" <?= ($current_has_assets ?? '') === '1' ? 'checked' : '' ?>>
-                Has Assets
-            </label>
-            <button type="submit" class="btn btn-primary pl-filter-btn"><i class="bi bi-funnel-fill me-1"></i>Filter</button>
-            <a href="<?= base_url('/products') ?>" class="btn btn-link text-decoration-none" style="font-size:.7rem;font-weight:700;padding:0 .25rem;">Reset</a>
-            <button type="button" class="btn btn-outline-secondary pl-filter-btn" onclick="exportToCSV()"><i class="bi bi-download"></i></button>
+        <div class="pl-filter-chipbar" aria-label="Product filters">
+            <div class="pl-chip-field pl-chip-field-lg">
+                <label class="pl-chip-label">Category</label>
+                <select class="form-select pl-filter-control" name="category">
+                    <option value="">All Categories</option>
+                    <?php foreach ($categories as $categoryId => $categoryName): ?>
+                        <option value="<?= esc($categoryId) ?>" <?= $current_category == $categoryId ? 'selected' : '' ?>><?= esc($categoryName) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="pl-chip-field pl-chip-field-sm">
+                <label class="pl-chip-label">Status</label>
+                <select class="form-select pl-filter-control" name="status">
+                    <option value="">All</option>
+                    <option value="1" <?= ($current_status ?? '') === '1' ? 'selected' : '' ?>>Active</option>
+                    <option value="0" <?= ($current_status ?? '') === '0' ? 'selected' : '' ?>>Inactive</option>
+                </select>
+            </div>
+            <div class="pl-chip-field pl-chip-field-sm">
+                <label class="pl-chip-label">Type</label>
+                <select class="form-select pl-filter-control" name="type">
+                    <option value="">All</option>
+                    <option value="storable" <?= ($current_type ?? '') === 'storable' ? 'selected' : '' ?>>Storable</option>
+                    <option value="consumable" <?= ($current_type ?? '') === 'consumable' ? 'selected' : '' ?>>Consumable</option>
+                    <option value="service" <?= ($current_type ?? '') === 'service' ? 'selected' : '' ?>>Service</option>
+                </select>
+            </div>
+            <div class="pl-chip-field pl-chip-field-sm">
+                <label class="pl-chip-label">Per Page</label>
+                <select class="form-select pl-filter-control" id="plPerPageSel" name="per_page">
+                    <option value="20" <?= (int)$per_page === 20 ? 'selected' : '' ?>>20</option>
+                    <option value="50" <?= (int)$per_page === 50 ? 'selected' : '' ?>>50</option>
+                    <option value="100" <?= (int)$per_page === 100 ? 'selected' : '' ?>>100</option>
+                    <option value="200" <?= (int)$per_page === 200 ? 'selected' : '' ?>>200</option>
+                </select>
+            </div>
+            <div class="pl-chip-field pl-chip-field-md">
+                <label class="pl-chip-label">Sort By</label>
+                <select class="form-select pl-filter-control" id="plSortBySel" name="sort_by">
+                    <option value="recent" <?= ($current_sort_by ?? 'recent') === 'recent' ? 'selected' : '' ?>>Recently Added</option>
+                    <option value="oldest" <?= ($current_sort_by ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest Added</option>
+                    <option value="most_sold" <?= ($current_sort_by ?? '') === 'most_sold' ? 'selected' : '' ?>>Most Sold</option>
+                    <option value="ready_stock" <?= ($current_sort_by ?? '') === 'ready_stock' ? 'selected' : '' ?>>Ready Stock</option>
+                    <option value="most_purchased" <?= ($current_sort_by ?? '') === 'most_purchased' ? 'selected' : '' ?>>Most Purchased</option>
+                    <option value="name_az" <?= ($current_sort_by ?? '') === 'name_az' ? 'selected' : '' ?>>Name A-Z</option>
+                </select>
+            </div>
         </div>
 
-        <div class="col-lg-3 col-md-5">
-            <label class="form-label pl-filter-label">Attribute</label>
-            <select class="form-select pl-filter-control" id="plAttrNameSel">
-                <option value="">Select Attribute</option>
-                <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
-                    <option value="<?= esc($attrName) ?>"><?= esc($attrName) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-lg-4 col-md-5">
-            <label class="form-label pl-filter-label">Attribute Value</label>
-            <input type="text" class="form-control pl-filter-control" id="plAttrValueInp" list="plAttrValueList" placeholder="e.g. Curved">
-            <datalist id="plAttrValueList"></datalist>
-        </div>
-        <div class="col-lg-2 col-md-2 d-flex align-items-end">
-            <button type="button" class="btn btn-outline-primary" id="plAttrAddBtn" style="height:32px;width:100%;" onclick="addAttributeFilter(event)">
-                <i class="bi bi-plus-lg"></i>
-            </button>
-        </div>
-
-        <div class="col-12">
-            <div id="plAttrTagsContainer" class="d-flex flex-wrap gap-2"></div>
-            <div id="plAttrHiddenInputs" style="display:none"></div>
-            <div class="pl-filter-tip">Pro tip: This search supports product code, variant code/name, and multiple attribute filters.</div>
-        </div>
+        <details class="pl-more-filters" <?= $moreFiltersOpen ? 'open' : '' ?>>
+            <summary class="pl-more-filters-summary">
+                <span>More filters</span>
+                <span class="pl-more-filters-meta"><?= !empty($current_attributes) && is_array($current_attributes) ? count($current_attributes) : 0 ?> attribute filter<?= (!empty($current_attributes) && is_array($current_attributes) && count($current_attributes) === 1) ? '' : 's' ?></span>
+            </summary>
+            <div class="pl-more-filters-panel">
+                <div class="pl-filter-chipbar" style="margin-top:.35rem">
+                    <div class="pl-chip-field pl-chip-field-sm">
+                        <label class="pl-chip-label">Attribute</label>
+                        <select class="form-select pl-filter-control" id="plAttrNameSel">
+                            <option value="">Select Attribute</option>
+                            <?php foreach ($attributeOptions as $attrName => $attrValues): ?>
+                                <option value="<?= esc($attrName) ?>"><?= esc($attrName) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="pl-chip-field pl-chip-field-lg">
+                        <label class="pl-chip-label">Attribute Value</label>
+                        <input type="text" class="form-control pl-filter-control" id="plAttrValueInp" list="plAttrValueList" placeholder="e.g. Curved">
+                        <datalist id="plAttrValueList"></datalist>
+                    </div>
+                    <div class="pl-filter-chip-actions">
+                        <button type="button" class="btn btn-outline-primary pl-filter-btn pl-filter-btn-soft" id="plAttrAddBtn" onclick="addAttributeFilter(event)">
+                            <i class="bi bi-plus-lg me-1"></i>Add
+                        </button>
+                    </div>
+                </div>
+                <div class="px-1">
+                    <div id="plAttrTagsContainer" class="d-flex flex-wrap gap-2"></div>
+                    <div id="plAttrHiddenInputs" style="display:none"></div>
+                    <div class="pl-filter-tip">Pro tip: This search supports product code, variant code/name, and multiple attribute filters.</div>
+                </div>
+            </div>
+        </details>
     </form>
 
     <?php
@@ -503,7 +924,7 @@
         unset($tabBaseParams['type']);
     ?>
     <!-- Product Type Tabs -->
-    <div class="pl-tabs-bar">
+    <div class="pl-tabs-bar cl-list-tabs">
         <?php foreach ($product_type_tabs as $tabKey => $tabLabel): ?>
             <?php
                 $tabParams = $tabBaseParams;
@@ -514,9 +935,16 @@
             ?>
             <a href="<?= $tabHref ?>" class="pl-tab-btn <?= ($current_type === $tabKey || ($tabKey === 'all' && empty($current_type))) ? 'active' : '' ?>">
                 <span><?= esc($tabLabel) ?></span>
-                <span style="font-size:.65rem;background:rgba(15,118,110,.2);color:#0f766e;padding:.15rem .35rem;border-radius:3px;font-weight:700;min-width:1.8rem;text-align:center;"><?= (int)($product_type_counts[$tabKey] ?? 0) ?></span>
+                <span class="cl-tab-count"><?= (int)($product_type_counts[$tabKey] ?? 0) ?></span>
             </a>
         <?php endforeach; ?>
+        <div class="cl-products-result-summary">
+            <?php if ($totalRecords > 0): ?>
+                <?= number_format($startItem) ?>-<?= number_format($endItem) ?> of <?= number_format($totalRecords) ?>
+            <?php else: ?>
+                No results
+            <?php endif; ?>
+        </div>
     </div>
 
     <!-- Variant filter mode notice bar -->
@@ -545,24 +973,42 @@
     <?php endif; ?>
 
     <!-- Table -->
+    <div class="card border-0 shadow-sm cl-list-table-card">
+    <div class="card-body p-0">
     <div class="table-responsive">
     <?php if (!empty($products['data'])): ?>
-        <table class="table table-hover pl-table mb-0">
+        <table class="cl-table table table-hover pl-table pl-products-table data-table-table mb-0">
+            <caption class="visually-hidden">Products matching the current search and filters</caption>
+            <colgroup>
+                <col style="width: 30px;">
+                <col style="width: 34px;">
+                <col style="width: 118px;">
+                <col style="width: 440px;">
+                <col style="width: 110px;">
+                <col style="width: 54px;">
+                <col style="width: 70px;">
+                <col style="width: 64px;">
+                <col style="width: 78px;">
+                <col style="width: 62px;">
+                <col style="width: 82px;">
+                <col style="width: 96px;">
+                <col style="width: 64px;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th width="28"><input type="checkbox" class="form-check-input" id="selectAll"></th>
-                    <th width="32" class="text-center" style="color:var(--cl-text-muted)">#</th>
-                    <th>Code</th>
-                    <th>Product Name</th>
-                    <th>Category</th>
-                    <th>Unit</th>
-                    <th class="text-end">Stock</th>
-                    <th class="text-end">Sold</th>
-                    <th class="text-end">Purchased</th>
-                    <th class="text-center">Assets</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th class="text-end">Actions</th>
+                    <th scope="col" width="28"><input type="checkbox" class="form-check-input" id="selectAll" aria-label="Select all products"></th>
+                    <th scope="col" width="32" class="text-center" style="color:var(--cl-text-muted)">#</th>
+                    <th scope="col">Code</th>
+                    <th scope="col">Product Name</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Unit</th>
+                    <th scope="col" class="text-end">Stock</th>
+                    <th scope="col" class="text-end">Sold</th>
+                    <th scope="col" class="text-end">Purchased</th>
+                    <th scope="col" class="text-center">Assets</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Created</th>
+                    <th scope="col" class="text-end">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -599,8 +1045,8 @@
                             <?php endif; ?>
                             <div style="flex:1;min-width:0">
                                 <div class="d-flex align-items-center gap-1 flex-wrap">
-                                    <a href="<?= base_url('/products/' . $pIdent) ?>" class="pl-ghdr-name"><?= esc($prod['name']) ?></a>
-                                    <span class="badge bg-primary" style="font-size:.5rem;letter-spacing:.03em;vertical-align:middle">Template</span>
+                                    <a href="<?= base_url('/products/' . $pIdent) ?>" class="pl-ghdr-name" title="<?= esc($prod['name']) ?>"><?= esc($prod['name']) ?></a>
+                                    <span class="cl-template-chip" title="Product template with variants"><i class="bi bi-diagram-3" aria-hidden="true"></i><span>Template</span></span>
                                     <?php if (!empty($prod['category_name'])): ?>
                                         <span class="pl-ghdr-cat"><?= esc($prod['category_name']) ?></span>
                                     <?php endif; ?>
@@ -628,7 +1074,9 @@
                 <tr class="pl-variant-row">
                     <td class="pl-vr-indent"></td>
                     <td></td>
-                    <td style="white-space:nowrap"><code class="pl-vr-art"><?= esc($mv['art_number'] ?: '—') ?></code></td>
+                    <td style="white-space:nowrap">
+                        <a href="<?= base_url('product-variants/' . (int)$mv['id'] . '/edit') ?>" class="pl-vr-art cl-code-link" title="Edit variant"><?= esc($mv['art_number'] ?: 'Variant') ?></a>
+                    </td>
                     <td>
                         <?php
                             $vImg = trim((string)($mv['image'] ?? ''));
@@ -673,7 +1121,7 @@
                             <?= (int)($prod['asset_count'] ?? 0) ?>
                         </span>
                     </td>
-                    <td><?php if ($prod['is_active']): ?><span class="badge bg-success" style="font-size:.6rem">Active</span><?php else: ?><span class="badge bg-secondary" style="font-size:.6rem">Inactive</span><?php endif; ?></td>
+                    <td><?php if ($prod['is_active']): ?><span class="cl-status-badge cl-status-badge--success"><span class="cl-status-badge__dot"></span>Active</span><?php else: ?><span class="cl-status-badge cl-status-badge--neutral"><span class="cl-status-badge__dot"></span>Inactive</span><?php endif; ?></td>
                     <td></td>
                     <td class="text-end" style="white-space:nowrap">
                         <a href="<?= base_url('/products/' . $pIdent) ?>" class="pl-act-btn" title="View product"><i class="bi bi-eye"></i></a>
@@ -699,7 +1147,20 @@
                 <tr>
                     <td><input type="checkbox" class="form-check-input product-checkbox" value="<?= $product['id'] ?>"></td>
                     <td class="text-center" style="font-size:.68rem;color:var(--cl-text-muted);font-variant-numeric:tabular-nums"><?= $rowNum ?></td>
-                    <td><code style="font-size:.7rem"><?= esc($product['code']) ?></code></td>
+                    <td>
+                        <?php if ($isVar && !$isVariantRow): ?>
+                            <a href="<?= base_url('product-variants?product_id=' . $product['id']) ?>" class="cl-variants-link" title="View variants for <?= esc($product['name']) ?>">
+                                <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                                <span>View variants</span>
+                            </a>
+                        <?php elseif (trim((string)($product['code'] ?? '')) !== ''): ?>
+                            <a href="<?= base_url('/products/' . $productIdentifier) ?>" class="cl-code-link" title="View product <?= esc($product['code']) ?>">
+                                <code style="font-size:.7rem"><?= esc($product['code']) ?></code>
+                            </a>
+                        <?php else: ?>
+                            <span class="text-muted">-</span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <div class="d-flex align-items-center gap-2">
                             <?php if ($firstImg): ?>
@@ -711,19 +1172,19 @@
                                 <span class="pl-thumb-empty"><i class="bi bi-image"></i></span>
                             <?php endif; ?>
                             <div>
-                                <a href="<?= $variantViewUrl ?>" class="pl-name text-decoration-none">
+                                <a href="<?= $variantViewUrl ?>" class="pl-name text-decoration-none" title="<?= esc($product['name']) ?>">
                                     <?= esc($product['name']) ?>
                                 </a>
                                 <?php if (!empty($product['_is_variant_row'])): ?>
-                                    <span class="badge bg-info ms-1" style="font-size:.55rem">Variant</span>
+                                    <span class="cl-status-badge cl-status-badge--info ms-1"><span class="cl-status-badge__dot"></span>Variant</span>
                                     <?php if (!empty($product['_variant_name'])): ?>
-                                        <span class="badge bg-secondary ms-1" style="font-size:.52rem"><?= esc($product['_variant_name']) ?></span>
+                                        <span class="cl-status-badge cl-status-badge--neutral ms-1"><?= esc($product['_variant_name']) ?></span>
                                     <?php endif; ?>
                                 <?php elseif ($isVar): ?>
-                                    <span class="badge bg-primary ms-1" style="font-size:.55rem">Template</span>
+                                    <span class="cl-template-chip ms-1" title="Product template with variants"><i class="bi bi-diagram-3" aria-hidden="true"></i><span>Template</span></span>
                                 <?php endif; ?>
-                                <?php if (($product['detailed_type'] ?? '') === 'service'): ?><span class="badge ms-1" style="font-size:.55rem;background:#0891b2">Service</span><?php endif; ?>
-                                <?php if (($product['detailed_type'] ?? '') === 'consumable'): ?><span class="badge bg-warning text-dark ms-1" style="font-size:.55rem">Consumable</span><?php endif; ?>
+                                <?php if (($product['detailed_type'] ?? '') === 'service'): ?><span class="cl-status-badge cl-status-badge--success ms-1"><span class="cl-status-badge__dot"></span>Service</span><?php endif; ?>
+                                <?php if (($product['detailed_type'] ?? '') === 'consumable'): ?><span class="cl-status-badge cl-status-badge--warning ms-1"><span class="cl-status-badge__dot"></span>Consumable</span><?php endif; ?>
                                 <?php
                                     // For promoted variant rows show attribute summary; otherwise normal description
                                     $displayDesc = !empty($product['_is_variant_row']) && !empty($product['_variant_attrs_summary'])
@@ -781,9 +1242,9 @@
                     </td>
                     <td>
                         <?php if ($product['is_active']): ?>
-                            <span class="badge bg-success" style="font-size:.62rem">Active</span>
+                            <span class="cl-status-badge cl-status-badge--success"><span class="cl-status-badge__dot"></span>Active</span>
                         <?php else: ?>
-                            <span class="badge bg-secondary" style="font-size:.62rem">Inactive</span>
+                            <span class="cl-status-badge cl-status-badge--neutral"><span class="cl-status-badge__dot"></span>Inactive</span>
                         <?php endif; ?>
                     </td>
                     <td><span style="font-size:.71rem;color:var(--cl-text-muted)"><?= date('M j, Y', strtotime($product['created_at'])) ?></span></td>
@@ -806,10 +1267,10 @@
             </tbody>
         </table>
     <?php else: ?>
-        <div class="text-center py-5">
-            <i class="bi bi-inbox fs-1 text-muted"></i>
-            <h6 class="mt-3 text-muted">No Products Found</h6>
-            <p class="text-muted small">No products match your current filters.</p>
+        <div class="cl-list-empty">
+            <span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-inbox"></i></span>
+            <h6>No Products Found</h6>
+            <p>No products match your current filters.</p>
             <?php if ($can_create): ?>
                 <a href="<?= base_url('/products/create') ?>" class="pl-btn pl-btn-primary">
                     <i class="bi bi-plus-circle"></i> Create First Product
@@ -818,6 +1279,7 @@
         </div>
     <?php endif; ?>
     </div><!-- /.table-responsive -->
+    </div><!-- /.card-body -->
 
     <!-- Footer: count + pagination -->
     <?php if (!empty($products['data'])): ?>
@@ -859,8 +1321,8 @@
     </div>
     <?php endif; ?>
 
-</div><!-- /.pl-card -->
-</div><!-- /.pl-wrap -->
+</div><!-- /.cl-list-table-card -->
+</div><!-- /.cl-list-page -->
 
 <!-- â‹® More-actions dropdown (shared, positioned by JS) -->
 <ul class="pl-more-menu" id="plMoreMenu">
@@ -1317,11 +1779,7 @@ function bulkAction(action) {
         if (menuProcesses) menuProcesses.href = BASE + pid + '/processes';
         if (menuToggleLbl) menuToggleLbl.textContent = active ? 'Deactivate' : 'Activate';
 
-        const rect = btn.getBoundingClientRect();
-        menu.style.top   = (rect.bottom + 4 + window.scrollY) + 'px';
-        menu.style.left  = 'auto';
-        menu.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
-        menu.classList.add('is-open');
+        window.clOpenFloatingMenu(menu, btn);
     }
 
     document.addEventListener('click', function (e) {
@@ -1531,43 +1989,6 @@ function escHtml(str) {
     return str.replace(/[&<>"']/g, m => map[m]);
 }
 
-    document.querySelectorAll('#plMenuView, #plMenuEdit, #plMenuProcesses').forEach(el => {
-        el && el.addEventListener('click', () => menu.classList.remove('is-open'));
-    });
-})();
-
-// ── Sync Services ────────────────────────────────────────────────────
-(function(){
-    const btn = document.getElementById('syncServicesBtn');
-    if (!btn) return;
-    btn.addEventListener('click', async function() {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing…';
-        try {
-            const res = await fetch('<?= base_url('products/backfill-services') ?>', {
-                method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json' },
-                body: '{}'
-            });
-            const data = await res.json();
-            if (data.success) {
-                if (data.created > 0) {
-                    alert('Done! ' + data.message + ' Reload to see them.');
-                    location.reload();
-                } else {
-                    alert('All shipping services already have service products.');
-                }
-            } else {
-                alert('Error: ' + (data.message || 'Unknown error'));
-            }
-        } catch(e) {
-            alert('Request failed: ' + e.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync Services';
-        }
-    });
-})();
 </script>
 <?= $this->include('inventory/_quickadjust_modal') ?>
 <?= $this->endSection() ?>

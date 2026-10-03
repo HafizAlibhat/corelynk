@@ -41,7 +41,7 @@ async function fetchJson(url){
 function renderOrders(elId, items){
     const el = document.getElementById(elId);
     if(!items || items.length===0){ el.innerHTML = '<div class="text-muted">No records</div>'; return; }
-    let html = '<table class="table table-sm"><thead><tr><th>#</th><th>Partner</th><th>Date</th><th>State</th><th class="text-end">Total</th></tr></thead><tbody>';
+    let html = '<table class="cl-table table table-sm"><thead><tr><th>#</th><th>Partner</th><th>Date</th><th>State</th><th class="text-end">Total</th></tr></thead><tbody>';
     items.forEach(i => {
         const partner = Array.isArray(i.partner_id) ? (i.partner_id[1]||i.partner_id[0]) : (i.partner_id||'');
         html += `<tr><td>${i.name||i.id}</td><td>${partner}</td><td>${i.date_order||''}</td><td>${i.state||''}</td><td class="text-end">${i.amount_total||''}</td></tr>`;

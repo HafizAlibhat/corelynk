@@ -16,11 +16,13 @@ class CompanySettingsModel extends Model
         'logo_path','company_logo',
         'quotation_prefix','sales_order_prefix','art_number_prefix','customer_code_prefix','vendor_code_prefix',
         'invoice_footer','quotation_footer','purchase_order_footer','pdf_template',
+        'bank_details','invoice_terms',
         'pdf_inv_show_header','pdf_inv_show_footer',
         'pdf_quote_show_header','pdf_quote_show_footer',
         'pdf_so_show_header','pdf_so_show_footer',
         'pdf_po_show_header','pdf_po_show_footer',
-        'pdf_rfq_show_header','pdf_rfq_show_footer'
+        'pdf_rfq_show_header','pdf_rfq_show_footer',
+        'pdf_inv_hide_logo','pdf_quote_hide_logo','pdf_so_hide_logo','pdf_po_hide_logo','pdf_rfq_hide_logo'
     ];
     protected $useTimestamps = false;
 }

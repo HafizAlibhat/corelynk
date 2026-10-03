@@ -11,6 +11,7 @@ class ProductAssetListingModel extends Model
     protected $returnType = 'array';
     protected $allowedFields = [
         'product_id',
+        'variant_id',
         'channel_id',
         'listing_url',
         'notes',
@@ -20,6 +21,7 @@ class ProductAssetListingModel extends Model
     protected $useTimestamps = false;
 
     protected $validationRules = [
+        'variant_id' => 'permit_empty|integer',
         'product_id' => 'required|integer',
         'channel_id' => 'required|integer',
         'listing_url' => 'required|valid_url|max_length[255]',

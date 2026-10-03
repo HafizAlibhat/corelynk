@@ -23,6 +23,8 @@ class VendorBillModel extends Model
         'bill_date',
         'issue_date',
         'total_amount',
+        'discount_amount',
+        'tax_amount',
         'balance',
         'based_on',
         'currency_code',

@@ -1,4 +1,4 @@
-﻿<?= $this->extend('layouts/main') ?>
+<?= $this->extend('layouts/main') ?>
 
 <?= $this->section('title') ?>
 <?= esc($delivery_order['do_number'] ?? 'DO-Draft') ?>
@@ -16,6 +16,60 @@ $deliveryStatus = $do['delivery_status'] ?? null;
 $estDays = (int)($do['estimated_delivery_days'] ?? 0);
 $shippedAt = $do['shipped_at'] ?? null;
 $isDelivered = ($status === 'delivered' || $deliveryStatus === 'delivered');
+
+// ── Tracking & Delivery Calculations ──
+$daysSinceShipped = 0;
+$estDeliveryDate = null;
+$isOverdue = false;
+$daysRemaining = null;
+$overdueDays = 0;
+$shippedTime = null;
+
+if (!empty($shippedAt)) {
+    $shippedTime = strtotime($shippedAt);
+    $daysSinceShipped = max(0, (int)floor((time() - $shippedTime) / 86400));
+    if ($estDays > 0) {
+        $estDeliveryDate = date('d M Y', strtotime("+{$estDays} days", $shippedTime));
+        if ($daysSinceShipped > $estDays && !$isDelivered) {
+            $isOverdue = true;
+            $overdueDays = $daysSinceShipped - $estDays;
+        } elseif (!$isDelivered) {
+            $daysRemaining = max(0, $estDays - $daysSinceShipped);
+        }
+    }
+}
+
+// Delivery completion metrics
+$deliveredAtDate = $do['delivery_confirmed_at'] ?? ($do['delivered_at'] ?? null);
+$actualDeliveryDays = null;
+$deliveredOnTime = null;
+$deliveredLateByDays = 0;
+
+if ($isDelivered) {
+    if (!empty($deliveredAtDate) && !empty($shippedAt)) {
+        $actualDeliveryDays = max(0, (int)round((strtotime($deliveredAtDate) - strtotime($shippedAt)) / 86400));
+    } else {
+        $actualDeliveryDays = $daysSinceShipped;
+    }
+
+    if ($estDays > 0 && $actualDeliveryDays !== null) {
+        if ($actualDeliveryDays <= $estDays) {
+            $deliveredOnTime = true;
+        } else {
+            $deliveredOnTime = false;
+            $deliveredLateByDays = $actualDeliveryDays - $estDays;
+        }
+    }
+}
+
+// Progress percentage (0 - 100)
+if ($isDelivered) {
+    $daysProgress = 100;
+} elseif ($estDays > 0) {
+    $daysProgress = min(100, round(($daysSinceShipped / $estDays) * 100));
+} else {
+    $daysProgress = 0;
+}
 
 // Delivery status config (used in multiple places)
 $statusConfig = [
@@ -144,6 +198,35 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                     <i class="bi bi-<?= $hasTracking ? 'truck' : 'hourglass-split' ?>"></i>
                     <?= $hasTracking ? 'Tracking Added' : 'Tracking Pending' ?>
                 </span>
+                <?php if ($isDelivered): ?>
+                    <?php if ($deliveredOnTime === true): ?>
+                        <span class="do-pill" style="background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)" title="Delivered within <?= $estDays ?> estimated days">
+                            <i class="bi bi-check-circle-fill"></i> Delivered On Time (<?= $actualDeliveryDays ?>d / <?= $estDays ?>d)
+                        </span>
+                    <?php elseif ($deliveredOnTime === false): ?>
+                        <span class="do-pill" style="background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)" title="Delivered late by <?= $deliveredLateByDays ?> days">
+                            <i class="bi bi-clock-history"></i> Delivered Late (+<?= $deliveredLateByDays ?>d)
+                        </span>
+                    <?php else: ?>
+                        <span class="do-pill do-pill-delivered">
+                            <i class="bi bi-check-all"></i> Delivered (<?= $actualDeliveryDays ?>d)
+                        </span>
+                    <?php endif; ?>
+                <?php elseif ($estDays > 0): ?>
+                    <?php if ($isOverdue): ?>
+                        <span class="do-pill" style="background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)" title="Late / Overdue by <?= $overdueDays ?> days">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Late / Overdue (+<?= $overdueDays ?>d)
+                        </span>
+                    <?php else: ?>
+                        <span class="do-pill" style="background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)" title="On track: Day <?= $daysSinceShipped ?> of <?= $estDays ?> (<?= $daysRemaining ?>d left)">
+                            <i class="bi bi-stopwatch"></i> On Track (Day <?= $daysSinceShipped ?> / <?= $estDays ?>)
+                        </span>
+                    <?php endif; ?>
+                <?php elseif ($shippedAt): ?>
+                    <span class="do-pill do-pill-shipped">
+                        <i class="bi bi-truck"></i> In Transit (<?= $daysSinceShipped ?>d)
+                    </span>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
         <div class="do-meta-line">
@@ -153,6 +236,12 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <?= view('partials/record_nav', [
+            'table'   => 'delivery_orders',
+            'id'      => $do['public_id'] ?? $doId,
+            'pattern' => 'delivery-orders/view/{id}',
+            'list'    => 'delivery-orders',
+        ]) ?>
         <?php if ($isDraft): ?>
             <button type="button" class="btn btn-sm btn-outline-danger" id="cancelDoBtn"><i class="bi bi-x-circle me-1"></i>Cancel</button>
             <button type="button" class="btn btn-sm btn-success" id="openShipBtn"><i class="bi bi-send-fill me-1"></i>Confirm &amp; Ship</button>
@@ -177,6 +266,10 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
                 <?php if (!empty($shippingVendor)): ?><dl class="do-detail"><dt>Carrier / Vendor</dt><dd class="fw-semibold"><?= esc($shippingVendor['name']) ?></dd></dl><?php endif; ?>
                 <?php if (!empty($shippingService)): ?><dl class="do-detail"><dt>Service</dt><dd><?= esc($shippingService['carrier'] . ' - ' . $shippingService['service_name']) ?></dd></dl><?php endif; ?>
                 <?php if (!empty($do['destination_country'])): ?><dl class="do-detail"><dt>Destination</dt><dd><?= esc($do['destination_country']) ?></dd></dl><?php endif; ?>
+                <dl class="do-detail"><dt>Shipment Date</dt><dd class="fw-semibold" style="color:#38bdf8"><i class="bi bi-calendar-check me-1"></i><?= $shippedAt ? date('d M Y, H:i', strtotime($shippedAt)) : '—' ?></dd></dl>
+                <?php if ($estDays > 0): ?>
+                    <dl class="do-detail"><dt>Delivery Target</dt><dd><?= $estDays ?> days <?= $estDeliveryDate ? ('<span class="text-muted">(Est. ' . esc($estDeliveryDate) . ')</span>') : '' ?></dd></dl>
+                <?php endif; ?>
             </div>
             <div class="col-md-4">
                 <?php if (!empty($do['final_weight_kg'])): ?><dl class="do-detail"><dt>Final Weight</dt><dd><?= number_format((float)$do['final_weight_kg'],3) ?> kg</dd></dl><?php endif; ?>
@@ -366,11 +459,69 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
     <div class="do-section-head" style="border-bottom-color:<?= $isOverdue ? 'rgba(248,113,113,.3)' : ($isDelivered ? 'rgba(52,211,153,.2)' : 'rgba(99,102,241,.2)') ?>">
         <i class="bi bi-<?= $isDelivered ? 'check-circle-fill' : ($isOverdue ? 'exclamation-triangle-fill' : 'truck') ?>" style="color:<?= $isDelivered ? '#34d399' : ($isOverdue ? '#f87171' : '#818cf8') ?>"></i>
         <span style="color:<?= $isDelivered ? '#34d399' : ($isOverdue ? '#f87171' : '#818cf8') ?>">Delivery Tracking</span>
-        <?php if ($isOverdue): ?>
-            <span class="ms-2 badge" style="background:#f8717133;color:#f87171;font-size:.65rem;">OVERDUE by <?= $daysSinceShipped - $estDays ?> day<?= ($daysSinceShipped - $estDays) > 1 ? 's' : '' ?></span>
+        <?php if ($isDelivered): ?>
+            <?php if ($deliveredOnTime === true): ?>
+                <span class="ms-2 badge" style="background:#34d39922;color:#34d399;font-size:.68rem;"><i class="bi bi-check-circle me-1"></i>DELIVERED ON TIME</span>
+            <?php elseif ($deliveredOnTime === false): ?>
+                <span class="ms-2 badge" style="background:#f8717133;color:#f87171;font-size:.68rem;"><i class="bi bi-clock-history me-1"></i>DELIVERED LATE by <?= $deliveredLateByDays ?> day<?= $deliveredLateByDays > 1 ? 's' : '' ?></span>
+            <?php endif; ?>
+        <?php elseif ($isOverdue): ?>
+            <span class="ms-2 badge" style="background:#f8717133;color:#f87171;font-size:.68rem;"><i class="bi bi-exclamation-triangle me-1"></i>OVERDUE by <?= $overdueDays ?> day<?= $overdueDays > 1 ? 's' : '' ?></span>
+        <?php elseif ($estDays > 0): ?>
+            <span class="ms-2 badge" style="background:#34d39922;color:#34d399;font-size:.68rem;"><i class="bi bi-shield-check me-1"></i>ON TRACK (<?= $daysRemaining ?>d remaining)</span>
         <?php endif; ?>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="editShippingDatesBtn" style="font-size:.72rem;padding:2px 9px;">
+            <i class="bi bi-pencil me-1"></i>Edit Dates / Days
+        </button>
     </div>
     <div class="do-section-body">
+        <!-- Status summary banner -->
+        <?php if ($isDelivered): ?>
+            <?php if ($deliveredOnTime === true): ?>
+                <div class="mb-3 p-2 px-3 rounded" style="background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#34d399;font-size:.82rem;">
+                    <i class="bi bi-check-circle-fill me-2"></i><strong>Delivered within delivery days!</strong> Order was delivered in <strong><?= $actualDeliveryDays ?> days</strong>, meeting the <?= $estDays ?> days target.
+                </div>
+            <?php elseif ($deliveredOnTime === false): ?>
+                <div class="mb-3 p-2 px-3 rounded" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#f87171;font-size:.82rem;">
+                    <i class="bi bi-clock-history me-2"></i><strong>Delivered Late.</strong> Delivery took <strong><?= $actualDeliveryDays ?> days</strong>, which exceeded the estimated <?= $estDays ?> days by <strong><?= $deliveredLateByDays ?> day<?= $deliveredLateByDays > 1 ? 's' : '' ?></strong>.
+                </div>
+            <?php else: ?>
+                <div class="mb-3 p-2 px-3 rounded" style="background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#34d399;font-size:.82rem;">
+                    <i class="bi bi-check-circle-fill me-2"></i><strong>Delivered!</strong> Order was delivered in <strong><?= $actualDeliveryDays ?> days</strong>.
+                </div>
+            <?php endif; ?>
+        <?php elseif ($isOverdue): ?>
+            <div class="mb-3 p-2 px-3 rounded" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#f87171;font-size:.82rem;">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Shipment is Late / Overdue!</strong> Parcel has been in transit for <strong><?= $daysSinceShipped ?> days</strong> (exceeded <?= $estDays ?> delivery days by <strong><?= $overdueDays ?> day<?= $overdueDays > 1 ? 's' : '' ?></strong>). Expected delivery was <strong><?= $estDeliveryDate ?></strong>.
+            </div>
+        <?php elseif ($estDays > 0): ?>
+            <div class="mb-3 p-2 px-3 rounded" style="background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#34d399;font-size:.82rem;">
+                <i class="bi bi-shield-check me-2"></i><strong>Shipment is On Track!</strong> Currently in transit for <strong><?= $daysSinceShipped ?> days</strong> out of <?= $estDays ?> days (<strong><?= $daysRemaining ?> day<?= $daysRemaining == 1 ? '' : 's' ?> remaining</strong> until expected delivery on <strong><?= $estDeliveryDate ?></strong>).
+            </div>
+        <?php endif; ?>
+
+        <!-- Inline Edit Dates Form (hidden by default) -->
+        <div id="editShippingDatesWrap" style="display:none;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.25);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+            <div class="fw-semibold mb-2" style="font-size:.82rem;color:var(--cl-text-primary,#f1f5f9)">
+                <i class="bi bi-calendar-event me-1"></i>Update Shipment Date &amp; Estimated Delivery Days
+            </div>
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-md-5">
+                    <label class="form-label" style="font-size:.75rem;font-weight:600">Shipment Date</label>
+                    <input type="date" class="form-control form-control-sm" id="editShippedAtInput" value="<?= $shippedAt ? date('Y-m-d', strtotime($shippedAt)) : date('Y-m-d') ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:.75rem;font-weight:600">Delivery Days</label>
+                    <input type="number" class="form-control form-control-sm" id="editEstDaysInput" min="1" max="365" step="1" value="<?= $estDays > 0 ? $estDays : '' ?>" placeholder="e.g. 7">
+                </div>
+                <div class="col-md-3 d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-primary flex-grow-1" id="saveShippingDatesBtn"><i class="bi bi-check-circle me-1"></i>Save</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="cancelEditDatesBtn">Cancel</button>
+                </div>
+            </div>
+            <div id="editShippingDatesMsg" style="font-size:.78rem"></div>
+        </div>
+
         <div class="row g-4">
             <!-- Left: Shipping Progress -->
             <div class="col-md-5">
@@ -380,23 +531,39 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
 
                 <div class="d-flex justify-content-between" style="font-size:.75rem;color:var(--cl-text-muted,#64748b);margin-bottom:4px;">
                     <span>Shipped <?= $shippedAt ? date('d M Y', strtotime($shippedAt)) : '—' ?></span>
-                    <span><?= $estDays > 0 ? 'Est. ' . $estDeliveryDate : 'No estimate set' ?></span>
+                    <span><?= $isDelivered ? ('Delivered ' . ($deliveredAtDate ? date('d M Y', strtotime($deliveredAtDate)) : '')) : ($estDays > 0 ? 'Est. ' . $estDeliveryDate : 'No estimate set') ?></span>
                 </div>
 
                 <?php if ($estDays > 0): ?>
                 <div style="background:rgba(255,255,255,.06);height:8px;border-radius:4px;overflow:hidden;margin-bottom:.6rem;">
-                    <div style="width:<?= $daysProgress ?>%;height:100%;background:<?= $isOverdue ? '#f87171' : ($isDelivered ? '#34d399' : '#818cf8') ?>;border-radius:4px;transition:width .5s;"></div>
+                    <div style="width:<?= $daysProgress ?>%;height:100%;background:<?= ($isDelivered && $deliveredOnTime === false) || $isOverdue ? '#f87171' : '#34d399' ?>;border-radius:4px;transition:width .5s;"></div>
                 </div>
                 <?php endif; ?>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;">
                     <div style="background:var(--cl-surface-alt,#162033);border-radius:6px;padding:.5rem .7rem;text-align:center;">
-                        <div style="font-size:1.3rem;font-weight:700;color:var(--cl-text-primary,#f1f5f9);"><?= $daysSinceShipped ?></div>
-                        <div style="font-size:.68rem;color:var(--cl-text-muted,#64748b);">Days Since Shipped</div>
+                        <div style="font-size:1.25rem;font-weight:700;color:var(--cl-text-primary,#f1f5f9);"><?= $isDelivered ? $actualDeliveryDays : $daysSinceShipped ?></div>
+                        <div style="font-size:.65rem;color:var(--cl-text-muted,#64748b);"><?= $isDelivered ? 'Days Taken' : 'Days In Transit' ?></div>
                     </div>
                     <div style="background:var(--cl-surface-alt,#162033);border-radius:6px;padding:.5rem .7rem;text-align:center;">
-                        <div style="font-size:1.3rem;font-weight:700;color:<?= $isOverdue ? '#f87171' : '#818cf8' ?>;"><?= $estDays > 0 ? $estDays : '—' ?></div>
-                        <div style="font-size:.68rem;color:var(--cl-text-muted,#64748b);">Estimated Days</div>
+                        <div style="font-size:1.25rem;font-weight:700;color:#818cf8;"><?= $estDays > 0 ? $estDays : '—' ?></div>
+                        <div style="font-size:.65rem;color:var(--cl-text-muted,#64748b);">Target Days</div>
+                    </div>
+                    <div style="background:var(--cl-surface-alt,#162033);border-radius:6px;padding:.5rem .7rem;text-align:center;">
+                        <?php if ($isDelivered): ?>
+                            <div style="font-size:1rem;font-weight:700;color:<?= $deliveredOnTime === false ? '#f87171' : '#34d399' ?>;margin-top:2px;">
+                                <?= $deliveredOnTime === false ? 'Late' : 'On Time' ?>
+                            </div>
+                            <div style="font-size:.65rem;color:var(--cl-text-muted,#64748b);">Outcome</div>
+                        <?php elseif ($estDays > 0): ?>
+                            <div style="font-size:1rem;font-weight:700;color:<?= $isOverdue ? '#f87171' : '#34d399' ?>;margin-top:2px;">
+                                <?= $isOverdue ? 'Late' : 'On Track' ?>
+                            </div>
+                            <div style="font-size:.65rem;color:var(--cl-text-muted,#64748b);"><?= $isOverdue ? ('+' . $overdueDays . 'd') : ($daysRemaining . 'd left') ?></div>
+                        <?php else: ?>
+                            <div style="font-size:1rem;font-weight:700;color:#818cf8;margin-top:2px;">In Transit</div>
+                            <div style="font-size:.65rem;color:var(--cl-text-muted,#64748b);">No Target</div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -612,23 +779,31 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
 
         <div class="row g-3 mb-3">
             <!-- Tracking # -->
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div class="do-field">
-                    <label for="tracking_number"><i class="bi bi-upc-scan me-1"></i>Tracking Number <span class="fw-normal fst-italic" style="color:var(--cl-text-muted,#64748b)">(optional)</span></label>
+                    <label for="tracking_number"><i class="bi bi-upc-scan me-1"></i>Tracking # <span class="fw-normal fst-italic" style="color:var(--cl-text-muted,#64748b)">(optional)</span></label>
                     <input type="text" class="form-control form-control-sm" id="tracking_number" name="tracking_number" placeholder="Can add later">
                 </div>
             </div>
             <!-- Tracking URL -->
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="do-field">
                     <label for="tracking_url"><i class="bi bi-link-45deg me-1"></i>Tracking URL <span class="fw-normal fst-italic" style="color:var(--cl-text-muted,#64748b)">(optional)</span></label>
                     <input type="url" class="form-control form-control-sm" id="tracking_url" name="tracking_url" placeholder="https://track.dhl.com/...">
                 </div>
             </div>
+            <!-- Shipment Date -->
+            <div class="col-md-2">
+                <div class="do-field">
+                    <label for="shipped_at"><i class="bi bi-calendar-check me-1"></i>Shipment Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control form-control-sm" id="shipped_at" name="shipped_at" value="<?= date('Y-m-d') ?>" required>
+                    <div class="hint">When order was shipped</div>
+                </div>
+            </div>
             <!-- Estimated Delivery Days -->
             <div class="col-md-2">
                 <div class="do-field">
-                    <label for="estimated_delivery_days"><i class="bi bi-calendar-event me-1"></i>Delivery Days</label>
+                    <label for="estimated_delivery_days"><i class="bi bi-clock-history me-1"></i>Delivery Days</label>
                     <input type="number" class="form-control form-control-sm" id="estimated_delivery_days" name="estimated_delivery_days" min="1" max="365" step="1" placeholder="e.g. 7">
                     <div class="hint">Estimated shipping time</div>
                 </div>
@@ -796,7 +971,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
             ['label' => 'Purchase Order',    'event' => $eventMap['Purchase Order Created'] ?? null],
             ['label' => 'Warehouse Receipt', 'event' => $eventMap['Received at Warehouse'] ?? null],
             ['label' => 'Shipped',           'event' => $isConfirmed ? ['time' => $do['shipped_at'] ?? $do['updated_at'], 'label' => 'Shipped'] : null],
-            ['label' => 'Delivered',         'event' => $isDelivered ? ['time' => $do['delivery_confirmed_at'] ?? $do['updated_at'], 'label' => 'Delivered'] : null],
+            ['label' => 'Delivered',         'event' => $isDelivered ? ['time' => $do['delivery_confirmed_at'] ?? ($do['delivered_at'] ?? $do['updated_at']), 'label' => 'Delivered'] : null],
         ];
     } else {
         // In-stock path: SO → Stock Available → DO Created → Shipped → Delivered
@@ -805,7 +980,7 @@ $customerCountry = $sales_order['country'] ?? ($sales_order['ship_country'] ?? (
             ['label' => 'Stock Available',   'event' => $eventMap['Stock Available'] ?? null],
             ['label' => 'DO Created',        'event' => $eventMap['Delivery Order Created'] ?? null],
             ['label' => 'Shipped',           'event' => $isConfirmed ? ['time' => $do['shipped_at'] ?? $do['updated_at'], 'label' => 'Shipped'] : null],
-            ['label' => 'Delivered',         'event' => $isDelivered ? ['time' => $do['delivery_confirmed_at'] ?? $do['updated_at'], 'label' => 'Delivered'] : null],
+            ['label' => 'Delivered',         'event' => $isDelivered ? ['time' => $do['delivery_confirmed_at'] ?? ($do['delivered_at'] ?? $do['updated_at']), 'label' => 'Delivered'] : null],
         ];
     }
 
@@ -1385,6 +1560,30 @@ document.getElementById('saveEstDaysBtn')?.addEventListener('click',async functi
     try{const d=await post('<?= site_url("delivery-orders/update-estimated-days/") ?>'+DO_ID,{estimated_delivery_days:days});
         if(d.success)location.reload();else{alert(d.message||'Failed');this.disabled=false;this.textContent='Save';}
     }catch(e){alert('Error: '+e.message);this.disabled=false;this.textContent='Save';}
+});
+
+/* ── Edit Shipment Date & Delivery Days ── */
+const editDatesBtn=document.getElementById('editShippingDatesBtn'),editDatesWrap=document.getElementById('editShippingDatesWrap');
+editDatesBtn?.addEventListener('click',()=>{
+    if(editDatesWrap){
+        const isHidden = editDatesWrap.style.display==='none';
+        editDatesWrap.style.display = isHidden ? 'block' : 'none';
+        if(isHidden) editDatesWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }
+});
+document.getElementById('cancelEditDatesBtn')?.addEventListener('click',()=>{if(editDatesWrap)editDatesWrap.style.display='none';});
+document.getElementById('saveShippingDatesBtn')?.addEventListener('click',async function(){
+    const sDate=document.getElementById('editShippedAtInput')?.value||'',
+          dDays=parseInt(document.getElementById('editEstDaysInput')?.value)||0,
+          msg=document.getElementById('editShippingDatesMsg');
+    if(!sDate){if(msg)msg.innerHTML='<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Please select a shipment date</span>';return;}
+    if(dDays<1||dDays>365){if(msg)msg.innerHTML='<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Please enter delivery days between 1 and 365</span>';return;}
+    this.disabled=true;this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+    try{
+        const d=await post('<?= site_url("delivery-orders/update-estimated-days/") ?>'+DO_ID,{shipped_at:sDate,estimated_delivery_days:dDays});
+        if(d.success)location.reload();
+        else{if(msg)msg.innerHTML='<span class="text-danger">'+(d.message||'Failed')+'</span>';this.disabled=false;this.innerHTML='<i class="bi bi-check-circle me-1"></i>Save';}
+    }catch(e){if(msg)msg.innerHTML='<span class="text-danger">Error: '+e.message+'</span>';this.disabled=false;this.innerHTML='<i class="bi bi-check-circle me-1"></i>Save';}
 });
 })();
 </script>

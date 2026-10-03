@@ -8,19 +8,6 @@ Documents
 <?= view('components/search_styles') ?>
 
 <style>
-    #documentsTable th,
-    #documentsTable td {
-        font-size: 12.5px;
-    }
-
-    #documentsTable td {
-        white-space: nowrap;
-    }
-
-    #documentsTable .products-col {
-        max-width: 360px;
-    }
-
     #latestOrdersModal .modal-dialog {
         max-width: 1180px;
     }
@@ -103,160 +90,19 @@ Documents
         font-size: 10px;
     }
 
-    .filter-tab {
-        padding: 8px 16px;
-        background: transparent;
-        border: 1px solid var(--gray-300);
-        border-radius: 6px;
-        color: var(--gray-600);
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
+    #productsModal .modal-dialog { max-width: 760px; }
+    #productsModal .modal-body { padding: 0; }
+    #productsModalTable { table-layout: fixed; width: 100%; }
+    #productsModalTable th,
+    #productsModalTable td { padding: .75rem 1rem; vertical-align: top; }
+    #productsModalTable th:first-child,
+    #productsModalTable td:first-child { width: 56px; text-align: center; }
+    #productsModalTable td:last-child {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.45;
     }
 
-    .filter-tab:hover {
-        background: var(--gray-100);
-        border-color: var(--gray-400);
-        color: var(--gray-700);
-    }
-
-    .filter-tab.active {
-        background: var(--primary-color);
-        border-color: var(--primary-color);
-        color: white;
-    }
-
-    .filter-tab .count {
-        background: rgba(0, 0, 0, 0.1);
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .search-input-wrapper {
-        position: relative;
-    }
-
-    .search-input-wrapper input {
-        padding-left: 38px;
-        padding-right: 38px;
-    }
-
-    .search-input-wrapper .search-icon {
-        position: absolute;
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--gray-500);
-        font-size: 16px;
-        pointer-events: none;
-    }
-
-    .search-input-wrapper .clear-btn {
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: var(--gray-500);
-        font-size: 18px;
-        cursor: pointer;
-        padding: 4px;
-        opacity: 0;
-        transition: opacity 0.2s ease;
-    }
-
-    .search-input-wrapper input:not(:placeholder-shown) ~ .clear-btn {
-        opacity: 1;
-    }
-
-    .search-input-wrapper .clear-btn:hover {
-        color: var(--danger-color);
-    }
-</style>
-
-<style>
-    /* Override dark search input from global search_styles on this page */
-    .search-input-wrapper .form-control {
-        background: #ffffff !important;
-        color: var(--gray-800) !important;
-        border: 1px solid var(--gray-200) !important;
-        box-shadow: none !important;
-        height: 46px;
-        border-radius: 8px;
-        padding-left: 44px; /* space for icon */
-    }
-    .search-input-wrapper .form-control::placeholder { color: var(--gray-400) !important; }
-    .search-input-wrapper .search-icon { color: var(--gray-400) !important; }
-    .search-input-wrapper { padding: 8px 12px; }
-    .card-body .search-input-wrapper { padding: 6px 12px; }
-</style>
-
-<style>
-    /* Further override: remove the dark wrapper and make the entire input area light */
-    .search-input-wrapper {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
-    .search-input-wrapper .form-control {
-        background: #fff !important;
-        border: 1px solid var(--gray-200) !important;
-        box-shadow: none !important;
-        width: 100%;
-    }
-    .search-results-panel {
-        background: #fff !important;
-        color: var(--gray-800) !important;
-        border: 1px solid var(--gray-200) !important;
-        box-shadow: 0 6px 18px rgba(15,23,42,0.06) !important;
-    }
-</style>
-
-<style>
-    /* Allow dropdown menus and product popovers to escape the table responsive clipping on this page */
-    .table-responsive {
-        overflow: visible !important;
-    }
-    .table-responsive .dropdown-menu {
-        z-index: 3000;
-    }
-</style>
-
-<style>
-    /* Products column link styling */
-    .products-col .view-more-products,
-    .products-col .view-more-link {
-        color: var(--primary-color);
-        text-decoration: none;
-        font-weight: 600;
-        margin-left: 8px;
-        vertical-align: baseline;
-        font-size: 0.92rem;
-    }
-    .products-col .view-more-products:hover,
-    .products-col .view-more-link:hover {
-        text-decoration: underline;
-    }
-
-    /* Ensure product text truncation aligns nicely */
-    .products-col .text-truncate { display: inline-block; vertical-align: middle; }
-
-    /* Actions column alignment and dropdown sizing */
-    .tt-actions { white-space: nowrap; }
-    .tt-actions .dropdown-toggle { padding: 0.28rem 0.5rem; border-radius: 6px; }
-    .tt-actions .dropdown-menu { min-width: 160px; box-shadow: 0 6px 18px rgba(32,33,36,0.08); }
-
-    /* Make dropdown caret aligned with the cell center */
-    .tt-actions .dropdown { display: inline-block; vertical-align: middle; }
 </style>
 
 <script>
@@ -342,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<div class="container-fluid py-3">
+<div class="container-fluid cl-list-page cl-documents-page" data-cl-list>
     <?php
         $latestSalesOrders = array_values(array_filter($documents ?? [], static function($doc) {
             if (($doc['doc_type'] ?? '') !== 'sales_order') {
@@ -357,12 +203,12 @@ document.addEventListener('DOMContentLoaded', function() {
     ?>
 
     <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="cl-list-page-header">
         <div>
             <h2 class="mb-0"><i class="bi bi-files me-2"></i>Documents</h2>
             <div class="small text-muted">Quotations and sales orders</div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="cl-list-page-actions">
             <button
                 type="button"
                 id="orderAlarmButton"
@@ -393,39 +239,33 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 
-    <!-- Search and Filters Card -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Search</label>
-                    <div class="search-input-wrapper">
-                        <i class="bi bi-search search-icon"></i>
-                        <input 
-                            type="text" 
-                            id="liveSearchInput" 
-                            value="<?= esc($search ?? '') ?>" 
-                            class="form-control" 
-                            placeholder="Search by number, customer, or status..." 
-                            autocomplete="off"
-                        />
-                        <button type="button" class="clear-btn" id="clearSearchBtn" title="Clear search">
-                            <i class="bi bi-x-circle-fill"></i>
-                        </button>
-                        <div class="search-results-panel" id="searchResultsPanel"></div>
-                    </div>
-                </div>
-                <div class="col-md-6 d-flex align-items-end">
-                    <a href="<?= base_url('documents') ?>" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-clockwise me-1"></i>Reset
-                    </a>
-                </div>
+    <!-- Search and Filters -->
+    <div class="cl-list-toolbar">
+        <div class="cl-list-search-group">
+            <label class="form-label" for="liveSearchInput">Search</label>
+            <div class="search-input-wrapper">
+                <i class="bi bi-search search-icon"></i>
+                <input
+                    type="text"
+                    id="liveSearchInput"
+                    value="<?= esc($search ?? '') ?>"
+                    class="form-control cl-list-search"
+                    placeholder="Search by number, customer, or status..."
+                    autocomplete="off"
+                />
+                <button type="button" class="clear-btn" id="clearSearchBtn" title="Clear search">
+                    <i class="bi bi-x-circle-fill"></i>
+                </button>
+                <div class="search-results-panel" id="searchResultsPanel"></div>
             </div>
         </div>
+        <a href="<?= base_url('documents') ?>" class="btn btn-outline-secondary cl-list-reset">
+            <i class="bi bi-arrow-clockwise me-1"></i>Reset
+        </a>
     </div>
 
     <!-- Filter Tabs -->
-    <div class="mb-3 d-flex gap-2 flex-wrap">
+    <div class="cl-list-tabs">
         <a href="#" class="filter-tab active" data-filter="all">
             <i class="bi bi-grid"></i> All 
             <span class="count"><?= count($documents) ?></span>
@@ -445,7 +285,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     <!-- Documents Table -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm cl-list-table-card">
         <div class="card-body p-0">
             <?php
                 $currencySymbols = [
@@ -453,37 +293,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 ];
             ?>
             <div class="table-responsive">
-                <table class="table table-hover mb-0" id="documentsTable">
+                <table class="table table-hover mb-0 cl-table" id="documentsTable">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 60px;">#</th>
-                            <th style="width: 180px;">Number</th>
-                            <th>Customer</th>
+                            <th style="width: 58px;">#</th>
+                            <th style="width: 145px;">Number</th>
+                            <th style="width: 230px;">Customer</th>
                             <th>Product</th>
-                            <th style="width: 120px;">Type</th>
-                            <th style="width: 120px;">Date</th>
-                            <th style="width: 130px;">Status</th>
-                            <th class="text-end" style="width: 140px;">Total</th>
+                            <th style="width: 112px;">Type</th>
+                            <th style="width: 118px;">Date</th>
+                            <th style="width: 118px;">Status</th>
+                            <th class="text-end" style="width: 120px;">Total</th>
                             <th class="actions-col">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                     <?php if (empty($documents)): ?>
-                        <tr><td colspan="9" class="text-center text-muted py-4">No documents found</td></tr>
+                        <tr class="cl-list-empty--row"><td colspan="9">No documents found</td></tr>
                     <?php else: ?>
                         <?php foreach ($documents as $d): ?>
                             <?php
                                 $isQuote = ($d['doc_type'] ?? '') === 'quotation';
                                 $typeLabel = $isQuote ? 'Quotation' : 'Sales Order';
-                                $typeBadge = $isQuote ? 'text-bg-info' : 'text-bg-primary';
-
                                 $status = (string)($d['status'] ?? '');
-                                $statusBadge = 'text-bg-secondary';
-                                if ($status === 'quoted') $statusBadge = 'text-bg-info';
-                                elseif ($status === 'draft') $statusBadge = 'text-bg-secondary';
-                                elseif ($status === 'accepted') $statusBadge = 'text-bg-success';
-                                elseif ($status === 'cancelled') $statusBadge = 'text-bg-danger';
-                                elseif (in_array($status, ['confirmed','approved','completed'])) $statusBadge = 'text-bg-success';
 
                                 $id = (int)($d['id'] ?? 0);
                                 $soIdentifier = (!empty($d['public_id']) && featureEnabled('enable_public_ids')) ? $d['public_id'] : $id;
@@ -503,30 +335,32 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <td class="products-col">
                                     <?php $plist = $d['product_list'] ?? []; ?>
                                     <?php if (!empty($plist) && count($plist) > 0): ?>
-                                        <span class="d-inline-block text-truncate" style="max-width:340px;" title="<?= esc($plist[0]) ?>"><?= esc($plist[0]) ?></span>
-                                        <?php if (count($plist) > 1): ?>
-                                            <?php $extra = count($plist) - 1; ?>
-                                            <a href="#" class="small ms-2 view-more-products view-more-link" data-products='<?= esc(json_encode($plist)) ?>' title="View <?= $extra ?> more product<?= $extra > 1 ? 's' : '' ?>">View <?= $extra ?> more</a>
-                                        <?php endif; ?>
+                                        <?= view('components/ui/list_chips', [
+                                            'items' => $plist,
+                                            'visible' => 1,
+                                            'moreClass' => 'view-more-products',
+                                            'dataAttribute' => 'data-products',
+                                            'moreLabel' => 'View more',
+                                        ]) ?>
                                     <?php else: ?>
                                         <?= esc($d['product'] ?: '-') ?>
                                     <?php endif; ?>
                                 </td>
-                                <td><span class="badge <?= esc($typeBadge) ?>"><?= esc($typeLabel) ?></span></td>
+                                <td><?= view('components/ui/status_pill', ['status' => $typeLabel]) ?></td>
                                 <td><?= esc($d['date'] ? date('M d, Y', strtotime($d['date'])) : '') ?></td>
-                                <td><span class="badge <?= esc($statusBadge) ?>"><?= esc(ucfirst($status ?: '')) ?></span></td>
+                                <td><?= view('components/ui/status_pill', ['status' => ucfirst($status ?: 'Unknown')]) ?></td>
                                 <?php
                                     $code = strtoupper(trim((string)($d['currency'] ?? '')));
                                     $sym = $currencySymbols[$code] ?? ($code !== '' ? $code . ' ' : '');
                                 ?>
                                 <td class="text-end"><strong><?= esc($sym) ?><?= number_format((float)($d['total'] ?? 0), 2) ?></strong></td>
-                                <td class="tt-actions text-end">
+                                <td class="tt-actions text-end cl-table-actions">
+                                    <?= view('components/ui/list_action', ['url' => $viewUrl, 'class' => 'doc-view']) ?>
                                     <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle cl-action-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="More actions" aria-label="More actions">
                                             <i class="bi bi-three-dots-vertical"></i>
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><a class="dropdown-item doc-view" href="<?= $viewUrl ?>"><i class="bi bi-eye me-2"></i>View</a></li>
                                             <?php if ($isQuote): ?>
                                                 <li><a class="dropdown-item" href="<?= $editUrl ?>"><i class="bi bi-pencil me-2"></i>Edit</a></li>
                                                 <li><a class="dropdown-item" href="<?= $quotePrintUrl ?>" target="_blank" rel="noopener"><i class="bi bi-printer me-2"></i>Print View</a></li>
@@ -586,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="text-muted">No recent sales orders found.</div>
                 <?php else: ?>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 latest-orders-table">
+                        <table class="cl-table table table-sm align-middle mb-0 latest-orders-table">
                             <thead>
                                 <tr>
                                     <th>#</th>
@@ -654,7 +488,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Products modal -->
 <div class="modal fade" id="productsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Products <small id="productsModalCount" class="text-muted"></small></h5>
@@ -662,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="modal-body">
                 <div class="table-responsive">
-                    <table class="table table-sm mb-0" id="productsModalTable">
+                    <table class="cl-table table table-sm mb-0" id="productsModalTable">
                         <thead>
                             <tr>
                                 <th style="width:48px;">#</th>

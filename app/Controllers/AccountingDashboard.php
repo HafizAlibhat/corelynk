@@ -185,15 +185,19 @@ class AccountingDashboard extends Controller
         $ie_expenses = array_column($ieRows, 'expenses');
         // AP/AR (translate similar to totals)
         if ($currency === 'USD') {
-            // AR/AP (USD view) restricted to receivable/payable-named accounts only
-            $apQ = "SELECT SUM(CASE WHEN jl.currency_code='USD' THEN jl.base_amount WHEN jl.currency_code='PKR' AND jl.fx_rate>0 THEN jl.credit / jl.fx_rate ELSE 0 END) as ap FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Liability' AND (a.name LIKE '%payable%' OR a.name LIKE '%supplier%')";
-            $arQ = "SELECT SUM(CASE WHEN jl.currency_code='USD' THEN jl.base_amount WHEN jl.currency_code='PKR' AND jl.fx_rate>0 THEN jl.debit / jl.fx_rate ELSE 0 END) as ar FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Asset' AND (a.name LIKE '%receivable%' OR a.name LIKE '%customer%')";
+            // AR/AP (USD view) restricted to receivable/payable-named accounts only.
+            // Net credit-minus-debit (AP) / debit-minus-credit (AR) so that payments
+            // (which post to the opposite side) actually reduce the outstanding balance.
+            $apQ = "SELECT SUM(CASE WHEN jl.currency_code='USD' THEN jl.base_amount WHEN jl.currency_code='PKR' AND jl.fx_rate>0 THEN (jl.credit - jl.debit) / jl.fx_rate ELSE 0 END) as ap FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Liability' AND (a.name LIKE '%payable%' OR a.name LIKE '%supplier%')";
+            $arQ = "SELECT SUM(CASE WHEN jl.currency_code='USD' THEN jl.base_amount WHEN jl.currency_code='PKR' AND jl.fx_rate>0 THEN (jl.debit - jl.credit) / jl.fx_rate ELSE 0 END) as ar FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Asset' AND (a.name LIKE '%receivable%' OR a.name LIKE '%customer%')";
             $ap = $db->query($apQ)->getRow('ap') ?? 0;
             $ar = $db->query($arQ)->getRow('ar') ?? 0;
         } else {
-            // AR/AP should not include all assets/liabilities; restrict by name to avoid counting cash
-            $apQ = "SELECT SUM(jl.credit) as ap FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Liability' AND (a.name LIKE '%payable%' OR a.name LIKE '%supplier%')";
-            $arQ = "SELECT SUM(jl.debit) as ar FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Asset' AND (a.name LIKE '%receivable%' OR a.name LIKE '%customer%')";
+            // AR/AP should not include all assets/liabilities; restrict by name to avoid counting cash.
+            // Net credit-minus-debit (AP) / debit-minus-credit (AR) so that payments
+            // (which post to the opposite side) actually reduce the outstanding balance.
+            $apQ = "SELECT SUM(jl.credit - jl.debit) as ap FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Liability' AND (a.name LIKE '%payable%' OR a.name LIKE '%supplier%')";
+            $arQ = "SELECT SUM(jl.debit - jl.credit) as ar FROM journal_lines jl JOIN accounts a ON jl.account_id=a.id WHERE a.type='Asset' AND (a.name LIKE '%receivable%' OR a.name LIKE '%customer%')";
             $ap = $db->query($apQ)->getRow('ap') ?? 0;
             $ar = $db->query($arQ)->getRow('ar') ?? 0;
         }

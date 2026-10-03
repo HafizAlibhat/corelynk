@@ -84,6 +84,11 @@ class DocumentLogger
      * Return all log entries for a specific document, oldest-first,
      * joined with the user's name and avatar initial.
      *
+     * We intentionally filter out stale rows whose created_at is older than the
+     * current document's own creation timestamp. This prevents historical logs
+     * from a previously restored or recycled ID from being shown on a newer
+     * document that happens to share the same integer document_id.
+     *
      * @return array[]
      */
     public static function getForDocument(string $documentType, int $documentId): array
@@ -92,11 +97,19 @@ class DocumentLogger
             self::ensureSchema();
             $db = Database::connect();
 
-            $rows = $db->table('document_logs dl')
+            $docCreatedAt = self::getDocumentCreatedAt($documentType, $documentId);
+
+            $builder = $db->table('document_logs dl')
                 ->select('dl.*, u.first_name, u.last_name, u.username, u.email')
                 ->join('users u', 'u.id = dl.user_id', 'left')
                 ->where('dl.document_type', $documentType)
-                ->where('dl.document_id',   $documentId)
+                ->where('dl.document_id',   $documentId);
+
+            if ($docCreatedAt) {
+                $builder->where('dl.created_at >=', $docCreatedAt);
+            }
+
+            $rows = $builder
                 ->orderBy('dl.id', 'ASC')
                 ->get()
                 ->getResultArray();
@@ -105,6 +118,53 @@ class DocumentLogger
         } catch (\Throwable $e) {
             log_message('warning', '[DocumentLogger] getForDocument failed: ' . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Return the creation timestamp of the current document, if the table exposes it.
+     * This is used as a guard against stale logs from earlier document rows that
+     * share the same numeric document_id.
+     */
+    private static function getDocumentCreatedAt(string $documentType, int $documentId): ?string
+    {
+        $map = [
+            self::TYPE_QUOTATION      => ['table' => 'quotations', 'key' => 'created_at'],
+            self::TYPE_SALES_ORDER    => ['table' => 'sales_orders', 'key' => 'created_at'],
+            self::TYPE_PURCHASE_ORDER => ['table' => 'purchase_orders', 'key' => 'created_at'],
+            self::TYPE_PURCHASE_RFQ   => ['table' => 'purchase_rfqs', 'key' => 'created_at'],
+            self::TYPE_INVOICE        => ['table' => 'customer_invoices', 'key' => 'created_at'],
+        ];
+
+        if (!isset($map[$documentType])) {
+            return null;
+        }
+
+        $config = $map[$documentType];
+        $table = $config['table'];
+        $key = $config['key'];
+
+        try {
+            $db = Database::connect();
+            if (!$db->tableExists($table)) {
+                return null;
+            }
+
+            $fields = $db->getFieldNames($table);
+            if (!in_array($key, $fields, true)) {
+                return null;
+            }
+
+            $row = $db->table($table)
+                ->select('created_at')
+                ->where('id', $documentId)
+                ->get()
+                ->getRowArray();
+
+            return $row['created_at'] ?? null;
+        } catch (\Throwable $e) {
+            log_message('warning', '[DocumentLogger] Unable to resolve document created_at for ' . $documentType . '#' . $documentId . ': ' . $e->getMessage());
+            return null;
         }
     }
 

@@ -50,6 +50,9 @@ class OwnerDashboardApi extends BaseApiController
             "SELECT COALESCE(SUM(ci.total_amount), 0) - COALESCE((
                 SELECT SUM(cpa.allocated_amount) FROM customer_payment_allocations cpa
                 INNER JOIN customer_invoices ci2 ON cpa.invoice_id = ci2.id
+                INNER JOIN customer_payments cp2 ON cp2.id = cpa.payment_id
+                    AND cp2.customer_id = ci2.customer_id
+                    AND COALESCE(cpa.created_at, cp2.created_at, '1970-01-01 00:00:00') >= COALESCE(ci2.created_at, '1970-01-01 00:00:00')
                 WHERE ci2.status NOT IN ('paid','cancelled') AND ci2.deleted_at IS NULL
             ), 0) AS val
             FROM customer_invoices ci

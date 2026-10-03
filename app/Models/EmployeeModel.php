@@ -9,19 +9,40 @@ class EmployeeModel extends Model
     protected $table = 'employees';
     protected $primaryKey = 'id';
     protected $allowedFields = [
-        'employee_code', 'first_name', 'last_name', 'phone', 'email', 
-        'department', 'is_active'
+        'employee_code', 'first_name', 'last_name', 'phone', 'email', 'photo_path', 'user_id',
+        'department', 'designation', 'joining_date', 'monthly_salary',
+        'salary_currency', 'is_active'
     ];
     protected $useTimestamps = true;
     protected $returnType = 'array';
 
-    public function getEmployeesWithSkills()
+    public function getEmployeesWithSkills(bool $includeInactive = false)
     {
-        return $this->select('employees.*, GROUP_CONCAT(employee_skills.skill_name) as skills')
-                    ->join('employee_skills', 'employee_skills.employee_id = employees.id', 'left')
-                    ->where('employees.is_active', 1)
-                    ->groupBy('employees.id')
+        // A subquery rather than a join+GROUP BY: grouping on employees.id alone
+        // is rejected under MySQL's ONLY_FULL_GROUP_BY.
+        return $this->select("employees.*, (SELECT GROUP_CONCAT(es.skill_name ORDER BY es.skill_name SEPARATOR ', ')
+                                              FROM employee_skills es
+                                             WHERE es.employee_id = employees.id) AS skills", false)
+                    ->where($includeInactive ? '1=1' : 'employees.is_active = 1', null, false)
+                    ->orderBy('employees.is_active', 'DESC')
+                    ->orderBy('employees.first_name', 'ASC')
                     ->findAll();
+    }
+
+    /** Departments already in use, plus the standard ones, for the picker. */
+    public function departmentList(): array
+    {
+        $used = array_column($this->db->query(
+            "SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department <> ''"
+        )->getResultArray(), 'department');
+
+        $all = array_unique(array_merge(
+            ['Production', 'Quality Control', 'Maintenance', 'Packing', 'Stores'],
+            $used
+        ));
+        sort($all, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $all;
     }
 
     public function getEmployeesBySkill($skillName)
@@ -35,16 +56,14 @@ class EmployeeModel extends Model
 
     public function generateEmployeeCode()
     {
-        $lastEmployee = $this->orderBy('id', 'DESC')->first();
-        if (!$lastEmployee) {
-            return 'EMP001';
-        }
-        
-        $lastCode = $lastEmployee['employee_code'];
-        $number = (int) substr($lastCode, 3);
-        $newNumber = $number + 1;
-        
-        return 'EMP' . str_pad($newNumber, 3, '0', STR_PAD_LEFT);
+        // Highest number actually used, not the newest row: codes may be blank,
+        // edited by hand, or left behind by a deactivated employee.
+        $highest = (int) ($this->db->query(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(employee_code, 4) AS UNSIGNED)), 0) AS n
+               FROM employees WHERE employee_code REGEXP '^EMP[0-9]+$'"
+        )->getRow()->n ?? 0);
+
+        return 'EMP' . str_pad($highest + 1, 3, '0', STR_PAD_LEFT);
     }
 
     public function addEmployeeWithSkills($employeeData, $skills = [])

@@ -447,6 +447,18 @@ class NewPurchaseOrders extends BaseController
             ]);
         }
 
+        $hasPositiveQty = false;
+        foreach ($lines as $lnCheck) {
+            $qtyCheck = isset($lnCheck['qty']) ? (float)$lnCheck['qty'] : (isset($lnCheck['quantity']) ? (float)$lnCheck['quantity'] : 0);
+            if ($qtyCheck > 0) { $hasPositiveQty = true; break; }
+        }
+        if (!$hasPositiveQty) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'error' => 'A purchase order must have at least one line item with quantity > 0.',
+            ]);
+        }
+
     $currency = isset($data['currency']) && $data['currency'] !== '' ? strtoupper(trim((string)$data['currency'])) : $this->getDefaultPurchaseCurrency();
 
         $db = Database::connect();
@@ -482,12 +494,14 @@ class NewPurchaseOrders extends BaseController
                 // accept either 'qty' or legacy 'quantity'
                 $qty = isset($ln['qty']) ? (float)$ln['qty'] : (isset($ln['quantity']) ? (float)$ln['quantity'] : 0);
                 if ($qty <= 0) continue;
+                $unitPrice = isset($ln['unit_price']) ? (float)$ln['unit_price'] : (isset($ln['unit_cost']) ? (float)$ln['unit_cost'] : 0.0);
                 $lineInsert = [
                     'po_id' => $poId,
                     'product_id' => isset($ln['product_id']) ? (int)$ln['product_id'] : null,
                     'description' => $ln['description'] ?? null,
                     'qty' => $qty,
-                    'unit_price' => isset($ln['unit_price']) ? (float)$ln['unit_price'] : (isset($ln['unit_cost']) ? (float)$ln['unit_cost'] : null),
+                    'unit_price' => $unitPrice,
+                    'line_total' => round($qty * $unitPrice, 2),
                     'qty_received' => 0,
                     'created_at' => date('Y-m-d H:i:s')
                 ];
@@ -675,6 +689,7 @@ class NewPurchaseOrders extends BaseController
                 'sample_product_code' => $r['sample_product_code'] ?? null,
                 'sample_variant_code' => $r['sample_variant_code'] ?? null,
                 'sample_variant_name' => $r['sample_variant_name'] ?? null,
+                'source_type' => $r['source_type'] ?? 'material',
             ];
         }
         if (!empty($searchTerm)) {
@@ -758,6 +773,193 @@ class NewPurchaseOrders extends BaseController
         return $this->response->setJSON(['success' => true, 'message' => 'PO set to draft']);
     }
 
+    /**
+     * POST new-purchase-orders/{id}/reset-to-rfq
+     *
+     * Sends a purchase order back to its originating RFQ so the buyer can fix
+     * quantities/prices and confirm it again. This is only legal while the PO
+     * is still a purely commercial document: the moment it has touched stock
+     * (GRN / received qty) or the ledger (vendor bill / payment) the reset is
+     * refused, because reverting it would leave those postings orphaned.
+     *
+     * The PO row and its lines are removed (never received, never billed, so
+     * nothing downstream references them) and the RFQ is restored to draft
+     * carrying the PO's current header totals and lines, so re-confirming
+     * reproduces the same figures. Both documents keep an activity-log trail.
+     */
+    public function resetToRfq($id = null)
+    {
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'POST required']);
+        }
+
+        $poModel = new PurchaseOrderModel();
+        $po = $poModel->findByPublicIdOrId($id);
+        if (!$po) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'PO not found']);
+        }
+        $poId = (int)$po['id'];
+
+        $rfqId = (int)($po['rfq_id'] ?? 0);
+        if ($rfqId <= 0) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'error'   => 'This PO was not created from an RFQ, so it cannot be reset to one.',
+            ]);
+        }
+
+        $rfqModel = new \App\Models\PurchaseRfqModel();
+        $rfq = $rfqModel->find($rfqId);
+        if (!$rfq) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'success' => false,
+                'error'   => 'The originating RFQ no longer exists.',
+            ]);
+        }
+
+        $db = Database::connect();
+        $db->transBegin();
+        try {
+            // Lock the PO row first, then run every guard inside the same
+            // transaction so a receipt or bill created concurrently cannot slip
+            // in between the check and the delete.
+            $db->query('SELECT id FROM purchase_orders WHERE id = ? FOR UPDATE', [$poId]);
+            $locked = $poModel->find($poId);
+            if (!$locked) {
+                throw new \RuntimeException('PO not found');
+            }
+
+            $status = strtolower((string)($locked['status'] ?? ''));
+            if (!in_array($status, ['draft', 'pending', 'confirmed'], true)) {
+                throw new \RuntimeException('Only draft, pending or confirmed POs can be reset to RFQ (this one is "' . ($status ?: 'unknown') . '").');
+            }
+
+            $lineModel = new PurchaseOrderLineModel();
+            $poLines = $lineModel->where('po_id', $poId)->orderBy('id', 'ASC')->findAll();
+
+            foreach ($poLines as $ln) {
+                if ((float)($ln['qty_received'] ?? 0) > 0) {
+                    throw new \RuntimeException('This PO already has received quantities. Reverse the goods receipt first.');
+                }
+            }
+
+            foreach (['purchase_grns', 'grns'] as $grnTable) {
+                if (!$db->tableExists($grnTable)) {
+                    continue;
+                }
+                $grn = $db->table($grnTable)->select('id, grn_number')->where('po_id', $poId)->orderBy('id', 'DESC')->get(1)->getRowArray();
+                if (!empty($grn)) {
+                    $grnLabel = !empty($grn['grn_number']) ? $grn['grn_number'] : ('#' . $grn['id']);
+                    throw new \RuntimeException('A goods receipt (GRN ' . $grnLabel . ') exists for this PO. Stock has already moved, so it cannot be reset.');
+                }
+            }
+
+            if ($db->tableExists('vendor_bills')) {
+                $bill = $db->table('vendor_bills')
+                    ->select('id, bill_number, status')
+                    ->where('po_id', $poId)
+                    ->where("LOWER(COALESCE(status, '')) !=", 'cancelled')
+                    ->orderBy('id', 'DESC')->get(1)->getRowArray();
+                if (!empty($bill)) {
+                    $billLabel = !empty($bill['bill_number']) ? $bill['bill_number'] : ('#' . $bill['id']);
+                    throw new \RuntimeException('A vendor bill (' . $billLabel . ') exists for this PO. Cancel the bill before resetting.');
+                }
+            }
+
+            if ($db->tableExists('vendor_payments')) {
+                $payment = $db->table('vendor_payments')
+                    ->select('id')
+                    ->where('po_id', $poId)
+                    ->where("LOWER(COALESCE(status, '')) !=", 'cancelled')
+                    ->orderBy('id', 'DESC')->get(1)->getRowArray();
+                if (!empty($payment)) {
+                    throw new \RuntimeException('A vendor payment (advance) is recorded against this PO. Reverse the payment before resetting.');
+                }
+            }
+
+            // Carry the PO's current commercial content back onto the RFQ. Tax
+            // and discount percentages only live on RFQ lines, so keep them from
+            // the matching old RFQ line (conversion preserves line order).
+            $rfqLineModel = new \App\Models\PurchaseRfqLineModel();
+            $oldRfqLines = array_values($rfqLineModel->where('rfq_id', $rfqId)->orderBy('id', 'ASC')->findAll());
+
+            $rfqLineModel->where('rfq_id', $rfqId)->delete();
+            foreach (array_values($poLines) as $idx => $ln) {
+                $prev = $oldRfqLines[$idx] ?? [];
+                $samePrev = !empty($prev) && (int)($prev['product_id'] ?? 0) === (int)($ln['product_id'] ?? 0);
+                $rfqLineModel->insert([
+                    'rfq_id'             => $rfqId,
+                    'product_id'         => $ln['product_id'] ?? null,
+                    'product_variant_id' => !empty($ln['variant_id']) ? (int)$ln['variant_id'] : ($samePrev ? ($prev['product_variant_id'] ?? null) : null),
+                    'description'        => $ln['description'] ?? null,
+                    'quantity'           => (float)($ln['qty'] ?? 0),
+                    'unit_cost'          => (float)($ln['unit_price'] ?? 0),
+                    'line_total'         => (float)($ln['line_total'] ?? 0),
+                    'discount'           => (float)($ln['discount_amount'] ?? 0),
+                    'discount_percent'   => $samePrev ? (float)($prev['discount_percent'] ?? 0) : 0,
+                    'tax_percent'        => $samePrev ? (float)($prev['tax_percent'] ?? 0) : 0,
+                    'tax_amount'         => $samePrev ? (float)($prev['tax_amount'] ?? 0) : 0,
+                    'display_type'       => $ln['display_type'] ?? null,
+                    'section_title'      => $ln['section_title'] ?? null,
+                    'sort_order'         => $ln['sort_order'] ?? null,
+                    'created_at'         => date('Y-m-d H:i:s'),
+                ]);
+            }
+
+            $rfqUpdate = [
+                'status'         => 'draft',
+                'vendor_id'      => $locked['vendor_id'] ?? ($rfq['vendor_id'] ?? null),
+                'currency'       => $locked['currency'] ?? ($rfq['currency'] ?? null),
+                'subtotal'       => (float)($locked['subtotal'] ?? 0),
+                'discount'       => (float)($locked['discount_total'] ?? 0),
+                'total_discount' => (float)($locked['discount_total'] ?? 0),
+                'tax_amount'     => (float)($locked['tax_total'] ?? 0),
+                'total_tax'      => (float)($locked['tax_total'] ?? 0),
+                'grand_total'    => (float)($locked['total'] ?? 0),
+                'updated_at'     => date('Y-m-d H:i:s'),
+            ];
+            if (!empty($locked['delivery_date'])) {
+                $rfqUpdate['delivery_date'] = $locked['delivery_date'];
+            }
+            $rfqModel->update($rfqId, $rfqUpdate);
+
+            // Drop the PO itself. It never produced stock or ledger entries, and
+            // leaving a cancelled shell behind would both hold its unique number
+            // and be picked up as the "existing PO" when the RFQ is confirmed
+            // again, silently resurrecting the stale document.
+            $lineModel->where('po_id', $poId)->delete();
+            $poModel->delete($poId);
+
+            if ($db->transStatus() === false) {
+                throw new \RuntimeException('Transaction failed');
+            }
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            $message = $e->getMessage() ?: 'Failed to reset PO to RFQ';
+            log_message('error', 'PO reset-to-RFQ failed (po_id=' . $poId . '): ' . $message);
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'error' => $message]);
+        }
+
+        $poNumber = (string)($po['po_number'] ?? ('#' . $poId));
+        $rfqNumber = (string)($rfq['rfq_number'] ?? ('#' . $rfqId));
+        DocumentLogger::log(DocumentLogger::TYPE_PURCHASE_ORDER, $poId, DocumentLogger::ACTION_DELETED, [
+            'reason' => 'Reset to RFQ ' . $rfqNumber,
+        ]);
+        DocumentLogger::log(DocumentLogger::TYPE_PURCHASE_RFQ, $rfqId, DocumentLogger::ACTION_STATUS_CHANGED, [
+            'from' => $rfq['status'] ?? '',
+            'to'   => 'draft',
+            'note' => 'Purchase order ' . $poNumber . ' was reset back to this RFQ',
+        ]);
+
+        return $this->response->setJSON([
+            'success'  => true,
+            'message'  => 'PO ' . $poNumber . ' was reset to RFQ ' . $rfqNumber . '.',
+            'rfq_id'   => $rfqId,
+            'redirect' => site_url('newpurchaseui/rfqpo') . '?edit=' . $rfqId,
+        ]);
+    }
+
     // Create PO from an accepted RFQ
     public function from_rfq($rfq_id = null)
     {
@@ -773,6 +975,17 @@ class NewPurchaseOrders extends BaseController
         $rfq = $rfqModel->find($rfqId);
         if (!$rfq) return $this->response->setStatusCode(404)->setJSON(['error' => 'RFQ not found']);
         if ($rfq['status'] !== 'accepted') return $this->response->setStatusCode(400)->setJSON(['error' => 'RFQ must be accepted before creating PO']);
+
+        // An RFQ with no real lines (qty > 0) must never become a purchase order.
+        $rfqLinesForGuard = $rfqLineModel->where('rfq_id', $rfqId)->findAll();
+        $hasValidLine = false;
+        foreach ($rfqLinesForGuard as $lg) {
+            $qtyGuard = isset($lg['qty']) ? (float)$lg['qty'] : (isset($lg['quantity']) ? (float)$lg['quantity'] : 0);
+            if ($qtyGuard > 0) { $hasValidLine = true; break; }
+        }
+        if (!$hasValidLine) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'This RFQ has no product lines. Add at least one line item before creating a purchase order.']);
+        }
 
         $db = Database::connect();
         $db->transBegin();
@@ -882,6 +1095,13 @@ class NewPurchaseOrders extends BaseController
             $lineOrderField = 'id';
         }
         $lines = $lineModel->where('po_id', $poId)->orderBy($lineOrderField, 'ASC')->orderBy('id','ASC')->findAll();
+
+        // The UI edits/displays discount as a plain percent; the DB stores it
+        // as discount_type/discount_value, so expose discount_percent too.
+        foreach ($lines as &$ln) {
+            $ln['discount_percent'] = (($ln['discount_type'] ?? null) === 'percent') ? (float)($ln['discount_value'] ?? 0) : 0.0;
+        }
+        unset($ln);
 
         // Enrich lines with product info (name/code/sku) and VARIANT info (image/code/name) when possible
         try {
@@ -1262,13 +1482,20 @@ class NewPurchaseOrders extends BaseController
         } catch (\Throwable $_) {}
 
         $lineCount = count($lines);
+        // A subcontract job PO (vendor labor/job charges — coloring, plasma
+        // coating, etc.) is billing-only: the physical goods already moved
+        // stock through the vendor receive flow, so it must never offer a
+        // GRN "Receive" action, no matter what its lines look like.
+        $isSubcontractJobPo = (($po['source_type'] ?? 'material') === 'subcontract_job');
         $po['service_line_count'] = $serviceLineCount;
         $po['inventory_line_count'] = $inventoryLineCount;
-        $po['is_service_document'] = $lineCount > 0 && $inventoryLineCount === 0 && $serviceLineCount > 0;
-        $po['is_mixed_document'] = $lineCount > 0 && $inventoryLineCount > 0 && $serviceLineCount > 0;
-        $po['document_type'] = $po['is_service_document']
-            ? 'service'
-            : ($po['is_mixed_document'] ? 'mixed' : 'inventory');
+        $po['is_service_document'] = $isSubcontractJobPo || ($lineCount > 0 && $inventoryLineCount === 0 && $serviceLineCount > 0);
+        $po['is_mixed_document'] = !$isSubcontractJobPo && $lineCount > 0 && $inventoryLineCount > 0 && $serviceLineCount > 0;
+        $po['document_type'] = $isSubcontractJobPo
+            ? 'subcontract_job'
+            : ($po['is_service_document']
+                ? 'service'
+                : ($po['is_mixed_document'] ? 'mixed' : 'inventory'));
         $po['suppress_receiving'] = (bool)$po['is_service_document'];
 
         return $this->response->setJSON(['success' => true, 'data' => ['po' => $po, 'lines' => $lines]]);
@@ -1511,6 +1738,8 @@ class NewPurchaseOrders extends BaseController
 
         $subtotal   = (float)($po['subtotal'] ?? 0);
         $total      = (float)($po['total'] ?? 0);
+        $discountTotal = (float)($po['discount_total'] ?? 0);
+        $taxTotal      = (float)($po['tax_total'] ?? 0);
         $poNumber   = esc($po['po_number'] ?? ('PO-' . $poId));
         $poDate     = '';
         $raw = trim((string)($po['order_date'] ?? ($po['created_at'] ?? '')));
@@ -1639,6 +1868,12 @@ class NewPurchaseOrders extends BaseController
     <div class="totals">
         <table>
             <tr><td class="lbl">Subtotal</td><td class="val"><?= esc($fmt($subtotal > 0 ? $subtotal : $total)) ?></td></tr>
+            <?php if ($discountTotal > 0): ?>
+            <tr><td class="lbl">Discount</td><td class="val">-<?= esc($fmt($discountTotal)) ?></td></tr>
+            <?php endif; ?>
+            <?php if ($taxTotal > 0): ?>
+            <tr><td class="lbl">Tax</td><td class="val"><?= esc($fmt($taxTotal)) ?></td></tr>
+            <?php endif; ?>
             <tr class="grand"><td class="lbl">Total</td><td class="val"><?= esc($fmt($total)) ?></td></tr>
         </table>
     </div>
@@ -1753,6 +1988,8 @@ class NewPurchaseOrders extends BaseController
 
             $pdfLines[] = [
                 'id'                 => $line['id'] ?? null,
+                'display_type'       => $line['display_type'] ?? 'line',
+                'section_title'      => $line['section_title'] ?? null,
                 'product_id'         => $pid,
                 'product_variant_id' => $vid,
                 'product_code'       => $resolvedCode,
@@ -1800,7 +2037,7 @@ class NewPurchaseOrders extends BaseController
             'document_date_label' => 'PO Date:',
             'document_prefix' => '',
             'party_label' => 'Vendor',
-            'hide_company_logo' => true,
+            'hide_company_logo' => (int)($company['pdf_po_hide_logo'] ?? 0),
             'hide_company_website' => true,
             'pdf_show_header_address' => (int)($company['pdf_po_show_header'] ?? 1),
             'pdf_show_footer' => (int)($company['pdf_po_show_footer'] ?? 1),
@@ -1840,13 +2077,21 @@ class NewPurchaseOrders extends BaseController
         try {
             $db = Database::connect();
 
-            // Sum all confirmed vendor bills for this vendor
-            $billSum = $db->table('vendor_bills')
-                ->selectSum('balance', 'total_balance')
-                ->where('vendor_id', $vendorId)
-                ->where('status', 'confirmed')
-                ->get()
-                ->getRowArray();
+            // Outstanding = bill total minus what posted payments allocated to it.
+            // vendor_bills.balance is not written back on payment, so it is stale.
+            $billSum = $db->query("
+                SELECT COALESCE(SUM(GREATEST(0, vb.total_amount - COALESCE(pa.paid, 0))), 0) AS total_balance
+                FROM vendor_bills vb
+                LEFT JOIN (
+                    SELECT vpa.vendor_bill_id,
+                           SUM(COALESCE(NULLIF(vpa.amount_allocated, 0), vpa.amount, 0)) AS paid
+                    FROM vendor_payment_allocations vpa
+                    JOIN vendor_payments vp ON vp.id = vpa.payment_id
+                    WHERE LOWER(COALESCE(vp.status, '')) = 'posted'
+                    GROUP BY vpa.vendor_bill_id
+                ) pa ON pa.vendor_bill_id = vb.id
+                WHERE vb.vendor_id = ? AND vb.status = 'confirmed'
+            ", [$vendorId])->getRowArray();
             $unpaidAmount = (float)($billSum['total_balance'] ?? 0);
 
             // Also include draft bills in total payable
@@ -1886,6 +2131,18 @@ class NewPurchaseOrders extends BaseController
                     'error' => $this->buildVariantValidationMessage($variantIssues),
                 ]);
             }
+
+            $hasPositiveQty = false;
+            foreach ($payload['lines'] as $lnCheck) {
+                $qtyCheck = isset($lnCheck['qty']) ? (float)$lnCheck['qty'] : (isset($lnCheck['quantity']) ? (float)$lnCheck['quantity'] : 0);
+                if ($qtyCheck > 0) { $hasPositiveQty = true; break; }
+            }
+            if (!$hasPositiveQty) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'A purchase order must have at least one line item with quantity > 0.',
+                ]);
+            }
         }
 
         $db = Database::connect();
@@ -1913,20 +2170,49 @@ class NewPurchaseOrders extends BaseController
                 $lineModel = new PurchaseOrderLineModel();
                 // delete existing lines
                 $lineModel->where('po_id', $poId)->delete();
+                $sumSubtotal = 0.0;
+                $sumDiscount = 0.0;
+                $sumTotal = 0.0;
                 foreach ($payload['lines'] as $ln) {
                     $qty = isset($ln['qty']) ? (float)$ln['qty'] : (isset($ln['quantity']) ? (float)$ln['quantity'] : 0);
                     if ($qty <= 0) continue;
+                    $unitPrice = isset($ln['unit_price']) ? (float)$ln['unit_price'] : (isset($ln['unit_cost']) ? (float)$ln['unit_cost'] : 0.0);
+                    $discPct = isset($ln['discount_percent']) ? max(0, min(100, (float)$ln['discount_percent'])) : 0.0;
+                    $lineBase = $qty * $unitPrice;
+                    $discountAmount = round(($discPct / 100) * $lineBase, 2);
+                    $lineTotal = round($lineBase - $discountAmount, 2);
                     $lineModel->insert([
                         'po_id' => $poId,
                         'product_id' => isset($ln['product_id']) ? (int)$ln['product_id'] : null,
                         'variant_id' => isset($ln['variant_id']) ? (int)$ln['variant_id'] : (isset($ln['product_variant_id']) ? (int)$ln['product_variant_id'] : null),
                         'description' => $ln['description'] ?? null,
                         'qty' => $qty,
-                        'unit_price' => isset($ln['unit_price']) ? (float)$ln['unit_price'] : (isset($ln['unit_cost']) ? (float)$ln['unit_cost'] : null),
+                        'unit_price' => $unitPrice,
+                        'discount_type' => $discPct > 0 ? 'percent' : null,
+                        'discount_value' => $discPct,
+                        'discount_amount' => $discountAmount,
+                        'line_total' => $lineTotal,
                         'qty_received' => $ln['qty_received'] ?? 0,
                         'created_at' => date('Y-m-d H:i:s')
                     ]);
+                    $sumSubtotal += $lineBase;
+                    $sumDiscount += $discountAmount;
+                    $sumTotal += $lineTotal;
                 }
+
+                // Header totals are always derived from the saved lines (server is
+                // the source of truth) — never trust the client-computed totals,
+                // otherwise a stale/tampered payload can leave subtotal/total out
+                // of sync with what the lines actually add up to (as happened here:
+                // discount was saved on the line but never reflected on the PO total).
+                $headerTotals = [
+                    'subtotal' => round($sumSubtotal, 2),
+                    'total'    => round($sumTotal, 2),
+                ];
+                if (in_array('discount_total', $cols ?? [], true)) {
+                    $headerTotals['discount_total'] = round($sumDiscount, 2);
+                }
+                $poModel->update($poId, $headerTotals);
             }
 
             $db->transCommit();
@@ -2346,6 +2632,7 @@ class NewPurchaseOrders extends BaseController
             // Calculate bill amount and prepare line data.
             // If previous bills already exist, create only for remaining unbilled qty.
             $totalAmount = 0.0;
+            $discountAmount = 0.0;
             $billLines = [];
 
             $billedQtyByPoLine = $this->getBaseBilledQtyByPoLine($db, $poId);
@@ -2354,6 +2641,11 @@ class NewPurchaseOrders extends BaseController
                 $qty = isset($line['qty']) ? (float)$line['qty'] : 0;
                 $qtyReceived = isset($line['qty_received']) ? (float)$line['qty_received'] : 0;
                 $unitPrice = isset($line['unit_price']) ? (float)$line['unit_price'] : 0;
+                // po_line.line_total already has the line's discount (and tax) baked in;
+                // billing off raw unit_price would silently drop that discount, so derive
+                // the effective net price per unit from it instead.
+                $poLineTotal = isset($line['line_total']) ? (float)$line['line_total'] : 0;
+                $netUnitPrice = ($qty > 0.0 && $poLineTotal > 0.0) ? ($poLineTotal / $qty) : $unitPrice;
 
                 // Base bill only covers ordered receipts. Payable over-receipts are billed separately.
                 $basePayableQty = min($qtyReceived, $qty);
@@ -2364,8 +2656,9 @@ class NewPurchaseOrders extends BaseController
                     continue;
                 }
 
-                $lineTotal = $billQty * $unitPrice;
+                $lineTotal = round($billQty * $netUnitPrice, 2);
                 $totalAmount += $lineTotal;
+                $discountAmount += ($billQty * $unitPrice) - $lineTotal;
 
                 $billLines[] = [
                     'po_line_id' => $line['id'],
@@ -2373,10 +2666,15 @@ class NewPurchaseOrders extends BaseController
                     'product_id' => $line['product_id'] ?? null,
                     'variant_id' => $line['variant_id'] ?? null,
                     'qty' => $billQty,
+                    // Unit Price stays the gross catalog/PO price — standard invoice
+                    // convention is Qty x Unit Price = gross, minus Discount = Line
+                    // Total (net). Silently swapping in a net price here is what
+                    // confused the bill display before.
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                 ];
             }
+            $discountAmount = round(max(0.0, $discountAmount), 2);
 
             if ($totalAmount <= 0 || empty($billLines)) {
                 $latestBill = $billModel->where('po_id', $poId)->where('status !=', 'cancelled')->orderBy('id', 'DESC')->first();
@@ -2422,6 +2720,7 @@ class NewPurchaseOrders extends BaseController
                 'po_id' => $poId,
                 'bill_date' => date('Y-m-d'),
                 'total_amount' => $totalAmount,
+                'discount_amount' => $discountAmount,
                 'balance' => $totalAmount,
                 'status' => 'draft',
                 'based_on' => !empty($billedQtyByPoLine) ? 'po_qty_adjustment' : 'po_qty',

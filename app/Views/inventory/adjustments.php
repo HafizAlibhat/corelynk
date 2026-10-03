@@ -777,7 +777,7 @@
         var typeLabel = { opening_stock: 'Opening Stock', adjustment: 'Adjustment' };
         var modeLabel = { add: '+Add', subtract: '−Remove', set: '=Set' };
 
-        var html = '<div class="table-responsive"><table class="table table-sm table-hover align-middle" style="font-size:.78rem">';
+        var html = '<div class="table-responsive"><table class="cl-table table table-sm table-hover align-middle" style="font-size:.78rem">';
         html += '<thead><tr>'
             + '<th style="font-size:.65rem">Date</th>'
             + '<th style="font-size:.65rem">Type</th>'

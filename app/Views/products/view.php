@@ -2,7 +2,7 @@
 
 <?= $this->section('content') ?>
 <?php $productIdentifier = entityRouteIdentifier($product); ?>
-<div class="row">
+<div class="row cl-detail-page">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>

@@ -9,6 +9,16 @@
   $ccy = strtoupper(trim((string)($currency_code ?? 'PKR')));
   $symbolMap = ['USD' => '$', 'PKR' => 'Rs', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AED' => 'AED', 'SAR' => 'SAR'];
   $ccySymbol = $symbolMap[$ccy] ?? $ccy;
+  // Every ledger line carries its own currency_code (journal_lines.currency_code) — a single
+  // entry can legitimately mix currencies (e.g. FX-settled payments post bank/AR/gain in the
+  // base currency while the header still reflects the transaction currency). Never assume the
+  // header currency applies to every row; resolve per line so what's shown always matches what
+  // was actually posted for that account.
+  $lineCcy = static function (array $ln) use ($ccy, $symbolMap): array {
+    $lc = strtoupper(trim((string)($ln['currency_code'] ?? $ccy)));
+    if ($lc === '') { $lc = $ccy; }
+    return [$lc, $symbolMap[$lc] ?? $lc];
+  };
   if (!empty($date_display ?? '')) {
     $voucherDate = (string)$date_display;
   } elseif (!empty($date ?? '')) {
@@ -231,34 +241,40 @@
 
           <hr class="my-2">
 
+          <style>
+            .jn-ledger thead th { font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; color:#94a3b8; }
+            .jn-ledger td, .jn-ledger th { vertical-align:middle; }
+            .jn-ccy-tag { font-size:.68rem; font-weight:700; color:#94a3b8; margin-right:.35rem; }
+            .jn-ledger tbody tr:hover { background:rgba(255,255,255,0.03); }
+          </style>
           <div class="table-responsive">
-            <table class="table table-sm table-compact align-middle">
+            <table class="table table-sm table-compact align-middle jn-ledger">
               <thead class="table-light">
                 <tr>
                   <th>Account</th>
                   <th>Description</th>
-                  <th class="text-end">Debit (<?= esc($ccy) ?> <?= esc($ccySymbol) ?>)</th>
-                  <th class="text-end">Credit (<?= esc($ccy) ?> <?= esc($ccySymbol) ?>)</th>
+                  <th class="text-end">Debit</th>
+                  <th class="text-end">Credit</th>
                 </tr>
               </thead>
               <tbody>
-                <?php foreach (($lines ?? []) as $ln): ?>
+                <?php foreach (($lines ?? []) as $ln): [$lCcy, $lSym] = $lineCcy($ln); ?>
                   <tr>
                     <td class="text-truncate">
                       <span class="fw-semibold font-monospace text-primary"><?= esc($ln['account_code'] ?? '') ?></span>
                       <span class="text-body">— <?= esc($ln['account_name'] ?? '') ?></span>
                     </td>
                     <td class="text-truncate"><?= esc($ln['description'] ?? '') ?></td>
-                    <td class="text-end font-monospace"><?= number_format((float)($ln['debit'] ?? 0), 2) ?></td>
-                    <td class="text-end font-monospace"><?= number_format((float)($ln['credit'] ?? 0), 2) ?></td>
+                    <td class="text-end font-monospace"><?php if ((float)($ln['debit'] ?? 0) > 0): ?><span class="jn-ccy-tag"><?= esc($lCcy) ?></span><?= esc($lSym) ?> <?= number_format((float)($ln['debit'] ?? 0), 2) ?><?php else: ?>—<?php endif; ?></td>
+                    <td class="text-end font-monospace"><?php if ((float)($ln['credit'] ?? 0) > 0): ?><span class="jn-ccy-tag"><?= esc($lCcy) ?></span><?= esc($lSym) ?> <?= number_format((float)($ln['credit'] ?? 0), 2) ?><?php else: ?>—<?php endif; ?></td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
               <tfoot>
-                <tr class="table-secondary fw-semibold">
-                  <td colspan="2" class="text-end">Totals</td>
-                  <td class="text-end font-monospace"><?= number_format((float)($sum_debit ?? 0), 2) ?></td>
-                  <td class="text-end font-monospace"><?= number_format((float)($sum_credit ?? 0), 2) ?></td>
+                <tr class="fw-semibold table-active">
+                  <td colspan="2" class="text-end">Totals (<?= esc($ccy) ?>)</td>
+                  <td class="text-end font-monospace"><?= esc($ccySymbol) ?> <?= number_format((float)($sum_debit ?? 0), 2) ?></td>
+                  <td class="text-end font-monospace"><?= esc($ccySymbol) ?> <?= number_format((float)($sum_credit ?? 0), 2) ?></td>
                 </tr>
               </tfoot>
             </table>
@@ -287,6 +303,9 @@
 <div class="jn-card">
   <div class="jn-title"><i class="bi bi-chat-text me-1"></i>What happened? — Plain English Narration</div>
   <div class="jn-story"><?= esc($nc['human_narration'] ?? ($description ?? '')) ?></div>
+  <?php if (!empty($nc['calc_explainer'])): ?>
+    <div style="color:#94a3b8;font-size:.72rem;line-height:1.6;margin-top:.15rem;"><i class="bi bi-info-circle me-1"></i>[<?= esc($nc['calc_explainer']) ?>]</div>
+  <?php endif; ?>
 
   <div class="jn-pills">
     <?php if (!empty($nc['customer_name'])): ?>
@@ -310,6 +329,15 @@
     <?php if (!empty($nc['reference'])): ?>
       <span class="jn-pill"><i class="bi bi-hash pi"></i> Ref: <?= esc($nc['reference']) ?></span>
     <?php endif; ?>
+    <?php if (!empty($nc['booked_rate'])): ?>
+      <span class="jn-pill" style="border-color:rgba(148,163,184,.35)"><i class="bi bi-bookmark-check pi"></i> Booked Rate: Rs <?= number_format((float)$nc['booked_rate'], 2) ?></span>
+    <?php endif; ?>
+    <?php if (!empty($nc['bank_rate'])): ?>
+      <span class="jn-pill" style="border-color:rgba(148,163,184,.35)"><i class="bi bi-bank2 pi"></i> Bank Rate: Rs <?= number_format((float)$nc['bank_rate'], 2) ?></span>
+    <?php endif; ?>
+    <?php if (!empty($nc['wht_pct'])): ?>
+      <span class="jn-pill" style="border-color:rgba(148,163,184,.35)"><i class="bi bi-percent pi"></i> Tax: <?= number_format((float)$nc['wht_pct'], 2) ?>%</span>
+    <?php endif; ?>
   </div>
 
   <table class="jn-lines-simple">
@@ -321,6 +349,7 @@
       if ($dr <= 0 && $cr <= 0) continue;
       $aname = $ln['account_name'] ?? '';
       $atype = strtolower($ln['account_type'] ?? '');
+      [$lCcy, $lSym] = $lineCcy($ln);
       if ($dr > 0) {
         if (stripos($aname, 'receivable') !== false) $meaning = 'Customer owed us less (invoice settled)';
         elseif ($atype === 'asset') $meaning = 'Money received into ' . $aname;
@@ -336,8 +365,8 @@
       <tr>
         <td><span style="font-size:.72rem;color:#94a3b8"><?= esc(($ln['account_code'] ?? '')) ?></span> <?= esc($aname) ?></td>
         <td style="color:#94a3b8;font-size:.8rem"><?= esc($meaning) ?></td>
-        <td class="text-end jn-dr"><?= $dr > 0 ? (esc($ccy) . ' ' . esc($ccySymbol) . ' ' . number_format($dr, 2)) : '—' ?></td>
-        <td class="text-end jn-cr"><?= $cr > 0 ? (esc($ccy) . ' ' . esc($ccySymbol) . ' ' . number_format($cr, 2)) : '—' ?></td>
+        <td class="text-end jn-dr"><?= $dr > 0 ? (esc($lCcy) . ' ' . esc($lSym) . ' ' . number_format($dr, 2)) : '—' ?></td>
+        <td class="text-end jn-cr"><?= $cr > 0 ? (esc($lCcy) . ' ' . esc($lSym) . ' ' . number_format($cr, 2)) : '—' ?></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
@@ -347,6 +376,15 @@
     <span class="small text-muted">Amount in words:</span>
     <span class="jn-amount-words"><?= esc($amount_words ?? $amount_in_words ?? '') ?></span>
     <span class="badge bg-success ms-2"><?= esc($ccy) ?> <?= esc($ccySymbol) ?> <?= number_format((float)($amount ?? 0), 2) ?></span>
+  </div>
+  <?php $isBalanced = abs((float)($sum_debit ?? 0) - (float)($sum_credit ?? 0)) < 0.01; ?>
+  <div class="d-flex align-items-center justify-content-end flex-wrap gap-2 mt-3 p-2" style="border-top:1px solid rgba(255,255,255,.12); border-radius:.4rem; background:rgba(255,255,255,.03);">
+    <span class="badge bg-primary-subtle text-primary-emphasis fs-6 px-3 py-2">Total Debit: <?= esc($ccySymbol) ?> <?= number_format((float)($sum_debit ?? 0), 2) ?></span>
+    <span class="fw-bold">=</span>
+    <span class="badge bg-primary-subtle text-primary-emphasis fs-6 px-3 py-2">Total Credit: <?= esc($ccySymbol) ?> <?= number_format((float)($sum_credit ?? 0), 2) ?></span>
+    <span class="badge <?= $isBalanced ? 'bg-success' : 'bg-danger' ?> fs-6 px-3 py-2 ms-2">
+      <i class="bi <?= $isBalanced ? 'bi-check-circle' : 'bi-exclamation-triangle' ?> me-1"></i><?= $isBalanced ? 'Balanced' : 'NOT BALANCED' ?>
+    </span>
   </div>
 </div>
 <?php else: ?>
@@ -400,3 +438,4 @@
 })();
 </script>
 <?= $this->endSection() ?>
+

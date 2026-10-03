@@ -107,7 +107,7 @@
                 <?php endif; ?>
                 <?php if (!empty($processes)): ?>
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="cl-table table table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th width="40">

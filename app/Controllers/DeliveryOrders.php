@@ -690,18 +690,22 @@ class DeliveryOrders extends BaseController
         }
 
         $status = $do['status'] ?? 'draft';
-        if (in_array($status, ['confirmed', 'shipped', 'delivered'], true) && !empty($do['updated_at'])) {
-            $statusLabel = 'Delivery Confirmed';
-            if ($status === 'shipped') {
-                $statusLabel = 'Shipped to Customer';
-            } elseif ($status === 'delivered') {
-                $statusLabel = 'Delivered to Customer';
-            }
+        if (in_array($status, ['confirmed', 'shipped', 'delivered'], true)) {
+            $shippedTime = !empty($do['shipped_at']) ? $do['shipped_at'] : ($do['updated_at'] ?? date('Y-m-d H:i:s'));
             $timeline[] = [
-                'label' => $statusLabel,
-                'time' => $do['updated_at'],
-                'detail' => strtoupper($status),
+                'label'  => 'Shipped',
+                'time'   => $shippedTime,
+                'detail' => 'SHIPPED',
             ];
+
+            if ($status === 'delivered' || ($do['delivery_status'] ?? '') === 'delivered') {
+                $deliveredTime = !empty($do['delivery_confirmed_at']) ? $do['delivery_confirmed_at'] : (!empty($do['delivered_at']) ? $do['delivered_at'] : ($do['updated_at'] ?? date('Y-m-d H:i:s')));
+                $timeline[] = [
+                    'label'  => 'Delivered',
+                    'time'   => $deliveredTime,
+                    'detail' => 'DELIVERED',
+                ];
+            }
         }
 
         // Sort by time and compute durations
@@ -812,6 +816,19 @@ class DeliveryOrders extends BaseController
         $notes      = trim($this->request->getPost('shipping_notes') ?? '') ?: null;
         $estDays    = (int)($this->request->getPost('estimated_delivery_days') ?? 0) ?: null;
 
+        $shippedAtRaw = trim((string)($this->request->getPost('shipped_at') ?? ''));
+        $shippedAt = date('Y-m-d H:i:s');
+        if (!empty($shippedAtRaw)) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $shippedAtRaw)) {
+                $shippedAt = $shippedAtRaw . ' ' . date('H:i:s');
+            } else {
+                $ts = strtotime($shippedAtRaw);
+                if ($ts !== false) {
+                    $shippedAt = date('Y-m-d H:i:s', $ts);
+                }
+            }
+        }
+
         try {
             $doService = new DeliveryOrderService();
             $result = $doService->confirm($doId);
@@ -830,7 +847,7 @@ class DeliveryOrders extends BaseController
                 'tracking_url'            => $trackingUrl,
                 'destination_country'     => $destCountry,
                 'shipping_notes'          => $notes,
-                'shipped_at'              => date('Y-m-d H:i:s'),
+                'shipped_at'              => $shippedAt,
                 'estimated_delivery_days' => $estDays,
             ], fn($v) => $v !== null));
 
@@ -1180,15 +1197,35 @@ class DeliveryOrders extends BaseController
         $doId = (int)$do['id'];
 
         $body = $this->request->getJSON(true) ?: $this->request->getPost();
-        $days = (int)($body['estimated_delivery_days'] ?? 0);
+        $updateData = [];
 
-        if ($days < 1 || $days > 365) {
-            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Days must be between 1 and 365']);
+        if (isset($body['estimated_delivery_days'])) {
+            $days = (int)($body['estimated_delivery_days'] ?? 0);
+            if ($days < 1 || $days > 365) {
+                return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Days must be between 1 and 365']);
+            }
+            $updateData['estimated_delivery_days'] = $days;
         }
 
-        $doModel->update($doId, ['estimated_delivery_days' => $days]);
+        if (!empty($body['shipped_at'])) {
+            $shippedAtRaw = trim((string)$body['shipped_at']);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $shippedAtRaw)) {
+                $updateData['shipped_at'] = $shippedAtRaw . ' ' . date('H:i:s');
+            } else {
+                $ts = strtotime($shippedAtRaw);
+                if ($ts !== false) {
+                    $updateData['shipped_at'] = date('Y-m-d H:i:s', $ts);
+                }
+            }
+        }
 
-        return $this->response->setJSON(['success' => true, 'message' => 'Estimated delivery days updated']);
+        if (empty($updateData)) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'No valid data provided to update']);
+        }
+
+        $doModel->update($doId, $updateData);
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Shipping dates and delivery days updated successfully']);
     }
 
     /**

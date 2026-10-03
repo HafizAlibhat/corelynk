@@ -162,6 +162,10 @@ class NewPurchaseGrns extends BaseController
         $db = Database::connect();
         $this->ensureGrnPublicIds($db);
         $hasGrnPublicId = $db->fieldExists('public_id', 'purchase_grns');
+        $search = trim((string) ($this->request->getGet('search') ?? ''));
+        if (mb_strlen($search) > 120) {
+            $search = mb_substr($search, 0, 120);
+        }
 
         $movementSub = $db->table('stock_movements')
             ->select('reference_id as grn_id, MIN(warehouse_id) as warehouse_id, MIN(location_id) as location_id')
@@ -177,7 +181,7 @@ class NewPurchaseGrns extends BaseController
             $grnSelect = "g.id, g.public_id, " . substr($grnSelect, 5);
         }
 
-        $rows = $db->table('purchase_grns g')
+        $builder = $db->table('purchase_grns g')
             ->select($grnSelect)
             ->join('purchase_orders po', 'po.id = g.po_id', 'left')
             ->join('vendors v', 'v.id = g.vendor_id', 'left')
@@ -186,12 +190,33 @@ class NewPurchaseGrns extends BaseController
             ->join('warehouses w', 'w.id = sm.warehouse_id', 'left')
             ->join('warehouse_locations l', 'l.id = sm.location_id', 'left')
             ->join('users u', 'u.id = g.created_by', 'left')
-            ->where('(COALESCE(gl.line_count, 0) > 0 OR sm.grn_id IS NOT NULL)', null, false)
+            ->where('(COALESCE(gl.line_count, 0) > 0 OR sm.grn_id IS NOT NULL)', null, false);
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('g.grn_number', $search)
+                ->orLike('po.po_number', $search)
+                ->orLike('v.name', $search)
+                ->orLike('w.name', $search)
+                ->orLike('l.name', $search)
+                ->orLike('u.username', $search)
+                ->orLike('u.first_name', $search)
+                ->orLike('u.last_name', $search);
+            if ($hasGrnPublicId) {
+                $builder->orLike('g.public_id', $search);
+            }
+            $builder->groupEnd();
+        }
+
+        $rows = $builder
             ->orderBy('g.id', 'DESC')
             ->get()
             ->getResultArray();
 
-        return view('purchase_ui/grn_list', ['grns' => $rows]);
+        return view('purchase_ui/grn_list', [
+            'grns' => $rows,
+            'search' => $search,
+        ]);
     }
 
     // GRN detail (read-only)
@@ -524,6 +549,9 @@ class NewPurchaseGrns extends BaseController
             $poModel = new PurchaseOrderModel();
             $po = $poModel->find($poId);
             if (!$po) throw new \RuntimeException('PO not found');
+            if (($po['source_type'] ?? 'material') === 'subcontract_job') {
+                throw new \RuntimeException('This is a subcontract job PO — it is billed automatically from vendor receiving, not through GRN.');
+            }
             $poStatus = strtolower((string)($po['status'] ?? ''));
             if (!in_array($poStatus, ['confirmed', 'partial'], true)) {
                 throw new \RuntimeException('GRN allowed only for confirmed or partial PO');
@@ -1020,8 +1048,8 @@ class NewPurchaseGrns extends BaseController
               (SUM(pol.qty) - SUM(pol.qty_received)) AS pending_qty
           FROM purchase_orders po
           JOIN purchase_order_lines pol ON pol.po_id = po.id
-          WHERE po.status = 'confirmed'" . $vendorFilter . "
-          GROUP BY po.id
+          WHERE po.status = 'confirmed' AND po.source_type != 'subcontract_job'" . $vendorFilter . "
+          GROUP BY po.id, po.vendor_id, po.created_at
           HAVING pending_qty > 0
           ORDER BY po.created_at DESC";
 
@@ -1069,13 +1097,17 @@ class NewPurchaseGrns extends BaseController
 
             // Get PO header
             $po = $db->table('purchase_orders')
-                ->select('id, po_number, vendor_id, status')
+                ->select('id, po_number, vendor_id, status, source_type')
                 ->where('id', $poId)
                 ->get()
                 ->getRowArray();
 
             if (!$po) {
                 return $this->response->setStatusCode(404)->setJSON(['error' => 'PO not found']);
+            }
+
+            if (($po['source_type'] ?? 'material') === 'subcontract_job') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'This is a subcontract job PO — it is billed automatically from vendor receiving, not through GRN.']);
             }
 
             // Get PO lines with pending quantities
@@ -1762,17 +1794,18 @@ class NewPurchaseGrns extends BaseController
             } catch (\Throwable $_) {}
 
             $lineModel = new \App\Models\PurchaseGrnLineModel();
-            $lines = $lineModel->where('grn_id', $grnId)->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->findAll();
+            // purchase_grn_lines has no sort_order (that column belongs to purchase_order_lines).
+            // Lines are written in PO-line order during receipt, so id is the document order.
+            $lines = $lineModel->where('grn_id', $grnId)->orderBy('id', 'ASC')->findAll();
 
             try {
                 $productIds = array_values(array_filter(array_unique(array_map(function ($line) {
                     return isset($line['product_id']) ? (int) $line['product_id'] : null;
                 }, $lines))));
+                // The stored column is variant_id; product_variant_id is the alias other
+                // read paths add later. Accept both, or no variant ever resolves here.
                 $variantIds = array_values(array_filter(array_unique(array_map(function ($line) {
-                    if (isset($line['product_variant_id']) && $line['product_variant_id']) {
-                        return (int) $line['product_variant_id'];
-                    }
-                    return null;
+                    return (int) ($line['product_variant_id'] ?? ($line['variant_id'] ?? 0)) ?: null;
                 }, $lines))));
 
                 $prodMap = [];
@@ -1821,7 +1854,7 @@ class NewPurchaseGrns extends BaseController
 
                 foreach ($lines as &$line) {
                     $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
-                    $variantId = isset($line['product_variant_id']) ? (int) $line['product_variant_id'] : null;
+                    $variantId = (int) ($line['product_variant_id'] ?? ($line['variant_id'] ?? 0)) ?: null;
 
                     if ((!$productId || $productId <= 0) && $variantId && isset($variantMap[$variantId])) {
                         $productId = isset($variantMap[$variantId]['product_id']) ? (int) $variantMap[$variantId]['product_id'] : null;
@@ -1855,7 +1888,9 @@ class NewPurchaseGrns extends BaseController
                 if (isset($line['display_type']) && $line['display_type'] === 'section') {
                     continue;
                 }
-                $qty = (float) ($line['quantity'] ?? ($line['qty'] ?? 0));
+                // A GRN records what was received: qty_received is the stored column.
+                // The other two are the sales/purchase document names, kept as fallbacks.
+                $qty = (float) ($line['qty_received'] ?? ($line['quantity'] ?? ($line['qty'] ?? 0)));
                 $price = (float) ($line['unit_cost'] ?? ($line['unit_price'] ?? 0));
                 $storedTotal = isset($line['line_total']) ? (float) $line['line_total'] : 0.0;
                 $total = $storedTotal > 0 ? $storedTotal : ($qty * $price);

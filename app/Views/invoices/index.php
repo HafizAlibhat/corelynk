@@ -3,7 +3,7 @@
 <?= $this->section('title') ?>Customer Invoices<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="container-fluid py-3 cl-list-page">
+<div class="container-fluid py-3 cl-list-page cl-list-page--dashboard">
 
   <div class="cl-list-header">
     <div>
@@ -48,17 +48,17 @@
     <div class="card-body p-0">
 
     <?php if (empty($invoices)): ?>
-      <div class="text-center py-5">
-        <i class="bi bi-file-earmark-x fs-1 text-muted d-block mb-3"></i>
-        <h6 class="text-muted">No invoices yet</h6>
-        <p class="text-muted small mb-4">Create your first invoice from a Sales Order or manually.</p>
+      <div class="cl-list-empty">
+        <span class="cl-list-empty__icon" aria-hidden="true"><i class="bi bi-file-earmark-x"></i></span>
+        <h6>No Invoices Yet</h6>
+        <p>Create your first invoice from a Sales Order or manually.</p>
         <a href="<?= base_url('customer-invoices/system/new') ?>" class="btn btn-primary btn-sm">
           <i class="bi bi-plus-lg me-1"></i>New Invoice
         </a>
       </div>
     <?php else: ?>
       <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0" id="invoicesTable">
+        <table class="cl-table table table-sm table-hover mb-0" id="invoicesTable">
           <thead>
             <tr>
               <th>Invoice #</th>
@@ -76,11 +76,12 @@
             <?php foreach ($invoices as $inv):
               $statusRaw  = strtolower(trim($inv['status'] ?? 'draft'));
               $statusLabel = ucfirst($statusRaw ?: 'draft');
-              $badgeCls   = match($statusRaw) {
-                'posted'    => 'bg-success',
-                'confirmed' => 'bg-info',
-                'cancelled' => 'bg-danger',
-                default     => 'bg-secondary',
+              $statusTone = match($statusRaw) {
+                'posted', 'paid' => 'success',
+                'confirmed' => 'info',
+                'cancelled' => 'danger',
+                'draft' => 'warning',
+                default => 'neutral',
               };
               $issueDate = $inv['issue_date'] ? date('d M Y', strtotime($inv['issue_date'])) : '—';
               $dueDate   = $inv['due_date']   ? date('d M Y', strtotime($inv['due_date']))   : '—';
@@ -104,7 +105,7 @@
                 <?php endif; ?>
               </td>
               <td>
-                <span class="badge bg-secondary"><?= esc(ucfirst($inv['invoice_type'] ?? 'system')) ?></span>
+                <span class="cl-status-badge cl-status-badge--neutral"><span class="cl-status-badge__dot"></span><?= esc(ucfirst($inv['invoice_type'] ?? 'system')) ?></span>
               </td>
               <td><?= $issueDate ?></td>
               <td>
@@ -114,21 +115,21 @@
                   <?= $dueDate ?>
                 <?php endif; ?>
               </td>
-              <td class="text-end fw-semibold">
+              <td class="text-end fw-semibold cl-data-number">
                 <?= esc($inv['currency_code'] ?? 'PKR') ?> <?= number_format((float)($inv['total_amount'] ?? 0), 2) ?>
               </td>
               <td>
-                <span class="badge <?= $badgeCls ?>"><?= $statusLabel ?></span>
+                <span class="cl-status-badge cl-status-badge--<?= $statusTone ?>"><span class="cl-status-badge__dot"></span><?= esc($statusLabel) ?></span>
               </td>
               <td class="text-end actions-col">
                 <a href="<?= base_url('customer-invoices/view/' . (int)$inv['id']) ?>"
-                   class="btn btn-sm" title="View"><i class="bi bi-eye"></i></a>
+                   class="btn btn-sm cl-icon-action" title="View"><i class="bi bi-eye"></i></a>
                 <?php if ($statusRaw === 'draft' || $statusRaw === ''): ?>
                   <a href="<?= base_url('customer-invoices/edit/' . (int)$inv['id']) ?>"
-                     class="btn btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
+                     class="btn btn-sm cl-icon-action" title="Edit"><i class="bi bi-pencil"></i></a>
                 <?php endif; ?>
                 <a href="<?= base_url('customer-invoices/pdf/' . (int)$inv['id']) ?>"
-                   class="btn btn-sm" title="PDF" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a>
+                   class="btn btn-sm cl-icon-action" title="PDF" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a>
               </td>
             </tr>
             <?php endforeach; ?>

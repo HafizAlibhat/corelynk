@@ -76,7 +76,7 @@
               </div>
               <div class="modern-table-container position-relative">
                 <div id="filteredCount" class="position-absolute top-0 end-0 mt-1 me-2 small text-muted"></div>
-              <table class="table table-sm modern-table table-compact mb-0">
+              <table class="cl-table table table-sm modern-table table-compact mb-0">
                 <thead>
                   <tr>
                     <th width="80" class="text-center">ID</th>
@@ -189,7 +189,7 @@
                             </div>
                           </div>
                           <div class="lines-table-container" data-entry="<?= (int)$e['id'] ?>">
-                            <table class="table table-sm table-compact lines-table mb-0" id="linesTable-<?= (int)$e['id'] ?>">
+                            <table class="cl-table table table-sm table-compact lines-table mb-0" id="linesTable-<?= (int)$e['id'] ?>">
                               <thead>
                                 <tr>
                                   <th style="width:260px">Account</th>
@@ -216,7 +216,7 @@
                                 <?php endforeach; ?>
                               </tbody>
                               <tfoot>
-                                <tr class="fw-semibold table-secondary">
+                                <tr class="fw-semibold table-active">
                                   <td colspan="2" class="text-end">Totals</td>
                                   <td class="text-end font-monospace"><?= number_format($sumDebit,2) ?></td>
                                   <td class="text-end font-monospace"><?= number_format($sumCredit,2) ?></td>

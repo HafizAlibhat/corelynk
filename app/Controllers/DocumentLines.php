@@ -190,11 +190,6 @@ class DocumentLines extends BaseController
 
         if (empty($lines)) return [];
 
-        // Section feature is deprecated: only return product lines for all document types.
-        $lines = array_values(array_filter($lines, function ($ln) {
-            return strtolower((string)($ln['display_type'] ?? 'line')) !== 'section';
-        }));
-        if (empty($lines)) return [];
 
         $productIds = [];
         $variantIds = [];
@@ -972,7 +967,6 @@ class DocumentLines extends BaseController
 
     public function addSection()
     {
-        return $this->response->setStatusCode(410)->setJSON(['success' => false, 'error' => 'Section feature has been removed']);
 
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();
         $docType = strtolower(trim((string)($payload['doc_type'] ?? '')));
@@ -1059,9 +1053,78 @@ class DocumentLines extends BaseController
         ]);
     }
 
+    public function moveToSection()
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $docType = strtolower(trim((string)($payload['doc_type'] ?? '')));
+        $identifier = trim((string)($payload['document_id'] ?? ''));
+        $lineId = (int)($payload['line_id'] ?? 0);
+        $sectionId = (int)($payload['section_id'] ?? 0);
+        $cfg = $this->configByType($docType);
+
+        if (!$cfg || $identifier === '' || $lineId <= 0 || $sectionId <= 0 || $lineId === $sectionId) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'Invalid move request']);
+        }
+
+        $doc = $this->resolveDocument($docType, $identifier);
+        if (!$doc) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Document not found']);
+        }
+        if (!$this->authorizeDocument($docType, $doc)) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'error' => 'Not allowed to modify this document']);
+        }
+
+        $docId = (int)$doc['id'];
+        $lines = $this->getLines($docType, $docId);
+        $movingLine = null;
+        $targetSection = null;
+        foreach ($lines as $line) {
+            $id = (int)($line['id'] ?? 0);
+            if ($id === $lineId) $movingLine = $line;
+            if ($id === $sectionId) $targetSection = $line;
+        }
+        if (!$movingLine || !$targetSection) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Line or section not found']);
+        }
+        if ($this->lineType($movingLine) === 'section' || $this->lineType($targetSection) !== 'section') {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'Only product lines can be moved into a section']);
+        }
+
+        $withoutMoving = array_values(array_filter($lines, static fn($line) => (int)($line['id'] ?? 0) !== $lineId));
+        $insertAt = count($withoutMoving);
+        foreach ($withoutMoving as $index => $line) {
+            if ((int)($line['id'] ?? 0) !== $sectionId) continue;
+            $insertAt = $index + 1;
+            while ($insertAt < count($withoutMoving) && $this->lineType($withoutMoving[$insertAt]) !== 'section') {
+                $insertAt++;
+            }
+            break;
+        }
+        array_splice($withoutMoving, $insertAt, 0, [$movingLine]);
+
+        $db = Database::connect();
+        $db->transBegin();
+        try {
+            $builder = $db->table($cfg['line_table']);
+            $now = date('Y-m-d H:i:s');
+            foreach ($withoutMoving as $sort => $line) {
+                $builder->where('id', (int)$line['id'])->where($cfg['doc_fk'], $docId)->update([
+                    'sort_order' => $sort + 1,
+                    'updated_at' => $now,
+                ]);
+            }
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => 'Could not move the line']);
+        }
+
+        $this->syncLinkedDocumentOrder($docType, $docId);
+        return $this->response->setJSON(['success' => true, 'message' => 'Item moved to section']);
+    }
+
     public function updateSection()
     {
-        return $this->response->setStatusCode(410)->setJSON(['success' => false, 'error' => 'Section feature has been removed']);
 
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();
         $docType = strtolower(trim((string)($payload['doc_type'] ?? '')));
@@ -1118,7 +1181,6 @@ class DocumentLines extends BaseController
 
     public function deleteSection()
     {
-        return $this->response->setStatusCode(410)->setJSON(['success' => false, 'error' => 'Section feature has been removed']);
 
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();
         $docType = strtolower(trim((string)($payload['doc_type'] ?? '')));
@@ -1286,3 +1348,4 @@ class DocumentLines extends BaseController
         ]);
     }
 }
+

@@ -3,7 +3,7 @@
 <?= $this->section('title') ?>Role Management<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="container-fluid py-3 cl-list-page">
+<div class="container-fluid py-3 cl-list-page cl-list-page--dashboard">
 
     <div class="cl-list-header">
         <div>
@@ -23,6 +23,11 @@
     <?php endif; ?>
 
     <div class="row g-3">
+        <?php if (empty($roles)): ?>
+        <div class="col-12">
+            <div class="card"><div class="cl-list-empty"><span class="cl-list-empty__icon"><i class="bi bi-shield-lock"></i></span><h6>No roles found</h6><p>Create a role to define access and permissions.</p></div></div>
+        </div>
+        <?php else: ?>
         <?php foreach ($roles as $r): ?>
         <div class="col-md-6 col-lg-4">
             <div class="card h-100">
@@ -37,11 +42,11 @@
                             </h5>
                             <small class="text-muted"><?= esc($r['slug']) ?></small>
                         </div>
-                        <span class="badge bg-primary-subtle text-primary"><?= $r['user_count'] ?> user(s)</span>
+                        <span class="cl-count-badge"><?= $r['user_count'] ?> user(s)</span>
                     </div>
                     <p class="card-text text-muted small mb-3"><?= esc($r['description'] ?? 'No description') ?></p>
                     <div class="d-flex gap-1 flex-wrap mb-3">
-                        <span class="badge bg-secondary-subtle text-secondary"><?= $r['perm_count'] ?> permissions</span>
+                        <span class="cl-status-badge cl-status-badge--neutral"><?= $r['perm_count'] ?> permissions</span>
                     </div>
                 </div>
                 <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
@@ -56,7 +61,7 @@
                     </a>
                     <?php if (!$r['is_system']): ?>
                     <a href="<?= base_url('admin/roles/' . $r['id'] . '/delete') ?>"
-                       class="btn btn-sm btn-outline-danger" title="Delete"
+                       class="btn btn-sm btn-outline-danger cl-icon-action" title="Delete"
                        onclick="return confirm('Delete role \'<?= esc($r['name']) ?>\'? This cannot be undone.')">
                         <i class="bi bi-trash"></i>
                     </a>
@@ -65,6 +70,7 @@
             </div>
         </div>
         <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
 <?= $this->endSection() ?>

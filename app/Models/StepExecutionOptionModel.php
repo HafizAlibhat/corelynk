@@ -17,12 +17,15 @@ class StepExecutionOptionModel extends Model
         'vendor_id',
         'notes',
         'is_default',
+        'service_price',
+        'service_unit',
+        'currency',
         'created_at',
     ];
 
     public function getByStep(int $stepId): array
     {
-        return $this->where('step_id', $stepId)->orderBy('id', 'ASC')->findAll();
+        return $this->where('step_id', $stepId)->where('is_active', 1)->orderBy('id', 'ASC')->findAll();
     }
 
     public function getByProfileGrouped(int $profileId): array
@@ -31,6 +34,7 @@ class StepExecutionOptionModel extends Model
             ->join('preparation_steps ps', 'ps.id = step_execution_options.step_id', 'inner')
             ->join('vendors v', 'v.id = step_execution_options.vendor_id', 'left')
             ->where('ps.profile_id', $profileId)
+            ->where('step_execution_options.is_active', 1)
             ->orderBy('step_execution_options.id', 'ASC')
             ->findAll();
 

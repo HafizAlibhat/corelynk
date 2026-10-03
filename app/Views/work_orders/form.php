@@ -18,7 +18,7 @@
     </div>
 </div>
 
-<div class="content">
+<div class="content cl-form-page">
     <div class="container-fluid">
         <div class="row">
             <div class="col-12">

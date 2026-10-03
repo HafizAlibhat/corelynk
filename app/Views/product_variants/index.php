@@ -371,7 +371,7 @@
     </div>
 
     <div class="table-responsive variants-table-wrap" <?= $singleProduct && $headerProductName ? 'style="border-top-left-radius:0;border-top-right-radius:0"' : '' ?>>
-        <table class="table table-sm variants-table">
+        <table class="cl-table table table-sm variants-table">
             <thead>
                 <tr>
                     <th class="chk-cell"><input type="checkbox" class="form-check-input" id="selectAllVariants" title="Select all"></th>

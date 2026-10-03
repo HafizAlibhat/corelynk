@@ -253,6 +253,11 @@ class Products extends BaseController
         }
     }
 
+    private function ensureVariantsManufacturingRouteColumn(): bool
+    {
+        return $this->variantsHasColumn('manufacturing_route');
+    }
+
     private function variantsHasColumn(string $column): bool
     {
         try {
@@ -613,28 +618,18 @@ class Products extends BaseController
         // Product type tabs with default preference support
         $productTypeTabs = ['all' => 'All Products', 'storable' => 'Storable', 'consumable' => 'Consumable', 'service' => 'Services'];
         
-        // Get product counts for each type.
-        // IMPORTANT: this schema uses `detailed_type` and has no `deleted_at` on products.
+        // Tab totals use the same filter contract as the result list, except for type.
         $productTypeCounts = ['all' => 0, 'storable' => 0, 'consumable' => 0, 'service' => 0];
         try {
-            $db = \Config\Database::connect();
-            $baseCounter = $db->table('products');
-
-            // Keep counts aligned with role restrictions and active status behavior.
-            if (!empty($pf['hide_services'])) {
-                $baseCounter->where('products.detailed_type !=', 'service');
-            }
-            if (!empty($pf['allowed_category_ids']) && is_array($pf['allowed_category_ids'])) {
-                $baseCounter->whereIn('products.category_id', $pf['allowed_category_ids']);
-            }
-            if (empty($searchTerm) && ($statusFilter === null || $statusFilter === '')) {
-                $baseCounter->where('products.is_active', 1);
-            }
-
-            $productTypeCounts['all'] = (clone $baseCounter)->countAllResults();
-            $productTypeCounts['storable'] = (clone $baseCounter)->where('products.detailed_type', 'storable')->countAllResults();
-            $productTypeCounts['consumable'] = (clone $baseCounter)->where('products.detailed_type', 'consumable')->countAllResults();
-            $productTypeCounts['service'] = (clone $baseCounter)->where('products.detailed_type', 'service')->countAllResults();
+            $productTypeCounts = $this->productModel->getProductTypeCountsWithFilters(
+                $searchTerm,
+                $categoryFilter,
+                $statusFilter,
+                $attributeFilters,
+                $pf['hide_services'],
+                $pf['allowed_category_ids'] ?? [],
+                $hasAssets
+            );
         } catch (\Throwable $e) {
             log_message('error', 'Product type counts failed: ' . $e->getMessage());
             $productTypeCounts = ['all' => 0, 'storable' => 0, 'consumable' => 0, 'service' => 0];
@@ -759,6 +754,7 @@ class Products extends BaseController
                     'unit' => $p['unit'] ?? 'pcs',
                     'unit_weight' => (float)$unitWeight,
                     'weight' => (float)$unitWeight,
+                    'weight_unit' => $p['weight_unit'] ?? 'KG',
                     'sale_price' => isset($p['sale_price']) ? (float)$p['sale_price'] : 0.0,
                     'special_price' => isset($p['special_price']) ? (float)$p['special_price'] : null,
                     'sale_currency' => $p['sale_currency'] ?? '',
@@ -1121,6 +1117,24 @@ class Products extends BaseController
         $data['stock_by_location'] = $stockByLocation;
         $data['stock_total_available'] = $stockTotalAvailable;
 
+        // Fetch active reservations for this product
+        $productReservations = [];
+        try {
+            if ($db->tableExists('stock_reservations')) {
+                $productReservations = $db->table('stock_reservations sr')
+                    ->select('sr.*, w.name AS warehouse_name, wl.name AS location_name, so.order_number')
+                    ->join('warehouses w', 'w.id = sr.warehouse_id', 'left')
+                    ->join('warehouse_locations wl', 'wl.id = sr.location_id', 'left')
+                    ->join('sales_orders so', 'so.id = sr.sales_order_id', 'left')
+                    ->where('sr.product_id', $productId)
+                    ->where('sr.status', 'active')
+                    ->orderBy('sr.created_at', 'ASC')
+                    ->get()
+                    ->getResultArray();
+            }
+        } catch (\Throwable $e) {}
+        $data['product_reservations'] = $productReservations;
+
         return view('products/show', $data);
     }
 
@@ -1257,6 +1271,12 @@ class Products extends BaseController
         // Odoo-like product detailed_type: storable / consumable / service
         if ($this->productsHasColumn('detailed_type')) {
             $data['detailed_type'] = $this->request->getPost('detailed_type') ?: 'storable';
+        }
+
+        // Supply route: buy (needs a vendor) / manufacture (made in-house)
+        if ($this->productsHasColumn('manufacturing_route')) {
+            $route = $this->request->getPost('manufacturing_route');
+            $data['manufacturing_route'] = $route === 'manufacture' ? 'manufacture' : 'buy';
         }
 
         // Service policy: when a service product is invoiceable (ordered_qty or delivered_qty)
@@ -1604,6 +1624,12 @@ class Products extends BaseController
             $data['detailed_type'] = $this->request->getPost('detailed_type') ?: ($product['detailed_type'] ?? 'storable');
         }
 
+        // Supply route: buy (needs a vendor) / manufacture (made in-house)
+        if ($this->productsHasColumn('manufacturing_route')) {
+            $route = $this->request->getPost('manufacturing_route') ?: ($product['manufacturing_route'] ?? 'buy');
+            $data['manufacturing_route'] = $route === 'manufacture' ? 'manufacture' : 'buy';
+        }
+
         // Service policy: when a service product is invoiceable (ordered_qty or delivered_qty)
         if ($this->productsHasColumn('service_policy')) {
             $detailedType = $data['detailed_type'] ?? ($product['detailed_type'] ?? 'storable');
@@ -1718,6 +1744,56 @@ class Products extends BaseController
         $message = 'Weight synced to all variants (save product to persist template weight).';
         if ($this->request->isAJAX()) {
             return $this->response->setJSON(['success' => true, 'message' => $message, 'weight' => $weight]);
+        }
+        return redirect()->back()->with('success', $message);
+    }
+
+    /**
+     * Copy supply route to all product variants.
+     */
+    public function copyRouteToVariants($id = null)
+    {
+        $this->requireAuth();
+        $this->requirePermission('products.edit');
+
+        $productId = (int) ($id ?? 0);
+        if (! $productId) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'message' => 'Invalid product']);
+        }
+
+        $product = $this->productModel->find($productId);
+        if (! $product) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Product not found']);
+        }
+
+        $route = $this->request->getPost('manufacturing_route');
+        if ($route === null || $route === '') {
+            $route = $product['manufacturing_route'] ?? 'buy';
+        }
+        $route = $route === 'manufacture' ? 'manufacture' : 'buy';
+
+        if (! $this->ensureVariantsManufacturingRouteColumn()) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => 'Unable to update variants']);
+        }
+
+        try {
+            $db = \Config\Database::connect();
+            $db->table('product_variants')
+                ->where('product_id', $productId)
+                ->update(['manufacturing_route' => $route]);
+        } catch (\Throwable $e) {
+            log_message('error', 'Failed to copy supply route to variants: ' . $e->getMessage());
+            $errorMessage = 'Failed to update variant supply routes';
+            if ($this->request->isAJAX()) {
+                return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => $errorMessage]);
+            }
+            return redirect()->back()->with('error', $errorMessage);
+        }
+
+        $label = $route === 'manufacture' ? 'Manufacture' : 'Buy';
+        $message = "Supply route synced to all variants ({$label}).";
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => $message, 'manufacturing_route' => $route]);
         }
         return redirect()->back()->with('success', $message);
     }
@@ -2068,56 +2144,121 @@ class Products extends BaseController
     }
 
     /**
-     * Delete product
+     * Archive (deactivate) a product.
+     *
+     * Batch 2A containment. This endpoint previously hard-deleted the row.
+     * ProductModel::$useSoftDeletes is false and `products` has no `deleted_at`,
+     * so that was irreversible -- it is how products 7 and 8 were destroyed,
+     * orphaning 7 quotation lines with no recovery path (binlog off, no audit
+     * entry, absent from every surviving dump).
+     *
+     * Batch 1 added a reference guard, but Phase 2 established it was not
+     * sufficient: 42 tables carry product_id / service_product_id and the guard
+     * checked 5, while three live foreign keys CASCADE on product delete and
+     * would silently destroy rows the guard never sees --
+     * product_attribute_assignments, product_vendor_rates and
+     * vendor_receive_rejections, plus preparation_steps.service_product_id
+     * (SET NULL).
+     *
+     * Widening the hardcoded list would stay fragile and would keep failing open
+     * for every table added later. Instead, the normal UI/API path no longer
+     * destroys anything: it deactivates. This covers all 42 tables and the three
+     * CASCADEs at once, and needs no maintenance as the schema grows.
+     *
+     * Permanent purge is deliberately NOT available here. See
+     * CORELYNK_BATCH2A_CONTAINMENT_REPORT.md for the proposed separate admin
+     * maintenance workflow that must prove zero references before deleting.
      */
     public function delete($id = null)
     {
         $this->requireAuth();
-        
-        // Skip permission check for testing
-        // $this->requirePermission('products.delete');
+
+        // JSON endpoint, so answer 403 rather than requirePermission()'s HTML redirect.
+        // RBAC is unchanged: archiving is still gated on products.delete.
+        if (!$this->hasPermission('products.delete')) {
+            return $this->jsonResponse(['success' => false, 'message' => 'You do not have permission to delete products.'], 403);
+        }
 
         $product = $this->productModel->find($id);
         if (!$product) {
             return $this->jsonResponse(['success' => false, 'message' => 'Product not found'], 404);
         }
 
-        // Check if product has associated work orders
-        $workOrderModel = new \App\Models\WorkOrderModel();
-        $hasWorkOrders = $workOrderModel->where('product_id', $id)->countAllResults() > 0;
+        $productId = (int) $product['id'];
 
-        if ($hasWorkOrders) {
+        if ((int) ($product['is_active'] ?? 1) === 0) {
+            return $this->jsonResponse([
+                'success'  => true,
+                'archived' => true,
+                'deleted'  => false,
+                'message'  => 'Product is already archived.',
+            ]);
+        }
+
+        // Deactivate rather than delete. Every historical sales, procurement,
+        // inventory and manufacturing reference stays intact and resolvable.
+        if (! $this->productModel->update($productId, ['is_active' => 0])) {
             return $this->jsonResponse([
                 'success' => false,
-                'message' => 'Cannot delete product with associated work orders. Consider deactivating instead.'
-            ], 400);
+                'message' => 'Failed to archive product.',
+            ], 500);
         }
 
-        // Product Assets safety: block deletion if digital assets exist.
-        try {
-            $db = \Config\Database::connect();
-            if ($db->tableExists('product_asset_groups')) {
-                $hasAssets = (int) $db->table('product_asset_groups')->where('product_id', (int) $id)->countAllResults() > 0;
-                if ($hasAssets) {
-                    return $this->jsonResponse([
-                        'success' => false,
-                        'message' => 'Cannot delete product while Product Assets exist. Remove assets/groups first or deactivate the product.'
-                    ], 400);
+        // Read back rather than trusting the return value: with strictOn = false
+        // an invalid write reports success. This is the defect family that
+        // produced every blank status in this database.
+        $after = $this->productModel->find($productId);
+        if (!$after || (int) ($after['is_active'] ?? 1) !== 0) {
+            return $this->jsonResponse([
+                'success' => false,
+                'message' => 'Archive did not persist; product left unchanged.',
+            ], 500);
+        }
+
+        $message = 'Product archived (deactivated). It was not deleted, so existing documents keep their history.';
+        if ($ref = $this->findDocumentReference($productId)) {
+            $message = "Product archived (deactivated), not deleted: it is used by {$ref} and those documents keep their history.";
+        }
+
+        return $this->jsonResponse([
+            'success'  => true,
+            'archived' => true,
+            'deleted'  => false,
+            'message'  => $message,
+        ]);
+    }
+
+    /**
+     * Describe the first sales/purchase document referencing this product, or null
+     * if none does. Used to block hard deletes that would orphan document lines.
+     */
+    private function findDocumentReference(int $productId): ?string
+    {
+        $tables = [
+            'quotation_lines'        => 'quotations',
+            'sales_order_lines'      => 'sales orders',
+            'customer_invoice_lines' => 'customer invoices',
+            'purchase_order_lines'   => 'purchase orders',
+            'delivery_order_lines'   => 'delivery orders',
+        ];
+
+        $db = \Config\Database::connect();
+        foreach ($tables as $table => $label) {
+            try {
+                if (!$db->tableExists($table) || !$db->fieldExists('product_id', $table)) {
+                    continue;
                 }
+                $count = (int) $db->table($table)->where('product_id', $productId)->countAllResults();
+                if ($count > 0) {
+                    return $count . ' ' . $label;
+                }
+            } catch (\Throwable $e) {
+                // A table we cannot inspect must not silently green-light a delete.
+                return 'existing documents (reference check failed)';
             }
-        } catch (\Throwable $e) {
-            // Defensive: never break delete flow if assets table is unavailable.
         }
 
-        // Also check for associated product processes
-        $productProcessModel = new \App\Models\ProductProcessModel();
-        $productProcessModel->where('product_id', $id)->delete();
-
-        if ($this->productModel->delete($id)) {
-            return $this->jsonResponse(['success' => true, 'message' => 'Product deleted successfully.']);
-        } else {
-            return $this->jsonResponse(['success' => false, 'message' => 'Failed to delete product.'], 500);
-        }
+        return null;
     }
 
     /**
@@ -2851,3 +2992,5 @@ class Products extends BaseController
         }
     }
 }
+
+

@@ -37,23 +37,25 @@ Shipped Orders
     }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2><i class="bi bi-truck me-2"></i>Shipped Orders</h2>
-        <p class="text-muted mb-0">All confirmed and delivered orders</p>
+<div class="container-fluid cl-list-page cl-warehouse-page" data-cl-list>
+
+    <div class="cl-list-page-header">
+        <div>
+            <h2 class="mb-0"><i class="bi bi-truck me-2"></i>Shipped Orders</h2>
+            <div class="small text-muted">All confirmed and delivered orders</div>
+        </div>
+        <div class="cl-list-page-actions">
+            <a href="<?= site_url('delivery-orders/pending-followup') ?>" class="btn btn-outline-warning">
+                <i class="bi bi-hourglass-split me-1"></i>Pending Follow-up
+            </a>
+            <a href="<?= site_url('warehouse/ready-to-ship') ?>" class="btn btn-outline-primary">
+                <i class="bi bi-box-seam me-1"></i>Ready to Ship
+            </a>
+            <a href="<?= site_url('delivery-orders') ?>" class="btn btn-outline-secondary">
+                <i class="bi bi-list me-1"></i>All Delivery Orders
+            </a>
+        </div>
     </div>
-    <div class="d-flex gap-2">
-        <a href="<?= site_url('delivery-orders/pending-followup') ?>" class="btn btn-outline-warning">
-            <i class="bi bi-hourglass-split me-1"></i>Pending Follow-up
-        </a>
-        <a href="<?= site_url('warehouse/ready-to-ship') ?>" class="btn btn-outline-primary">
-            <i class="bi bi-box-seam me-1"></i>Ready to Ship
-        </a>
-        <a href="<?= site_url('delivery-orders') ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-list me-1"></i>All Delivery Orders
-        </a>
-    </div>
-</div>
 
 <?php if (empty($delivery_orders)): ?>
     <div class="card">
@@ -68,8 +70,11 @@ Shipped Orders
             $estDays = (int)($do['estimated_delivery_days'] ?? 0);
             $shippedAt = $do['shipped_at'] ?? null;
             $daysPassed = $shippedAt ? (int)floor((time() - strtotime($shippedAt)) / 86400) : 0;
-            $isOverdue = $estDays > 0 && $daysPassed > $estDays && ($do['delivery_status'] ?? '') !== 'delivered' && $do['status'] !== 'delivered';
-            $cardClass = ($do['status'] === 'delivered' || ($do['delivery_status'] ?? '') === 'delivered') ? 'delivered' : ($isOverdue ? 'overdue' : '');
+            $isDelivered = ($do['status'] === 'delivered' || ($do['delivery_status'] ?? '') === 'delivered');
+            $deliveredAt = $do['delivery_confirmed_at'] ?? ($do['delivered_at'] ?? null);
+            $actualDays = ($isDelivered && $deliveredAt && $shippedAt) ? (int)round((strtotime($deliveredAt) - strtotime($shippedAt)) / 86400) : $daysPassed;
+            $isOverdue = $estDays > 0 && ($isDelivered ? ($actualDays > $estDays) : ($daysPassed > $estDays));
+            $cardClass = $isDelivered ? 'delivered' : ($isOverdue ? 'overdue' : '');
         ?>
             <div class="col-md-6 col-lg-4 mb-3">
                 <div class="card do-card <?= $cardClass ?> h-100">
@@ -107,11 +112,25 @@ Shipped Orders
                         <?php if ($estDays > 0): ?>
                         <div class="mb-2">
                             <small class="text-muted">Delivery:</small>
-                            <span class="ms-1 badge <?= $isOverdue ? 'bg-danger' : 'bg-secondary' ?>" style="font-size:.72rem;">
-                                Day <?= $daysPassed ?> / <?= $estDays ?>
-                            </span>
-                            <?php if ($isOverdue): ?>
-                                <span class="badge bg-danger" style="font-size:.68rem;">Overdue</span>
+                            <?php if ($isDelivered): ?>
+                                <?php if ($actualDays <= $estDays): ?>
+                                    <span class="ms-1 badge bg-success" style="font-size:.72rem;">
+                                        <i class="bi bi-check-circle me-1"></i>Delivered On Time (<?= $actualDays ?>/<?= $estDays ?>d)
+                                    </span>
+                                <?php else: ?>
+                                    <span class="ms-1 badge bg-danger" style="font-size:.72rem;">
+                                        <i class="bi bi-clock-history me-1"></i>Delivered Late (+<?= $actualDays - $estDays ?>d)
+                                    </span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="ms-1 badge <?= $isOverdue ? 'bg-danger' : 'bg-success' ?>" style="font-size:.72rem;">
+                                    Day <?= $daysPassed ?> / <?= $estDays ?>
+                                </span>
+                                <?php if ($isOverdue): ?>
+                                    <span class="badge bg-danger" style="font-size:.68rem;">Late (+<?= $daysPassed - $estDays ?>d)</span>
+                                <?php else: ?>
+                                    <span class="badge bg-success" style="font-size:.68rem;">On Track</span>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </div>
                         <?php endif; ?>
@@ -155,5 +174,6 @@ Shipped Orders
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
+</div><!-- /.cl-list-page -->
 
 <?= $this->endSection() ?>

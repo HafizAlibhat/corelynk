@@ -49,6 +49,49 @@ class Quotations extends BaseController
     }
 
     /**
+     * True if $unitPrice doesn't match any known valid price for the product
+     * (customer's tiered price-list price, else the product master sale price),
+     * meaning the quotations.override_price permission is required to save it.
+     * A $productId of 0 (free-text/manual line) is never validated.
+     */
+    private function priceRequiresOverride(int $customerId, int $productId, float $quantity, float $unitPrice): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+        $validPrices = [];
+        // A price coming from the applicable price list is a normal price, not
+        // an override: resolve it the same way the line does.
+        try {
+            $resolved = (new \App\Services\PriceListService())->resolve([
+                'party_type'    => 'customer',
+                'party_id'      => $customerId,
+                'price_list_id' => (int) $this->request->getPost('price_list_id'),
+                'product_id'    => $productId,
+                'quantity'      => max(1, $quantity),
+                'currency'      => (string) $this->request->getPost('currency'),
+            ]);
+            $validPrices[] = (float) $resolved['unit_price'];
+        } catch (\Throwable $e) { /* best-effort */ }
+        try {
+            $pricing = (new \App\Models\ProductModel())->getPricingInfo($productId);
+            if (isset($pricing['sale_price'])) {
+                $validPrices[] = (float) $pricing['sale_price'];
+            }
+        } catch (\Throwable $e) { /* best-effort */ }
+
+        if (empty($validPrices)) {
+            return false;
+        }
+        foreach ($validPrices as $vp) {
+            if (abs($vp - $unitPrice) < 0.005) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Check if a date value is valid (not empty, not zero-date, not zero-datetime)
      */
     private function isValidDate(?string $d): bool
@@ -104,6 +147,9 @@ class Quotations extends BaseController
         return view('quotations/create', [
             'currencies' => $currencies,
             'defaultCurrency' => $this->getDefaultSalesCurrency(),
+            'paymentTermOptions' => $this->paymentTermsPayload([])['paymentTermOptions'],
+            'priceListOptions' => [],
+            'countries' => $this->countryOptions(),
         ]);
     }
 
@@ -155,12 +201,22 @@ class Quotations extends BaseController
         }
 
         // Reuse the create view with preloaded data
+        try {
+            $tags = (new \App\Services\TagService())->getTagsForDocument('quotation', (int)$quote['id']);
+        } catch (\Throwable $_) {
+            $tags = [];
+        }
+
         return view('quotations/create', [
             'mode' => 'edit',
             'quote' => $quote,
             'lines' => $quote['lines'] ?? [],
             'currencies' => $currencies ?? [],
             'defaultCurrency' => $this->getDefaultSalesCurrency(),
+            'tags' => $tags,
+            'paymentTermOptions' => $this->paymentTermsPayload($quote)['paymentTermOptions'],
+            'priceListOptions' => (new \App\Models\PriceListModel())->optionsFor('customer', (int)($quote['customer_id'] ?? 0)),
+            'countries' => $this->countryOptions(),
         ]);
     }
 
@@ -185,10 +241,15 @@ class Quotations extends BaseController
             'currency' => $currency,
             'shipping_amount' => isset($post['shipping_amount']) ? (float)$post['shipping_amount'] : 0.0,
             'status' => in_array(strtolower($post['status'] ?? 'draft'), ['draft','sent','accepted','rejected']) ? strtolower($post['status'] ?? 'draft') : 'draft',
+            'document_discount_type' => strtolower((string)($post['document_discount_type'] ?? '')) === 'percent' ? 'percent' : 'fixed',
+            'document_discount_value' => isset($post['document_discount_value']) ? (float)$post['document_discount_value'] : 0.0,
+            'discount_exclude_shipping' => isset($post['discount_exclude_shipping']) ? 1 : 0,
+            'price_list_id' => !empty($post['price_list_id']) ? (int)$post['price_list_id'] : null,
+            'payment_term_id' => !empty($post['payment_term_id']) ? (int)$post['payment_term_id'] : null,
             'lines' => []
         ];
 
-        $allowedLineKeys = ['product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate'];
+        $allowedLineKeys = ['product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_type','tax_value','tax_rate','display_type','section_title'];
         if (isset($post['lines']) && is_array($post['lines'])) {
             $cleanLines = [];
             foreach ($post['lines'] as $ln) {
@@ -200,7 +261,10 @@ class Quotations extends BaseController
                 if (isset($cl['quantity'])) $cl['quantity'] = (float)$cl['quantity'];
                 if (isset($cl['unit_price'])) $cl['unit_price'] = (float)$cl['unit_price'];
                 if (isset($cl['discount_value'])) $cl['discount_value'] = (float)$cl['discount_value'];
+                if (isset($cl['discount_type'])) $cl['discount_type'] = ($cl['discount_type'] === 'fixed') ? 'fixed' : 'percent';
                 if (isset($cl['tax_rate'])) $cl['tax_rate'] = (float)$cl['tax_rate'];
+                if (isset($cl['tax_value'])) $cl['tax_value'] = (float)$cl['tax_value'];
+                if (isset($cl['tax_type'])) $cl['tax_type'] = ($cl['tax_type'] === 'fixed') ? 'fixed' : 'percent';
                 $cleanLines[] = $cl;
             }
             $payload['lines'] = $cleanLines;
@@ -209,6 +273,29 @@ class Quotations extends BaseController
         try {
             if (empty($payload['customer_id'])) {
                 throw new \RuntimeException('Please select a customer');
+            }
+
+            // Mirrors QuotationApi::create() line-array check.
+            if (empty($payload['lines']) || !is_array($payload['lines'])) {
+                throw new \RuntimeException('At least one line item is required.');
+            }
+            foreach ($payload['lines'] as $ln) {
+                $qty = (float)($ln['quantity'] ?? 0);
+                $price = (float)($ln['unit_price'] ?? 0);
+                if ($qty <= 0) {
+                    throw new \RuntimeException('Line item quantity must be greater than zero.');
+                }
+                if ($price < 0) {
+                    throw new \RuntimeException('Line item price cannot be negative.');
+                }
+                if ((float)($ln['discount_value'] ?? 0) < 0 || (float)($ln['tax_value'] ?? 0) < 0) {
+                    throw new \RuntimeException('Line item discount and tax cannot be negative.');
+                }
+                $productId = (int)($ln['product_id'] ?? 0);
+                if ($this->priceRequiresOverride((int)$payload['customer_id'], $productId, $qty, $price)
+                    && !service('policy')->can('quotations', 'override_price')) {
+                    throw new \RuntimeException('This price requires override permission.');
+                }
             }
 
             // Log incoming shipping_amount for debugging why it may not persist
@@ -272,11 +359,13 @@ class Quotations extends BaseController
             if (isset($json['shipping_amount'])) {
                 $json['shipping_amount'] = (float)$json['shipping_amount'];
             }
+            // Must match the quotations.status ENUM exactly; 'quoted'/'cancelled'
+            // are not members and were silently stored as ''.
             if (isset($json['status'])) {
                 $status = strtolower($json['status']);
-                $json['status'] = in_array($status, ['draft','quoted','accepted','cancelled']) ? $status : 'quoted';
+                $json['status'] = in_array($status, ['draft','sent','accepted','rejected'], true) ? $status : 'draft';
             } else {
-                $json['status'] = 'quoted';
+                $json['status'] = 'draft';
             }
             if (empty($json['currency'])) {
                 $json['currency'] = $this->getDefaultSalesCurrency();
@@ -311,6 +400,91 @@ class Quotations extends BaseController
         } catch (\Throwable $e) {
             return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Payment term options plus the instalment schedule proposed by the term
+     * selected on the quotation. Mirrors the invoice block, but nothing is
+     * stored: the concrete schedule is only generated when the invoice is
+     * raised after the quote is approved.
+     */
+    /** Countries for the quick "Add New Customer" address block. */
+    private function countryOptions(): array
+    {
+        try {
+            return \Config\Database::connect()->table('countries')
+                ->select('id, name')->orderBy('name', 'ASC')->get()->getResultArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private function paymentTermsPayload(array $quote): array
+    {
+        try {
+            return [
+                'paymentTermOptions' => (new \App\Models\PaymentTermModel())->active(),
+                'paymentSchedule'    => (new \App\Services\InvoicePaymentScheduleService())->preview(
+                    (int)($quote['payment_term_id'] ?? 0),
+                    (float)($quote['total'] ?? 0)
+                ),
+            ];
+        } catch (\Throwable $e) {
+            log_message('error', 'Quotation payment terms load failed: ' . $e->getMessage());
+
+            return [
+                'paymentTermOptions' => [],
+                'paymentSchedule'    => [
+                    'has_schedule' => false, 'rows' => [], 'term' => null,
+                    'total' => 0.0, 'paid' => 0.0, 'due' => 0.0,
+                    'now_due' => 0.0, 'now_due_label' => '', 'now_due_percentage' => 0.0,
+                ],
+            ];
+        }
+    }
+
+    /**
+     * Set the payment term on a quotation. Amounts and lines are untouched:
+     * the term only changes how the total is proposed to be paid.
+     */
+    public function updatePaymentTerms($identifier = null)
+    {
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return redirect()->back()->with('error', 'Method not allowed');
+        }
+
+        $id = is_numeric($identifier) ? (int)$identifier : 0;
+        if (!$id) {
+            $row = \Config\Database::connect()->table('quotations')
+                ->where('public_id', $identifier)->get()->getRowArray();
+            $id = (int)($row['id'] ?? 0);
+        }
+
+        $quote = $id > 0 ? $this->quotationModel->find($id) : null;
+        if (!$quote) {
+            return redirect()->to('/documents')->with('error', 'Quotation not found');
+        }
+
+        try { $cols = \Config\Database::connect()->getFieldNames('quotations'); } catch (\Throwable $_) { $cols = []; }
+        if (!in_array('payment_term_id', $cols, true)) {
+            return redirect()->back()->with('error', 'Run the pending database migrations to use payment terms on quotations.');
+        }
+
+        $termId = (int)$this->request->getPost('payment_term_id');
+        $valid  = $termId > 0 && (new \App\Models\PaymentTermModel())->find($termId);
+        $this->quotationModel->update($id, ['payment_term_id' => $valid ? $termId : null]);
+
+        try {
+            DocumentLogger::log(
+                DocumentLogger::TYPE_QUOTATION,
+                $id,
+                DocumentLogger::ACTION_UPDATED,
+                ['payment_terms' => $valid ? $termId : null]
+            );
+        } catch (\Throwable $_) {
+        }
+
+        return redirect()->to('/quotations/view/' . ($quote['public_id'] ?? $id))->with('success', 'Payment terms updated.');
     }
 
     public function view($identifier = null)
@@ -375,25 +549,28 @@ class Quotations extends BaseController
         try { $customer = (new \App\Models\CustomerModel())->find((int)($quote['customer_id'] ?? 0)); } catch (\Throwable $_) { $customer = null; }
         $address = null;
         try {
-            $addrModel = new \App\Models\CustomerAddressModel();
-            $addr = $addrModel->where('customer_id', (int)($quote['customer_id'] ?? 0))
-                ->orderBy('is_billing', 'DESC')
-                ->orderBy('is_shipping', 'DESC')
-                ->orderBy('id', 'ASC')
-                ->first();
-            $address = $addr ?: null;
+            helper('customer_snapshot');
+            $address = customer_snapshot_address($quote, (int)($quote['customer_id'] ?? 0)) ?: null;
+            $customer = customer_snapshot_contact($quote, $customer);
         } catch (\Throwable $_) { $address = null; }
 
         $logEntries = [];
         try { $logEntries = \App\Libraries\DocumentLogger::getForDocument(\App\Libraries\DocumentLogger::TYPE_QUOTATION, (int)($quote['id'] ?? 0)); } catch (\Throwable $_) { }
 
-        return view('quotations/view', [
+        try {
+            $tags = (new \App\Services\TagService())->getTagsForDocument('quotation', (int)($quote['id'] ?? 0));
+        } catch (\Throwable $_) {
+            $tags = [];
+        }
+
+        return view('quotations/view', array_merge([
             'quote' => $quote,
             'lines' => $lines,
             'customer' => $customer,
             'customerAddress' => $address,
             'logEntries' => $logEntries,
-        ]);
+            'tags' => $tags,
+        ], $this->paymentTermsPayload($quote)));
     }
 
     public function pdf($identifier = null)
@@ -430,18 +607,10 @@ class Quotations extends BaseController
                 $customer = [];
             }
 
-            $customerAddress = [];
-            try {
-                $customerAddress = (new \App\Models\CustomerAddressModel())
-                    ->where('customer_id', $customerId)
-                    ->orderBy('is_default', 'DESC')
-                    ->orderBy('is_billing', 'DESC')
-                    ->orderBy('is_shipping', 'DESC')
-                    ->orderBy('id', 'ASC')
-                    ->first() ?? [];
-            } catch (\Throwable $_) {
-                $customerAddress = [];
-            }
+            // Render what this quotation was issued with, not the live customer.
+            helper('customer_snapshot');
+            $customerAddress = customer_snapshot_address($quote, $customerId);
+            $customer = customer_snapshot_contact($quote, $customer);
 
             if (empty($customerAddress) || (!is_array($customerAddress))) {
                 $fallbackLine1 = trim((string)($customer['address'] ?? ($customer['address1'] ?? ($customer['billing_address'] ?? ''))));
@@ -468,6 +637,10 @@ class Quotations extends BaseController
                 $company = [];
             }
 
+            // Same instalment block the invoice prints, so the customer approves
+            // the payment plan together with the quote.
+            $paymentSchedule = $this->paymentTermsPayload($quote)['paymentSchedule'];
+
             $invoiceLike = [
                 'id' => $quote['id'] ?? null,
                 'invoice_number' => $quote['quote_number'] ?? ('Q' . $quoteId),
@@ -479,9 +652,31 @@ class Quotations extends BaseController
                 'shipping_amount' => (float)($quote['shipping_amount'] ?? ($quote['shipping_cost'] ?? 0)),
                 'total_amount' => (float)($quote['total'] ?? 0),
                 'notes' => $quote['notes'] ?? null,
+                'payment_terms' => $paymentSchedule['term']['name'] ?? null,
             ];
+            if (!empty($quote['created_by'])) {
+                try {
+                    $db = \Config\Database::connect();
+                    $userCols = $db->getFieldNames('users');
+                    $selectCols = array_values(array_intersect(['name', 'full_name', 'username', 'email'], $userCols));
+                    if (empty($selectCols)) {
+                        $selectCols = ['id'];
+                    }
+                    $userRow = $db->table('users')
+                        ->select(implode(', ', $selectCols))
+                        ->where('id', (int)$quote['created_by'])
+                        ->get()
+                        ->getRowArray();
+                    if ($userRow) {
+                        $invoiceLike['salesperson'] = trim((string)($userRow['full_name'] ?? $userRow['name'] ?? $userRow['username'] ?? $userRow['email'] ?? ''));
+                    }
+                } catch (\Throwable $_) {
+                    // best effort for PDF label only
+                }
+            }
 
-            $pdf = (new InvoicePdfGenerator())->generateSystemInvoice([
+            $template = strtolower(trim((string)$this->request->getGet('template')));
+            $pdfPayload = [
                 'invoice' => $invoiceLike,
                 'lines' => $lines,
                 'company' => $company,
@@ -491,9 +686,16 @@ class Quotations extends BaseController
                 'document_number_label' => 'Quotation #',
                 'document_date_label' => 'Date:',
                 'document_prefix' => '',
-                'pdf_show_header_address' => (int)($company['pdf_quote_show_header'] ?? 1),
+                'paymentSchedule' => $paymentSchedule,
+            'hide_company_logo' => (int)($company['pdf_quote_hide_logo'] ?? 0),
+            'pdf_show_header_address' => (int)($company['pdf_quote_show_header'] ?? 1),
                 'pdf_show_footer' => (int)($company['pdf_quote_show_footer'] ?? 1),
-            ]);
+            ];
+            if (in_array($template, ['odoo_boxed', 'odoo_style'], true)) {
+                $pdfPayload['pdf_template'] = 'odoo_boxed';
+            }
+
+            $pdf = (new InvoicePdfGenerator())->generateSystemInvoice($pdfPayload);
 
             if (is_array($pdf) && !empty($pdf['path']) && is_file($pdf['path'])) {
                 $quoteNumber = trim((string)($quote['quote_number'] ?? ('Q' . $quoteId)));
@@ -501,8 +703,9 @@ class Quotations extends BaseController
                 if ($quoteId > 0) {
                     DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $quoteId, DocumentLogger::ACTION_PDF_DOWNLOADED);
                 }
+                $suffix = in_array($template, ['odoo_boxed', 'odoo_style'], true) ? '_odoo_boxed' : '';
                 return $this->response->download($pdf['path'], null)
-                    ->setFileName('quotation_' . $safeNumber . '.pdf')
+                    ->setFileName('quotation_' . $safeNumber . $suffix . '.pdf')
                     ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
                     ->setHeader('Pragma', 'no-cache')
                     ->setHeader('Expires', '0');
@@ -1054,7 +1257,7 @@ class Quotations extends BaseController
         }
 
         // PRODUCTION PATCH: keep variant linkage on update so PDFs can resolve variant image/attributes.
-        $allowedLineKeys = ['id','product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_rate'];
+    $allowedLineKeys = ['id','product_id','product_variant_id','product_code','product_name','product_image_url','description','unit','quantity','unit_price','discount_type','discount_value','tax_type','tax_value','tax_rate','display_type','section_title','sort_order'];
         $lines = [];
         if (isset($post['lines']) && is_array($post['lines'])) {
             foreach ($post['lines'] as $ln) {
@@ -1069,15 +1272,63 @@ class Quotations extends BaseController
                 if (isset($cl['quantity'])) $cl['quantity'] = (float)$cl['quantity'];
                 if (isset($cl['unit_price'])) $cl['unit_price'] = (float)$cl['unit_price'];
                 if (isset($cl['discount_value'])) $cl['discount_value'] = (float)$cl['discount_value'];
+                if (isset($cl['discount_type'])) $cl['discount_type'] = ($cl['discount_type'] === 'fixed') ? 'fixed' : 'percent';
                 if (isset($cl['tax_rate'])) $cl['tax_rate'] = (float)$cl['tax_rate'];
+                if (isset($cl['tax_value'])) $cl['tax_value'] = (float)$cl['tax_value'];
+                if (isset($cl['tax_type'])) $cl['tax_type'] = ($cl['tax_type'] === 'fixed') ? 'fixed' : 'percent';
+                if (isset($cl['sort_order'])) $cl['sort_order'] = max(1, (int)$cl['sort_order']);
                 $lines[] = $cl;
+            }
+        }
+
+        // Mirrors QuotationApi::create() line-array check.
+        if (empty($lines) || !is_array($lines)) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'error' => 'At least one line item is required.',
+            ]);
+        }
+        $customerIdForPricing = (int)($post['customer_id'] ?? ($quote['customer_id'] ?? 0));
+        foreach ($lines as $ln) {
+            if (strtolower((string)($ln['display_type'] ?? 'line')) === 'section') {
+                continue;
+            }
+            $qty = (float)($ln['quantity'] ?? 0);
+            $price = (float)($ln['unit_price'] ?? 0);
+            if ($qty <= 0) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'Line item quantity must be greater than zero.',
+                ]);
+            }
+            if ($price < 0) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'Line item price cannot be negative.',
+                ]);
+            }
+            if ((float)($ln['discount_value'] ?? 0) < 0 || (float)($ln['tax_value'] ?? 0) < 0) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'Line item discount and tax cannot be negative.',
+                ]);
+            }
+            $productId = (int)($ln['product_id'] ?? 0);
+            if ($this->priceRequiresOverride($customerIdForPricing, $productId, $qty, $price)
+                && !service('policy')->can('quotations', 'override_price')) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'This price requires override permission.',
+                ]);
             }
         }
 
     $issueDateRaw = $post['issue_date'] ?? ($quote['issue_date'] ?? date('Y-m-d'));
     $shippingAmount = isset($post['shipping_amount']) ? (float)$post['shipping_amount'] : 0.0;
         $status = strtolower($post['status'] ?? ($quote['status'] ?? 'draft'));
-        $status = in_array($status, ['draft','sent','accepted','rejected']) ? $status : 'draft';
+        // 'converted' must stay in the whitelist or saving a converted quotation
+        // would silently demote it back to draft and unlink it from its order.
+        $status = in_array($status, ['draft','sent','accepted','rejected','converted'], true) ? $status : 'draft';
         $currency = strtoupper(trim((string)($post['currency'] ?? ($quote['currency'] ?? ''))));
         if ($currency === '') $currency = $this->getDefaultSalesCurrency();
 
@@ -1101,6 +1352,10 @@ class Quotations extends BaseController
         try {
             $db->transStart();
 
+            // Serialize concurrent updates to this quotation's lines so a second
+            // in-flight save re-reads fresh (post-commit) lines instead of a stale snapshot.
+            $db->query('SELECT id FROM quotation_lines WHERE quotation_id = ? FOR UPDATE', [$id]);
+
             // header update
             $headerUpd = [
                 'customer_id' => $currentCustomerId,
@@ -1114,6 +1369,33 @@ class Quotations extends BaseController
             if (in_array('currency', $cols)) {
                 $headerUpd['currency'] = $currency;
             }
+            if (in_array('price_list_id', $cols) && array_key_exists('price_list_id', $post)) {
+                $headerUpd['price_list_id'] = !empty($post['price_list_id']) ? (int)$post['price_list_id'] : null;
+            }
+            if (in_array('payment_term_id', $cols) && array_key_exists('payment_term_id', $post)) {
+                $headerUpd['payment_term_id'] = !empty($post['payment_term_id']) ? (int)$post['payment_term_id'] : null;
+            }
+            if (in_array('document_discount_type', $cols) && isset($post['document_discount_type'])) {
+                $headerUpd['document_discount_type'] = strtolower((string)$post['document_discount_type']) === 'percent' ? 'percent' : 'fixed';
+            }
+            if (in_array('document_discount_value', $cols) && isset($post['document_discount_value'])) {
+                $headerUpd['document_discount_value'] = (float)$post['document_discount_value'];
+            }
+            if (in_array('discount_exclude_shipping', $cols) && isset($post['document_discount_type'])) {
+                $headerUpd['discount_exclude_shipping'] = isset($post['discount_exclude_shipping']) ? 1 : 0;
+            }
+            // Snapshot the customer only when it is first set or actually changed.
+            // Refreshing an existing snapshot is the explicit "Update address from
+            // customer" action, never a side effect of editing lines.
+            if (in_array('customer_snapshot', $cols, true)) {
+                $snapCustomerId = (int)($headerUpd['customer_id'] ?? 0);
+                $changedCustomer = $snapCustomerId !== (int)($quote['customer_id'] ?? 0);
+                if ($snapCustomerId > 0 && (empty($quote['customer_snapshot']) || $changedCustomer)) {
+                    helper('customer_snapshot');
+                    $headerUpd['customer_snapshot'] = customer_snapshot_json($snapCustomerId);
+                }
+            }
+
             // shipping_amount is managed only via createQuotation and updateShipping; do not overwrite here.
             // (removed debugging log per deterministic fix request)
             $this->quotationModel->update($id, $headerUpd);
@@ -1135,10 +1417,30 @@ class Quotations extends BaseController
                 unset($payload['id']);
                 $payload['quotation_id'] = $id;
 
-                // compute line totals
-                $calc = $lineModel->calculateLineTotal($payload);
-                $payload['tax_amount'] = round($calc['tax_amount'], 2);
-                $payload['line_total'] = round($calc['line_total'], 2);
+                if (strtolower((string)($payload['display_type'] ?? 'line')) === 'section') {
+                    $title = trim((string)($payload['section_title'] ?? $payload['product_name'] ?? $payload['description'] ?? 'Section'));
+                    if ($title === '') {
+                        $title = 'Section';
+                    }
+                    $payload['display_type'] = 'section';
+                    $payload['section_title'] = $title;
+                    $payload['product_name'] = $title;
+                    $payload['description'] = $title;
+                    $payload['quantity'] = 0;
+                    $payload['unit_price'] = 0;
+                    $payload['discount_value'] = 0;
+                    $payload['tax_value'] = 0;
+                    $payload['tax_rate'] = 0;
+                    $payload['discount_amount'] = 0;
+                    $payload['tax_amount'] = 0;
+                    $payload['line_total'] = 0;
+                } else {
+                    $payload['display_type'] = 'line';
+                    // compute line totals
+                    $calc = $lineModel->calculateLineTotal($payload);
+                    $payload['tax_amount'] = round($calc['tax_amount'], 2);
+                    $payload['line_total'] = round($calc['line_total'], 2);
+                }
 
                 if ($lineId && isset($existingIds[$lineId])) {
                     // Detect line changes for logging
@@ -1180,7 +1482,8 @@ class Quotations extends BaseController
 
             // server-side totals + weight update (source of truth)
             $allLines = $this->quotationModel->getQuotationLines($id);
-            $totals = $this->quotationModel->calculateTotals($allLines, $shippingAmount);
+            [$docDiscType, $docDiscValue, $docDiscExclShip] = $this->documentDiscountArgs(array_merge($quote, $headerUpd));
+            $totals = $this->quotationModel->calculateTotals($allLines, $shippingAmount, $docDiscType, $docDiscValue, $docDiscExclShip);
             $upd = [];
             if (in_array('subtotal', $cols)) $upd['subtotal'] = $totals['subtotal'];
             if (in_array('discount', $cols)) $upd['discount'] = $totals['discount'];
@@ -1197,9 +1500,9 @@ class Quotations extends BaseController
             // Ensure weight is recalculated via service too (best-effort)
             try { $svc->recalculateWeight($id); } catch (\Throwable $e) { /* ignore */ }
 
-            $db->transComplete();
+            $committed = $db->transComplete();
 
-            if ($db->transStatus() === false) {
+            if ($committed === false || $db->transStatus() === false) {
                 throw new \RuntimeException('Transaction failed');
             }
 
@@ -1236,6 +1539,8 @@ class Quotations extends BaseController
     {
         $q = $this->request->getGet('q');
         $customerId = (int)$this->request->getGet('customer_id');
+        $priceListId = (int)$this->request->getGet('price_list_id');
+        $docCurrency = strtoupper(trim((string)$this->request->getGet('currency')));
         $results = [];
         if (empty($q)) return $this->response->setJSON($results);
 
@@ -1349,13 +1654,31 @@ class Quotations extends BaseController
                 'variant_name'  => $p['variant_name'] ?? null,
                 'variant_price' => isset($p['variant_price']) ? (float)$p['variant_price'] : null,
                 'attributes'    => $p['attributes'] ?? null,
+                'attributes_text' => $p['attributes_text'] ?? \App\Models\ProductModel::attributesSummary($p['attributes'] ?? null),
             ];
 
-            if ($customerId) {
-                $plItem = $pli->getCustomerProductPrice($customerId, $p['id'], 1);
-                if ($plItem) {
-                    $item['special_price'] = (float)$plItem['special_price'];
-                    $item['price_list_id'] = $plItem['price_list_id'] ?? null;
+            // Cost is only exposed to admins (price list screens need it).
+            if (service('policy')->isAdmin()) {
+                $item['cost_price']    = isset($p['cost_price']) ? (float)$p['cost_price'] : null;
+                $item['cost_currency'] = $p['cost_currency'] ?? null;
+            }
+
+            // Price list (fixed price, margin on cost, or discount) decides the
+            // price offered for this customer; the product sale price is the floor.
+            if ($customerId || $priceListId) {
+                $resolved = (new \App\Services\PriceListService())->resolve([
+                    'party_type'    => 'customer',
+                    'party_id'      => $customerId,
+                    'price_list_id' => $priceListId,
+                    'product_id'    => $pid,
+                    'variant_id'    => (int)($p['variant_id'] ?? 0),
+                    'quantity'      => 1,
+                    'currency'      => $docCurrency ?: ($p['sale_currency'] ?? 'USD'),
+                ]);
+                if (($resolved['source'] ?? 'base') !== 'base') {
+                    $item['special_price'] = (float)$resolved['unit_price'];
+                    $item['price_list_id'] = $resolved['list_id'];
+                    $item['price_source']  = $resolved['source'];
                 }
             }
 
@@ -1423,8 +1746,7 @@ class Quotations extends BaseController
     {
         $customerId = (int)$customerId;
         if (!$customerId) return $this->response->setJSON([]);
-        $plModel = new \App\Models\PriceListModel();
-        $lists = $plModel->getCustomerPriceList($customerId);
+        $lists = (new \App\Services\PriceListService())->lists('customer', $customerId);
         return $this->response->setJSON($lists);
     }
 
@@ -1468,7 +1790,7 @@ class Quotations extends BaseController
         $quotationId = (int)$line['quotation_id'];
         $quoteHeader = $qModel->find($quotationId) ?: [];
 
-        $allowed = ['quantity','unit_price','discount_value','discount_type','tax_rate','description','product_code','product_name','unit'];
+        $allowed = ['quantity','unit_price','discount_value','discount_type','tax_rate','tax_value','tax_type','description','product_code','product_name','unit'];
         $update = [];
         foreach ($allowed as $k) {
             if (array_key_exists($k, $payload)) {
@@ -1478,7 +1800,10 @@ class Quotations extends BaseController
         if (isset($update['quantity'])) $update['quantity'] = (float)$update['quantity'];
         if (isset($update['unit_price'])) $update['unit_price'] = (float)$update['unit_price'];
         if (isset($update['discount_value'])) $update['discount_value'] = (float)$update['discount_value'];
+        if (isset($update['discount_type'])) $update['discount_type'] = ($update['discount_type'] === 'fixed') ? 'fixed' : 'percent';
         if (isset($update['tax_rate'])) $update['tax_rate'] = (float)$update['tax_rate'];
+        if (isset($update['tax_value'])) $update['tax_value'] = (float)$update['tax_value'];
+        if (isset($update['tax_type'])) $update['tax_type'] = ($update['tax_type'] === 'fixed') ? 'fixed' : 'percent';
 
         $merged = array_merge($line, $update);
         $calc = $lineModel->calculateLineTotal($merged);
@@ -1491,7 +1816,8 @@ class Quotations extends BaseController
 
             $shippingAmount = isset($quoteHeader['shipping_amount']) ? (float)$quoteHeader['shipping_amount'] : 0.0;
             $lines = $qModel->getQuotationLines($quotationId);
-            $totals = $qModel->calculateTotals($lines, $shippingAmount);
+            [$docDiscType, $docDiscValue, $docDiscExclShip] = $this->documentDiscountArgs($quoteHeader);
+            $totals = $qModel->calculateTotals($lines, $shippingAmount, $docDiscType, $docDiscValue, $docDiscExclShip);
 
             $db = \Config\Database::connect();
             try { $cols = $db->getFieldNames($qModel->table); } catch (\Throwable $_) { $cols = $qModel->allowedFields; }
@@ -1518,7 +1844,9 @@ class Quotations extends BaseController
                 'quantity' => $calc['quantity'],
                 'discount_value' => $calc['discount_value'],
                 'discount_type' => $calc['discount_type'],
-                'tax_rate' => $calc['tax_rate']
+                'tax_rate' => $calc['tax_rate'],
+                'tax_type' => $calc['tax_type'],
+                'tax_value' => $calc['tax_value']
             ]);
 
             return $this->response->setJSON([
@@ -1532,8 +1860,403 @@ class Quotations extends BaseController
     }
 
     /**
+     * Resolve a quotations.id from a route segment that may be numeric or a public_id.
+     */
+    private function resolveQuotationIdParam($identifier): ?int
+    {
+        if (is_numeric($identifier)) {
+            return (int)$identifier;
+        }
+        $db = \Config\Database::connect();
+        $row = $db->table('quotations')->where('public_id', $identifier)->get()->getRowArray();
+        return $row ? (int)$row['id'] : null;
+    }
+
+    /**
+     * Extract the persisted document-level discount settings from a quotation row
+     * so total recalculation doesn't silently fall back to calculateTotals()'s defaults.
+     */
+    private function documentDiscountArgs(array $quoteRow): array
+    {
+        $type = strtolower((string)($quoteRow['document_discount_type'] ?? 'fixed'));
+        $type = $type === 'percent' ? 'percent' : 'fixed';
+        $value = isset($quoteRow['document_discount_value']) ? (float)$quoteRow['document_discount_value'] : 0.0;
+        $excludeShipping = !array_key_exists('discount_exclude_shipping', $quoteRow)
+            ? true
+            : ((int)$quoteRow['discount_exclude_shipping'] === 1);
+        return [$type, $value, $excludeShipping];
+    }
+
+    /**
+     * Add a new inline line to a quotation from the view page's "Add Product Line" row.
+     */
+    public function addLine($identifier = null)
+    {
+        $method = strtolower($this->request->getMethod());
+        if ($method === 'options') {
+            return $this->response->setJSON(['success' => true]);
+        }
+        if ($method !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'Method not allowed']);
+        }
+
+        $id = $this->resolveQuotationIdParam($identifier);
+        if (!$id) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'error' => 'Invalid quotation id']);
+        }
+
+        $qModel = new QuotationModel();
+        $quoteHeader = $qModel->find($id);
+        if (!$quoteHeader) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Quotation not found']);
+        }
+
+        $payload = $this->request->getJSON(true);
+        if (!$payload) $payload = $this->request->getPost();
+
+        $displayType = strtolower((string)($payload['display_type'] ?? 'line'));
+        if ($displayType === 'section') {
+            $sectionTitle = trim((string)($payload['section_title'] ?? $payload['product_name'] ?? $payload['description'] ?? ''));
+            if ($sectionTitle === '') {
+                return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'Section heading is required.']);
+            }
+
+            $lineModel = new QuotationLineModel();
+            $line = [
+                'quotation_id' => $id,
+                'display_type' => 'section',
+                'section_title' => $sectionTitle,
+                'product_name' => $sectionTitle,
+                'description' => $sectionTitle,
+                'unit' => '',
+                'quantity' => 0,
+                'unit_price' => 0,
+                'discount_type' => 'percent',
+                'discount_value' => 0,
+                'discount_amount' => 0,
+                'tax_type' => 'percent',
+                'tax_value' => 0,
+                'tax_rate' => 0,
+                'tax_amount' => 0,
+                'base_amount' => 0,
+                'net_amount' => 0,
+                'line_total' => 0,
+            ];
+
+            try {
+                $newId = $lineModel->insert($line, true);
+                return $this->response->setJSON([
+                    'success' => true,
+                    'line' => $lineModel->find($newId),
+                    'totals' => $qModel->calculateTotals($qModel->getQuotationLines($id), (float)($quoteHeader['shipping_amount'] ?? 0), ...$this->documentDiscountArgs($quoteHeader)),
+                ]);
+            } catch (\Throwable $e) {
+                return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $e->getMessage()]);
+            }
+        }
+
+        $qty = (float)($payload['quantity'] ?? 0);
+        if ($qty <= 0) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'Quantity must be greater than zero.']);
+        }
+
+        $productId = !empty($payload['product_id']) ? (int)$payload['product_id'] : 0;
+        if ($productId && !(new \App\Models\ProductModel())->find($productId)) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'Selected product does not exist.']);
+        }
+
+        $lineModel = new QuotationLineModel();
+        $line = [
+            'quotation_id' => $id,
+            'product_id' => $productId,
+            'product_variant_id' => !empty($payload['product_variant_id']) ? (int)$payload['product_variant_id'] : 0,
+            'product_code' => (string)($payload['product_code'] ?? ''),
+            'product_name' => (string)($payload['product_name'] ?? ''),
+            'description' => (string)($payload['description'] ?? ($payload['product_name'] ?? '')),
+            'unit' => (string)($payload['unit'] ?? 'PCS'),
+            'quantity' => $qty,
+            'unit_price' => (float)($payload['unit_price'] ?? 0),
+            'discount_type' => (($payload['discount_type'] ?? 'percent') === 'fixed') ? 'fixed' : 'percent',
+            'discount_value' => (float)($payload['discount_value'] ?? 0),
+            'tax_type' => (($payload['tax_type'] ?? 'percent') === 'fixed') ? 'fixed' : 'percent',
+            'tax_value' => isset($payload['tax_value']) ? (float)$payload['tax_value'] : (float)($payload['tax_rate'] ?? 0),
+            'tax_rate' => isset($payload['tax_rate']) ? (float)$payload['tax_rate'] : (float)($payload['tax_value'] ?? 0),
+            'unit_weight' => (float)($payload['unit_weight'] ?? 0),
+            'weight_unit' => (string)($payload['weight_unit'] ?? 'KG'),
+            'product_image_url' => (string)($payload['product_image_url'] ?? ''),
+        ];
+
+        $calc = $lineModel->calculateLineTotal($line);
+        $line['base_amount'] = $calc['base_amount'];
+        $line['discount_amount'] = $calc['discount_amount'];
+        $line['tax_amount'] = $calc['tax_amount'];
+        $line['net_amount'] = $calc['net_amount'];
+        $line['line_total'] = $calc['line_total'];
+
+        try {
+            $newId = $lineModel->insert($line, true);
+
+            $shippingAmount = isset($quoteHeader['shipping_amount']) ? (float)$quoteHeader['shipping_amount'] : 0.0;
+            $lines = $qModel->getQuotationLines($id);
+            [$docDiscType, $docDiscValue, $docDiscExclShip] = $this->documentDiscountArgs($quoteHeader);
+            $totals = $qModel->calculateTotals($lines, $shippingAmount, $docDiscType, $docDiscValue, $docDiscExclShip);
+
+            $db = \Config\Database::connect();
+            try { $cols = $db->getFieldNames($qModel->table); } catch (\Throwable $_) { $cols = $qModel->allowedFields; }
+            $upd = [];
+            if (in_array('subtotal', $cols)) $upd['subtotal'] = $totals['subtotal'];
+            if (in_array('discount', $cols)) $upd['discount'] = $totals['discount'];
+            elseif (in_array('document_discount_value', $cols)) $upd['document_discount_value'] = $totals['discount'];
+            if (in_array('tax', $cols)) $upd['tax'] = $totals['tax'];
+            elseif (in_array('tax_total', $cols)) $upd['tax_total'] = $totals['tax'];
+            if (in_array('total_weight', $cols)) $upd['total_weight'] = $totals['total_weight'];
+            if (in_array('total', $cols)) $upd['total'] = $totals['total'];
+            if (!empty($upd)) $qModel->update($id, $upd);
+
+            return $this->response->setJSON([
+                'success' => true,
+                'line' => $lineModel->find($newId),
+                'totals' => $totals
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Delete an inline line from a quotation (view page trash icon).
+     */
+    public function deleteLine($identifier = null)
+    {
+        $method = strtolower($this->request->getMethod());
+        if ($method === 'options') {
+            return $this->response->setJSON(['success' => true]);
+        }
+        if (!in_array($method, ['post', 'delete'], true)) {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'Method not allowed']);
+        }
+
+        $id = $this->resolveQuotationIdParam($identifier);
+        if (!$id) {
+            return $this->response->setStatusCode(400)->setJSON(['success' => false, 'error' => 'Invalid quotation id']);
+        }
+
+        $qModel = new QuotationModel();
+        $quoteHeader = $qModel->find($id);
+        if (!$quoteHeader) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Quotation not found']);
+        }
+
+        $payload = $this->request->getJSON(true);
+        if (!$payload) $payload = $this->request->getPost();
+        $lineId = (int)($payload['line_id'] ?? 0);
+
+        $lineModel = new QuotationLineModel();
+        $line = $lineId ? $lineModel->find($lineId) : null;
+        if (!$line || (int)$line['quotation_id'] !== $id) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Line not found']);
+        }
+
+        $isSectionLine = ($line['display_type'] ?? '') === 'section';
+        if (!$isSectionLine) {
+            $realLineCount = $lineModel->where('quotation_id', $id)
+                ->where("(display_type IS NULL OR display_type != 'section')", null, false)
+                ->countAllResults();
+            if ($realLineCount <= 1) {
+                return $this->response->setStatusCode(422)->setJSON([
+                    'success' => false,
+                    'error' => 'A quotation must have at least one line item. Add another line before removing this one.',
+                ]);
+            }
+        }
+
+        try {
+            $lineModel->delete($lineId);
+            DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $id, DocumentLogger::ACTION_LINE_REMOVED, [
+                'product' => trim((string)($line['product_name'] ?? '')) ?: ('Item #' . $lineId),
+            ]);
+
+            $shippingAmount = isset($quoteHeader['shipping_amount']) ? (float)$quoteHeader['shipping_amount'] : 0.0;
+            $lines = $qModel->getQuotationLines($id);
+            [$docDiscType, $docDiscValue, $docDiscExclShip] = $this->documentDiscountArgs($quoteHeader);
+            $totals = $qModel->calculateTotals($lines, $shippingAmount, $docDiscType, $docDiscValue, $docDiscExclShip);
+
+            $db = \Config\Database::connect();
+            try { $cols = $db->getFieldNames($qModel->table); } catch (\Throwable $_) { $cols = $qModel->allowedFields; }
+            $upd = [];
+            if (in_array('subtotal', $cols)) $upd['subtotal'] = $totals['subtotal'];
+            if (in_array('discount', $cols)) $upd['discount'] = $totals['discount'];
+            elseif (in_array('document_discount_value', $cols)) $upd['document_discount_value'] = $totals['discount'];
+            if (in_array('tax', $cols)) $upd['tax'] = $totals['tax'];
+            elseif (in_array('tax_total', $cols)) $upd['tax_total'] = $totals['tax'];
+            if (in_array('total_weight', $cols)) $upd['total_weight'] = $totals['total_weight'];
+            if (in_array('total', $cols)) $upd['total'] = $totals['total'];
+            if (!empty($upd)) $qModel->update($id, $upd);
+
+            return $this->response->setJSON([
+                'success' => true,
+                'totals' => $totals
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Delete a quotation by id. Accepts POST or DELETE.
      */
+    /**
+     * POST quotations/{id}/refresh-customer-address
+     *
+     * Re-reads the customer's current primary address + contact and re-freezes
+     * it onto this quotation. Only legal while the quotation is still an offer:
+     * once it has been converted to a sales order the address belongs to the
+     * order/invoice chain and must be changed there (reset the order to quote
+     * first), otherwise a user could silently restate the party on a document
+     * that already has stock and ledger consequences downstream.
+     */
+    public function refreshCustomerAddress($identifier = null)
+    {
+        $this->requirePermission('quotations.edit');
+
+        if (strtolower($this->request->getMethod()) !== 'post') {
+            return $this->response->setStatusCode(405)->setJSON(['success' => false, 'error' => 'POST required']);
+        }
+
+        $quote = $this->quotationModel->findByPublicIdOrId($identifier);
+        if (!$quote) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Quotation not found']);
+        }
+
+        $quoteId    = (int) $quote['id'];
+        $customerId = (int) ($quote['customer_id'] ?? 0);
+        if ($customerId <= 0) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => 'This quotation has no customer.']);
+        }
+
+        $db = \Config\Database::connect();
+        $db->transBegin();
+        try {
+            // Lock first, then re-check the guards inside the lock so a conversion
+            // running concurrently cannot slip past them.
+            $db->query('SELECT id FROM quotations WHERE id = ? FOR UPDATE', [$quoteId]);
+            $fresh = $this->quotationModel->find($quoteId);
+            if (!$fresh) {
+                throw new \RuntimeException('Quotation not found');
+            }
+
+            if (!empty($fresh['converted_to_sales_order_id'])) {
+                throw new \RuntimeException('This quotation is already converted to a sales order. Reset the order back to quote to change the address.');
+            }
+            $linkedOrders = $db->table('sales_orders')->where('quotation_id', $quoteId)->countAllResults();
+            if ($linkedOrders > 0) {
+                throw new \RuntimeException('A sales order already exists for this quotation. Reset it back to quote first.');
+            }
+
+            $status = strtolower(trim((string) ($fresh['status'] ?? '')));
+            if (!in_array($status, ['', 'draft', 'sent'], true)) {
+                throw new \RuntimeException('Only draft or sent quotations can have their address refreshed (this one is "' . $status . '").');
+            }
+
+            helper('customer_snapshot');
+            $snapshot = customer_snapshot_capture($customerId);
+            if (empty($snapshot['line1']) && empty($snapshot['line2']) && empty($snapshot['city_name'])) {
+                throw new \RuntimeException('This customer has no address on file. Add one on the customer profile first.');
+            }
+
+            $db->table('quotations')->where('id', $quoteId)->update([
+                'customer_snapshot' => json_encode($snapshot),
+                'updated_at'        => date('Y-m-d H:i:s'),
+            ]);
+
+            if ($db->transStatus() === false) {
+                throw new \RuntimeException('Transaction failed');
+            }
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $e->getMessage()]);
+        }
+
+        $old = customer_snapshot_decode($quote);
+        DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $quoteId, DocumentLogger::ACTION_FIELD_CHANGED, [
+            'field' => 'customer_address',
+            'from'  => trim(($old['line1'] ?? '') . ' ' . ($old['city_name'] ?? '')),
+            'to'    => trim(($snapshot['line1'] ?? '') . ' ' . ($snapshot['city_name'] ?? '')),
+            'note'  => 'Address & contact refreshed from the customer profile',
+        ]);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Address & contact updated from the customer profile.',
+        ]);
+    }
+
+    /**
+     * Duplicate a quotation: an exact copy (lines, discounts, shipping, totals)
+     * as a fresh draft with a new number and today's date.
+     */
+    public function duplicate($identifier = null)
+    {
+        $db    = \Config\Database::connect();
+        $quote = is_numeric($identifier)
+            ? $db->table('quotations')->where('id', (int) $identifier)->get()->getRowArray()
+            : $db->table('quotations')->where('public_id', (string) $identifier)->get()->getRowArray();
+
+        if (! $quote || ! empty($quote['deleted_at'])) {
+            return $this->failDuplicate('Quotation not found.');
+        }
+
+        try {
+            // Keep the original validity window length, measured from today.
+            $validUntil = null;
+            if (! empty($quote['valid_until']) && ! empty($quote['issue_date'])) {
+                $days       = (int) ((strtotime($quote['valid_until']) - strtotime($quote['issue_date'])) / 86400);
+                $validUntil = date('Y-m-d', strtotime('+' . max(0, $days) . ' days'));
+            }
+
+            $newId = (new \App\Services\DocumentDuplicator())->duplicate('quotations', (int) $quote['id'], [
+                'quote_number'                 => $this->quotationModel->generateQuoteNumber($db),
+                'public_id'                    => null,
+                'status'                       => 'draft',
+                'issue_date'                   => date('Y-m-d'),
+                'valid_until'                  => $validUntil,
+                'converted_to_sales_order_id'  => null,
+                'created_by'                   => session()->get('user_id'),
+            ], [
+                'quotation_lines'     => 'quotation_id',
+                'quotation_discounts' => 'quotation_id',
+                'quotation_shipping'  => 'quotation_id',
+            ]);
+
+            DocumentLogger::log(DocumentLogger::TYPE_QUOTATION, $newId, DocumentLogger::ACTION_CREATED, [
+                'source'      => 'duplicate',
+                'copied_from' => (int) $quote['id'],
+                'copied_number' => (string) ($quote['quote_number'] ?? ''),
+            ]);
+
+            $url = site_url('quotations/edit/' . $newId);
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => true, 'id' => $newId, 'redirect' => $url]);
+            }
+
+            return redirect()->to($url)->with('success', 'Quotation duplicated from ' . ($quote['quote_number'] ?? ('#' . $quote['id'])) . '. Review and save.');
+        } catch (\Throwable $e) {
+            log_message('error', 'Quotation duplicate failed: ' . $e->getMessage());
+
+            return $this->failDuplicate('Could not duplicate the quotation.');
+        }
+    }
+
+    private function failDuplicate(string $message)
+    {
+        if ($this->request->isAJAX()) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'error' => $message]);
+        }
+
+        return redirect()->to(site_url('quotations'))->with('error', $message);
+    }
+
     public function delete($identifier = null)
     {
         // Handle both numeric ID and public_id identifiers
@@ -1638,7 +2361,8 @@ class Quotations extends BaseController
 
         try {
             $lines = $qModel->getQuotationLines($id);
-            $totals = $qModel->calculateTotals($lines, $shippingAmount);
+            [$docDiscType, $docDiscValue, $docDiscExclShip] = $this->documentDiscountArgs($quote);
+            $totals = $qModel->calculateTotals($lines, $shippingAmount, $docDiscType, $docDiscValue, $docDiscExclShip);
 
             $db = \Config\Database::connect();
             try { $cols = $db->getFieldNames($qModel->table); } catch (\Throwable $_) { $cols = $qModel->allowedFields; }

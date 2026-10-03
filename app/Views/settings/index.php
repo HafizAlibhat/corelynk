@@ -18,6 +18,11 @@
 /* ── Settings Page ── */
 .st-wrap { max-width: 1280px; margin: 0 auto; }
 
+/* ── Backup progress bar ── */
+.cl-backup-progress-track { height: 10px; border-radius: 999px; overflow: hidden; background: rgba(107,78,230,.12); }
+.cl-backup-progress-bar { background: linear-gradient(90deg, #6b4ee6, #21c7b7); transition: width .35s ease; }
+.cl-backup-progress.is-error .cl-backup-progress-bar { background: linear-gradient(90deg, #dc3545, #f77); animation: none; }
+
 .st-page-hdr { display:flex; align-items:flex-start; justify-content:space-between; padding:.5rem 0 1rem; }
 .st-page-title { font-size:1.05rem; font-weight:700; color:var(--gray-700); display:flex; align-items:center; gap:.4rem; margin:0; }
 .st-page-title i { color:var(--primary-color); font-size:1rem; }
@@ -214,7 +219,7 @@
 
     <div class="row g-3">
         <!-- ═══ LEFT NAV ═══ -->
-        <div class="col-lg-2 col-md-3">
+        <div class="col-lg-3 col-md-4">
             <nav class="st-nav" id="settingsNav">
                 <div class="st-nav-group-label">General</div>
                 <a href="#" class="active" data-section="company"><i class="bi bi-building"></i>Company</a>
@@ -224,12 +229,15 @@
                 <div class="st-nav-divider"></div>
                 <div class="st-nav-group-label">Finance</div>
                 <a href="#" data-section="payments"><i class="bi bi-credit-card"></i>Payments</a>
+                <a href="#" data-section="payment-terms"><i class="bi bi-calendar2-check"></i>Payment Terms</a>
                 <a href="#" data-section="currencies"><i class="bi bi-coin"></i>Currencies</a>
                 <a href="#" data-section="exchange"><i class="bi bi-arrow-left-right"></i>Exchange Rates</a>
                 <div class="st-nav-divider"></div>
                 <div class="st-nav-group-label">System</div>
                 <a href="#" data-section="security"><i class="bi bi-shield-lock"></i>Security</a>
                 <a href="#" data-section="backups"><i class="bi bi-safe2"></i>Backups</a>
+                <a href="#" data-section="data"><i class="bi bi-arrow-down-up"></i>Data Export/Import</a>
+                <a href="#" data-section="tags"><i class="bi bi-tags"></i>Tags</a>
                 <a href="#" data-section="sync"><i class="bi bi-diagram-3"></i>Sync</a>
                 <a href="#" data-section="odoo"><i class="bi bi-box-seam"></i>Odoo</a>
                 <div class="st-nav-divider"></div>
@@ -239,7 +247,7 @@
         </div>
 
         <!-- ═══ RIGHT CONTENT ═══ -->
-        <div class="col-lg-10 col-md-9">
+        <div class="col-lg-9 col-md-8">
 
             <!-- ─── COMPANY ─── -->
             <div class="settings-section active" id="section-company">
@@ -310,6 +318,16 @@
                             <div class="col-md-6">
                                 <label class="compact-label">PDF Footer Text</label>
                                 <input type="text" class="form-control form-control-sm" name="invoice_footer" value="<?= esc($company['invoice_footer'] ?? '') ?>" placeholder="Custom text for PDF footer (optional)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Bank Details (printed on invoices)</label>
+                                <textarea class="form-control form-control-sm rich-editor" name="bank_details" rows="5" placeholder="Bank Name&#10;Account Title&#10;Account #&#10;IBAN / SWIFT&#10;Branch"><?= esc($company['bank_details'] ?? '') ?></textarea>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Default for every invoice; an individual invoice can override it.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Invoice Terms &amp; Conditions</label>
+                                <textarea class="form-control form-control-sm rich-editor" name="invoice_terms" rows="5" placeholder="e.g. Goods remain the property of the seller until paid in full."><?= esc($company['invoice_terms'] ?? '') ?></textarea>
+                                <div class="text-muted" style="font-size:.7rem; margin-top:2px;">Default for every invoice; an individual invoice can override it.</div>
                             </div>
                             <div class="col-12">
                                 <label class="compact-label mb-2">PDF Template</label>
@@ -515,6 +533,30 @@
                                         <div class="tpl-name">Elegant Purple</div>
                                     </div>
 
+                                    <!-- Odoo Style -->
+                                    <div class="tpl-card <?= $pdfTemplate === 'odoo_style' ? 'selected' : '' ?>" data-tpl="odoo_style" title="Odoo Style">
+                                        <div class="tpl-preview tpl-odoo-style">
+                                            <div class="tp-header" style="border-bottom:1px solid #d1d5db;padding-bottom:5px;margin-bottom:8px;">
+                                                <div class="tp-logo-box" style="width:24px;height:24px;border-radius:50%;background:#0ea5b7;"></div>
+                                                <div class="tp-company-lines" style="text-align:right;">
+                                                    <div class="tp-line w45" style="background:#374151;margin-left:auto;"></div>
+                                                    <div class="tp-line w30 mt2" style="margin-left:auto;"></div>
+                                                </div>
+                                            </div>
+                                            <div class="tp-line w45 bold" style="background:#0b8799;height:4px;margin-bottom:6px;"></div>
+                                            <div class="tp-table">
+                                                <div class="tp-thead" style="background:#f8fafc;border:1px solid #6b7280;"></div>
+                                                <div class="tp-trow" style="border-left:1px solid #6b7280;border-right:1px solid #6b7280;"></div>
+                                                <div class="tp-trow" style="background:#4b4f54;height:6px;"></div>
+                                                <div class="tp-trow alt" style="border-left:1px solid #6b7280;border-right:1px solid #6b7280;background:#fff;"></div>
+                                            </div>
+                                            <div class="tp-totals-right">
+                                                <div class="tp-line w60 mt2" style="background:#2a98b7;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="tpl-name">Odoo Style</div>
+                                    </div>
+
                                 </div><!-- /.pdf-template-grid -->
                             </div>
                             <div class="col-md-3">
@@ -553,6 +595,7 @@
                                         <thead>
                                             <tr class="text-muted" style="border-bottom: 1px solid rgba(0,0,0,.05);">
                                                 <th>Document Type</th>
+                                                <th class="text-center">Hide Logo</th>
                                                 <th class="text-center">Show Header Address</th>
                                                 <th class="text-center">Show Footer</th>
                                             </tr>
@@ -569,11 +612,18 @@
                                                 foreach($docs as $d):
                                                     $hKey = "pdf_{$d['key']}_show_header";
                                                     $fKey = "pdf_{$d['key']}_show_footer";
+                                                    $lKey = "pdf_{$d['key']}_hide_logo";
                                                     $hVal = !isset($company[$hKey]) || $company[$hKey];
                                                     $fVal = !isset($company[$fKey]) || $company[$fKey];
+                                                    $lVal = !empty($company[$lKey]);
                                             ?>
                                             <tr>
                                                 <td class="fw-semibold"><?= $d['label'] ?></td>
+                                                <td class="text-center">
+                                                    <div class="form-check form-switch d-inline-block">
+                                                        <input class="form-check-input" type="checkbox" name="<?= $lKey ?>" value="1" <?= $lVal ? 'checked' : '' ?>>
+                                                    </div>
+                                                </td>
                                                 <td class="text-center">
                                                     <div class="form-check form-switch d-inline-block">
                                                         <input class="form-check-input" type="checkbox" name="<?= $hKey ?>" value="1" <?= $hVal ? 'checked' : '' ?>>
@@ -966,47 +1016,113 @@
                 </div>
             </div>
 
-            <!-- ─── CURRENCIES ─── -->
-            <div class="settings-section" id="section-currencies">
+            <!-- ─── PAYMENT TERMS ─── -->
+            <div class="settings-section" id="section-payment-terms">
                 <div class="settings-card">
-                    <div class="settings-card-header"><i class="bi bi-coin"></i>Currencies</div>
+                    <div class="settings-card-header"><i class="bi bi-calendar2-check"></i>Payment Terms</div>
                     <div class="settings-card-body">
-                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addCurrency') ?>">
+                    <p class="text-muted" style="font-size:.8rem;">
+                        Define how an invoice is split into instalments &mdash; for example <strong>80% advance</strong> on the invoice date
+                        plus <strong>20%</strong> due 30 days after delivery. Percentages must add up to 100%. Leave the milestone rows
+                        empty for a plain single-due-date term.
+                    </p>
+
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/savePaymentTerm') ?>" id="paymentTermForm">
                         <?= csrf_field() ?>
-                        <div class="col-md-2">
-                            <label class="compact-label">Code</label>
-                            <input type="text" name="code" class="form-control form-control-sm" placeholder="USD" required>
-                        </div>
+                        <input type="hidden" name="id" id="ptId" value="">
                         <div class="col-md-4">
                             <label class="compact-label">Name</label>
-                            <input type="text" name="name" class="form-control form-control-sm" placeholder="US Dollar">
+                            <input type="text" class="form-control form-control-sm" name="name" id="ptName" placeholder="80% Advance / 20% Net 30 After Delivery" required>
                         </div>
                         <div class="col-md-2">
-                            <label class="compact-label">Symbol</label>
-                            <input type="text" name="symbol" class="form-control form-control-sm" placeholder="$">
+                            <label class="compact-label">Code</label>
+                            <input type="text" class="form-control form-control-sm" name="code" id="ptCode" placeholder="ADV80_NET30" required>
                         </div>
-                        <div class="col-auto">
-                            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus me-1"></i>Add</button>
+                        <div class="col-md-2">
+                            <label class="compact-label">Net Days</label>
+                            <input type="number" min="0" class="form-control form-control-sm" name="net_days" id="ptNetDays" value="0">
+                            <div class="text-muted" style="font-size:.7rem;">Ignored when milestones are set.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="compact-label">Description (printed on invoice)</label>
+                            <input type="text" class="form-control form-control-sm" name="description" id="ptDescription" placeholder="80% before production, 20% 30 days after delivery">
+                        </div>
+
+                        <div class="col-12 mt-2">
+                            <label class="compact-label">Milestones</label>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-1" style="font-size:.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:32%;">Label</th>
+                                            <th style="width:14%;">Percentage</th>
+                                            <th style="width:26%;">Counted From</th>
+                                            <th style="width:18%;">Days After</th>
+                                            <th style="width:10%;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ptMilestoneRows"></tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="ptAddRow"><i class="bi bi-plus me-1"></i>Add Milestone</button>
+                                <span class="fw-semibold" id="ptPctTotal" style="font-size:.8rem;"></span>
+                            </div>
+                        </div>
+
+                        <div class="col-12 mt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="ptActive" value="1" checked>
+                                <label class="form-check-label" for="ptActive" style="font-size:.8rem;">Active</label>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <div class="st-form-footer">
+                                <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save Payment Term</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="ptReset">New / Clear</button>
+                            </div>
                         </div>
                     </form>
+
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
-                            <thead><tr><th>Code</th><th>Name</th><th>Symbol</th><th class="text-end">Active</th></tr></thead>
+                            <thead><tr><th>Name</th><th>Code</th><th>Milestones</th><th class="text-end">Active</th><th class="text-end">Actions</th></tr></thead>
                             <tbody>
-                            <?php foreach (($currencies ?? []) as $c): ?>
+                            <?php foreach (($payment_terms ?? []) as $pt): ?>
+                                <?php $ptMilestones = json_decode((string)($pt['milestones'] ?? ''), true) ?: []; ?>
                                 <tr>
-                                    <td class="fw-semibold"><?= esc($c['code']) ?></td>
-                                    <td><?= esc($c['name']) ?></td>
-                                    <td><?= esc($c['symbol'] ?? '') ?></td>
-                                    <td class="text-end">
-                                        <div class="form-check form-switch d-inline">
-                                            <input class="form-check-input currency-toggle" data-code="<?= esc($c['code']) ?>" type="checkbox" <?= (!isset($c['is_active']) || $c['is_active']) ? 'checked' : '' ?>>
-                                        </div>
+                                    <td class="fw-semibold"><?= esc($pt['name']) ?></td>
+                                    <td><code><?= esc($pt['code']) ?></code></td>
+                                    <td>
+                                        <?php if (empty($ptMilestones)): ?>
+                                            <span class="text-muted">Net <?= (int)$pt['net_days'] ?> days</span>
+                                        <?php else: ?>
+                                            <?php foreach ($ptMilestones as $ptM): ?>
+                                                <div>
+                                                    <?= esc(rtrim(rtrim(number_format((float)($ptM['percentage'] ?? 0), 2), '0'), '.')) ?>%
+                                                    &mdash; <?= esc($ptM['label'] ?? '') ?>
+                                                    <span class="text-muted">
+                                                        (<?= (int)($ptM['offset_days'] ?? 0) ?> days after
+                                                        <?= ($ptM['basis'] ?? '') === 'delivery_date' ? 'delivery' : 'invoice date' ?>)
+                                                    </span>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-end"><?= !empty($pt['is_active']) ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-dash-circle text-secondary"></i>' ?></td>
+                                    <td class="text-end text-nowrap">
+                                        <button type="button" class="btn btn-sm btn-outline-primary js-pt-edit"
+                                                data-term='<?= esc(json_encode($pt), 'attr') ?>'><i class="bi bi-pencil"></i></button>
+                                        <form method="post" action="<?= site_url('settings/deletePaymentTerm/' . (int)$pt['id']) ?>" class="d-inline"
+                                              onsubmit="return confirm('Delete this payment term? If invoices already use it, it will be deactivated instead.');">
+                                            <?= csrf_field() ?>
+                                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
-                            <?php if (empty($currencies)): ?>
-                                <tr><td colspan="4" class="text-muted">No currencies defined.</td></tr>
+                            <?php if (empty($payment_terms)): ?>
+                                <tr><td colspan="5" class="text-muted">No payment terms defined.</td></tr>
                             <?php endif; ?>
                             </tbody>
                         </table>
@@ -1015,23 +1131,100 @@
                 </div>
             </div>
 
+            <!-- ─── CURRENCIES ─── -->
+            <div class="settings-section" id="section-currencies">
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-coin"></i>Currencies
+                        <span class="ms-auto badge bg-primary bg-opacity-10 text-primary" style="font-size:.75rem;">
+                            Active: <?= count(array_filter(($currencies ?? []), function($c) { return (int)($c['is_active'] ?? 0); })) ?>
+                        </span>
+                    </div>
+                    <div class="settings-card-body">
+                    <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addCurrency') ?>">
+                        <?= csrf_field() ?>
+                        <div class="col-md-1-5">
+                            <label class="compact-label">Code</label>
+                            <input type="text" name="code" class="form-control form-control-sm" placeholder="USD" maxlength="10" required style="text-transform:uppercase;">
+                        </div>
+                        <div class="col-md-2-5">
+                            <label class="compact-label">Name</label>
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="US Dollar" required>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="compact-label">Symbol</label>
+                            <input type="text" name="symbol" class="form-control form-control-sm" placeholder="$" maxlength="10" style="font-size:1.1rem;">
+                        </div>
+                        <div class="col-md-1">
+                            <label class="compact-label">Decimals</label>
+                            <input type="number" name="decimals" class="form-control form-control-sm" placeholder="2" value="2" min="0" max="8">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus me-1"></i>Add</button>
+                        </div>
+                    </form>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                            <thead><tr><th>Code</th><th>Name</th><th style="text-align:center;">Symbol</th><th>Decimals</th><th class="text-end">Active</th></tr></thead>
+                            <tbody>
+                            <?php foreach (($currencies ?? []) as $c): ?>
+                                <tr>
+                                    <td class="fw-semibold font-monospace"><?= esc($c['code']) ?></td>
+                                    <td><?= esc($c['name']) ?></td>
+                                    <td style="text-align:center; font-size:1.1rem;"><?= esc($c['symbol'] ?? '-') ?></td>
+                                    <td><small class="text-muted"><?= (int)($c['decimals'] ?? 2) ?> places</small></td>
+                                    <td class="text-end">
+                                        <div class="form-check form-switch d-inline">
+                                            <input class="form-check-input currency-toggle" data-code="<?= esc($c['code']) ?>" type="checkbox" <?= (!isset($c['is_active']) || $c['is_active']) ? 'checked' : '' ?>>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($currencies)): ?>
+                                <tr><td colspan="5" class="text-muted">No currencies defined. Add the first currency above.</td></tr>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2 small" style="color:var(--gray-400,#94a3b8)"><i class="bi bi-info-circle me-1"></i>Active currencies appear in dropdowns throughout the system. Decimals control rounding (e.g., JPY uses 0 decimals, USD uses 2).</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ─── EXCHANGE RATES ─── -->
             <div class="settings-section" id="section-exchange">
                 <div class="settings-card">
                     <div class="settings-card-header">
-                        <i class="bi bi-arrow-left-right"></i>Exchange Rates (USD → PKR)
+                        <i class="bi bi-arrow-left-right"></i>Exchange Rates
                         <span class="ms-auto badge bg-primary bg-opacity-10 text-primary" style="font-size:.75rem;">
-                            Active: <?= isset($activeRate['rate']) ? number_format($activeRate['rate'], 4) : 'N/A' ?>
+                            Total Rates: <?= count($rates ?? []) ?>
                         </span>
                     </div>
                     <div class="settings-card-body">
                     <form class="row g-2 align-items-end mb-3" method="post" action="<?= site_url('settings/addExchangeRate') ?>">
                         <?= csrf_field() ?>
-                        <div class="col-md-3">
-                            <label class="compact-label">Rate</label>
-                            <input type="number" step="0.0001" class="form-control form-control-sm" name="rate" required>
+                        <div class="col-md-2">
+                            <label class="compact-label">From (Base)</label>
+                            <select class="form-select form-select-sm" name="base_code" required>
+                                <option value="">Select...</option>
+                                <?php foreach(($active_currencies ?? []) as $c): ?>
+                                    <option value="<?= esc($c['code']) ?>"><?= esc($c['code']) ?> <?= $c['symbol'] ? '(' . esc($c['symbol']) . ')' : '' ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
+                            <label class="compact-label">To (Quote)</label>
+                            <select class="form-select form-select-sm" name="quote_code" required>
+                                <option value="">Select...</option>
+                                <?php foreach(($active_currencies ?? []) as $c): ?>
+                                    <option value="<?= esc($c['code']) ?>"><?= esc($c['code']) ?> <?= $c['symbol'] ? '(' . esc($c['symbol']) . ')' : '' ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="compact-label">Rate</label>
+                            <input type="number" step="0.0001" class="form-control form-control-sm" name="rate" placeholder="e.g., 270.5000" required>
+                        </div>
+                        <div class="col-md-2">
                             <label class="compact-label">Effective Date</label>
                             <input type="date" class="form-control form-control-sm" name="as_of" value="<?= date('Y-m-d') ?>" required>
                         </div>
@@ -1041,23 +1234,33 @@
                     </form>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
-                            <thead><tr><th>Base</th><th>Quote</th><th>Rate</th><th>As Of</th></tr></thead>
+                            <thead><tr><th>From</th><th>To</th><th style="text-align:right;">Rate</th><th>As Of</th><th style="text-align:center;">Latest</th></tr></thead>
                             <tbody>
-                            <?php foreach(($rates ?? []) as $r): ?>
+                            <?php 
+                            $grouped = [];
+                            foreach(($rates ?? []) as $r) {
+                                $key = $r['base_code'] . '-' . $r['quote_code'];
+                                if (!isset($grouped[$key])) {
+                                    $grouped[$key] = $r;
+                                }
+                            }
+                            foreach($grouped as $r): 
+                            ?>
                                 <tr>
-                                    <td><?= esc($r['base_code']) ?></td>
-                                    <td><?= esc($r['quote_code']) ?></td>
-                                    <td class="fw-semibold"><?= number_format($r['rate'], 4) ?></td>
-                                    <td><?= esc($r['as_of']) ?></td>
+                                    <td class="fw-semibold"><?= esc($r['base_code']) ?></td>
+                                    <td class="fw-semibold"><?= esc($r['quote_code']) ?></td>
+                                    <td style="text-align:right; font-family:monospace;">1 <?= esc($r['base_code']) ?> = <?= number_format($r['rate'], 4) ?> <?= esc($r['quote_code']) ?></td>
+                                    <td><small class="text-muted"><?= esc($r['as_of']) ?></small></td>
+                                    <td style="text-align:center;"><i class="bi bi-check-circle-fill text-success" title="Most recent rate for this pair"></i></td>
                                 </tr>
                             <?php endforeach; ?>
                             <?php if (empty($rates)): ?>
-                                <tr><td colspan="4" class="text-muted">No rates recorded.</td></tr>
+                                <tr><td colspan="5" class="text-muted">No exchange rates recorded. Add the first rate above (e.g., 1 USD = 270 PKR).</td></tr>
                             <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
-                    <div class="mt-2 small" style="color:var(--gray-400,#94a3b8)"><i class="bi bi-info-circle me-1"></i>Historical tracking ensures old transactions stay at their original rate.</div>
+                    <div class="mt-2 small" style="color:var(--gray-400,#94a3b8)"><i class="bi bi-info-circle me-1"></i>Historical tracking ensures old transactions stay at their original rate. Always use 4 decimal places for accuracy.</div>
                     </div>
                 </div>
             </div>
@@ -1145,6 +1348,14 @@
                                     <div class="col-md-8">
                                         <div class="p-2 rounded border bg-light small text-muted">
                                             Full backups include the application snapshot, SQL dump, manifest, checksum, and zip integrity verification.
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="skip_media" value="1" id="skipMediaCheck" checked>
+                                            <label class="form-check-label small" for="skipMediaCheck">
+                                                Skip product images &amp; videos (<code>public/uploads</code>) to keep the backup small &mdash; uncheck to include them
+                                            </label>
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -1261,6 +1472,15 @@
                 <div class="settings-card">
                     <div class="settings-card-header"><i class="bi bi-archive"></i>Recent Backups</div>
                     <div class="settings-card-body">
+                        <div id="backupProgressBanner" class="cl-backup-progress d-none mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span id="backupProgressText" class="small fw-semibold">Starting&hellip;</span>
+                                <span id="backupProgressPercent" class="small fw-semibold text-primary">0%</span>
+                            </div>
+                            <div class="progress cl-backup-progress-track" role="progressbar" aria-label="Backup progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <div id="backupProgressBar" class="progress-bar progress-bar-striped progress-bar-animated cl-backup-progress-bar" style="width:0%"></div>
+                            </div>
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
                                 <thead>
@@ -1277,12 +1497,14 @@
                                 <tbody>
                                     <?php foreach (($backup_jobs ?? []) as $job): ?>
                                         <?php $health = strtolower((string) ($job['health_status'] ?? 'pending')); ?>
-                                        <tr>
+                                        <?php $status = strtolower((string) ($job['status'] ?? '')); ?>
+                                        <tr data-public-id="<?= esc($job['public_id'] ?? '') ?>" data-status="<?= esc($status) ?>">
                                             <td><?= esc($job['created_at'] ?? '') ?></td>
                                             <td><?= esc(strtoupper((string) ($job['backup_type'] ?? ''))) ?></td>
-                                            <td><?= esc(ucfirst((string) ($job['status'] ?? ''))) ?></td>
-                                            <td>
+                                            <td class="js-backup-status"><?= esc(ucfirst($status)) ?></td>
+                                            <td class="js-backup-health">
                                                 <span class="badge <?= $health === 'verified' ? 'bg-success-subtle text-success' : ($health === 'warning' ? 'bg-warning-subtle text-warning' : ($health === 'failed' ? 'bg-danger-subtle text-danger' : 'bg-secondary-subtle text-secondary')) ?>">
+                                                    <?php if ($health === 'verified'): ?><i class="bi bi-check-circle-fill me-1"></i><?php endif; ?>
                                                     <?= esc(ucfirst($health)) ?>
                                                 </span>
                                             </td>
@@ -1317,6 +1539,11 @@
                                                                 <button class="btn btn-sm btn-outline-danger">Restore</button>
                                                             </form>
                                                         <?php endif; ?>
+                                                    <?php elseif (in_array($status, ['queued', 'running'], true)): ?>
+                                                        <form method="post" action="<?= site_url('settings/cancelBackup/' . $job['public_id']) ?>" class="cancel-backup-form">
+                                                            <?= csrf_field() ?>
+                                                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Cancel</button>
+                                                        </form>
                                                     <?php else: ?>
                                                         <span class="text-muted">No file</span>
                                                     <?php endif; ?>
@@ -1329,6 +1556,243 @@
                                     <?php endforeach; ?>
                                     <?php if (empty($backup_jobs)): ?>
                                         <tr><td colspan="7" class="text-muted">No backups created yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── DATA EXPORT / IMPORT ─── -->
+            <div class="settings-section" id="section-data">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-box-arrow-up"></i>Export Data</div>
+                    <div class="settings-card-body">
+                        <form method="post" action="<?= site_url('settings/exportData') ?>">
+                            <?= csrf_field() ?>
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary module-select-all" data-target="#exportModuleList">Select All</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary module-uncheck-all" data-target="#exportModuleList">Uncheck All</button>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary module-toggle-collapse" data-target="#exportModuleList"><i class="bi bi-arrows-collapse me-1"></i>Collapse</button>
+                            </div>
+                            <div class="row g-2 mb-2" id="exportModuleList">
+                                <?php foreach (($data_modules ?? []) as $key => $mod): ?>
+                                    <div class="col-md-3 col-sm-4 col-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="modules[]" value="<?= esc($key) ?>" id="exp_<?= esc($key) ?>" checked>
+                                            <label class="form-check-label small" for="exp_<?= esc($key) ?>"><?= esc($mod['label'] ?? $key) ?></label>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <button class="btn btn-sm btn-primary" id="exportDataButton"><i class="bi bi-download me-1"></i>Export Selected</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-box-arrow-in-down"></i>Import Data</div>
+                    <div class="settings-card-body">
+                        <?php $preview = session()->getFlashdata('import_preview'); ?>
+                        <?php if (!empty($preview)): ?>
+                            <div class="alert alert-info small">
+                                <div class="fw-semibold mb-2"><i class="bi bi-eye me-1"></i>Preview — nothing has been written yet</div>
+                                <table class="table table-sm mb-2" style="font-size:.8rem;">
+                                    <thead><tr><th>Module</th><th>Create</th><th>Update</th><th>Unresolved refs</th></tr></thead>
+                                    <tbody>
+                                        <?php foreach (($preview['modules'] ?? []) as $pkey => $pmod): ?>
+                                            <tr>
+                                                <td><?= esc($pmod['label'] ?? $pkey) ?></td>
+                                                <td class="text-success"><?= (int) ($pmod['create'] ?? 0) ?></td>
+                                                <td class="text-primary"><?= (int) ($pmod['update'] ?? 0) ?></td>
+                                                <td class="<?= !empty($pmod['unresolved_refs']) ? 'text-danger' : 'text-muted' ?>">
+                                                    <?= (int) ($pmod['unresolved_refs'] ?? 0) ?>
+                                                    <?php if (!empty($pmod['missing_modules'])): ?>
+                                                        <div class="small text-danger">Missing: <?= esc(implode(', ', $pmod['missing_modules'])) ?> — import <?= esc($pmod['missing_modules'][0]) ?> first.</div>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                                <form method="post" action="<?= site_url('settings/importConfirmData') ?>">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="staged_path" value="<?= esc($preview['staged_path'] ?? '') ?>">
+                                    <?php foreach (($preview['modules'] ?? []) as $pkey => $pmod): ?>
+                                        <input type="hidden" name="modules[]" value="<?= esc($pkey) ?>">
+                                    <?php endforeach; ?>
+                                    <button class="btn btn-sm btn-success"><i class="bi bi-check2-circle me-1"></i>Confirm Import</button>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+                        <form method="post" action="<?= site_url('settings/importPreviewData') ?>" enctype="multipart/form-data" class="row g-2 align-items-end">
+                            <?= csrf_field() ?>
+                            <div class="col-12">
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <label class="compact-label d-block mb-0">Modules to import</label>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary module-select-all" data-target="#importModuleList">Select All</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary module-uncheck-all" data-target="#importModuleList">Uncheck All</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary module-toggle-collapse" data-target="#importModuleList"><i class="bi bi-arrows-collapse me-1"></i>Collapse</button>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mb-2" id="importModuleList">
+                                    <?php foreach (($data_modules ?? []) as $key => $mod): ?>
+                                        <div class="col-md-3 col-sm-4 col-6">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="modules[]" value="<?= esc($key) ?>" id="imp_<?= esc($key) ?>" checked>
+                                                <label class="form-check-label small" for="imp_<?= esc($key) ?>"><?= esc($mod['label'] ?? $key) ?></label>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="compact-label">Package (.xlsx)</label>
+                                <input type="file" name="import_file" accept=".xlsx" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="col-md-6">
+                                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search me-1"></i>Preview Import</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header"><i class="bi bi-arrow-down-up"></i>Recent Export/Import Jobs</div>
+                    <div class="settings-card-body">
+                        <div id="dataProgressBanner" class="cl-backup-progress d-none mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span id="dataProgressText" class="small fw-semibold">Starting&hellip;</span>
+                                <span id="dataProgressPercent" class="small fw-semibold text-primary">0%</span>
+                            </div>
+                            <div class="progress cl-backup-progress-track" role="progressbar" aria-label="Data job progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <div id="dataProgressBar" class="progress-bar progress-bar-striped progress-bar-animated cl-backup-progress-bar" style="width:0%"></div>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Created</th>
+                                        <th>Direction</th>
+                                        <th>Status</th>
+                                        <th>Size</th>
+                                        <th>Archive</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($data_jobs ?? []) as $job): ?>
+                                        <?php $status = strtolower((string) ($job['status'] ?? '')); ?>
+                                        <tr data-public-id="<?= esc($job['public_id'] ?? '') ?>" data-status="<?= esc($status) ?>">
+                                            <td><?= esc($job['created_at'] ?? '') ?></td>
+                                            <td><?= esc(ucfirst((string) ($job['direction'] ?? ''))) ?></td>
+                                            <td class="js-data-status"><?= esc(ucfirst($status)) ?></td>
+                                            <td>
+                                                <?php $size = (int) ($job['archive_size_bytes'] ?? 0); ?>
+                                                <?= $size > 0 ? number_format($size / 1048576, 2) . ' MB' : 'N/A' ?>
+                                            </td>
+                                            <td><?= esc($job['archive_name'] ?? 'Pending') ?></td>
+                                            <td>
+                                                <div class="d-flex gap-1 flex-wrap align-items-start">
+                                                    <?php if (($job['direction'] ?? '') === 'export' && !empty($job['archive_path'])): ?>
+                                                        <a href="<?= site_url('settings/downloadDataExport/' . $job['public_id']) ?>" class="btn btn-sm btn-outline-primary">Download</a>
+                                                    <?php endif; ?>
+                                                    <?php if (in_array($status, ['queued', 'running'], true)): ?>
+                                                        <form method="post" action="<?= site_url('settings/cancelDataJob/' . $job['public_id']) ?>" class="cancel-data-job-form">
+                                                            <?= csrf_field() ?>
+                                                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Cancel</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if (!empty($job['error_message'])): ?>
+                                                    <div class="text-danger mt-1" style="font-size:.72rem;"><?= esc($job['error_message']) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($data_jobs)): ?>
+                                        <tr><td colspan="6" class="text-muted">No export/import jobs yet.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── TAGS ─── -->
+            <div class="settings-section" id="section-tags">
+                <div class="settings-card mb-3">
+                    <div class="settings-card-header"><i class="bi bi-tags"></i>Tag Management</div>
+                    <div class="settings-card-body">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-lg-8 col-md-12">
+                                <form method="post" action="<?= site_url('settings/saveTag') ?>" class="row g-2 align-items-end">
+                                    <?= csrf_field() ?>
+                                    <div class="col-md-6">
+                                        <label class="compact-label" for="newTagName">Tag Name</label>
+                                        <input type="text" id="newTagName" name="name" class="form-control form-control-sm" value="<?= esc(old('name')) ?>" placeholder="Enter a new tag" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="compact-label" for="newTagDescription">Description</label>
+                                        <input type="text" id="newTagDescription" name="description" class="form-control form-control-sm" value="<?= esc(old('description')) ?>" placeholder="Optional description">
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-lg-4 col-md-12">
+                                <div class="small text-muted">Create tag names once and reuse them across all documents.</div>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" style="font-size:.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Usage</th>
+                                        <th>Updated</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (($tags ?? []) as $tag): ?>
+                                        <?php $attached = !empty($tag['usage_count']); ?>
+                                        <tr>
+                                            <td>
+                                                <input type="text" name="name" form="tag_update_<?= (int)$tag['id'] ?>" class="form-control form-control-sm" value="<?= esc($tag['name'] ?? '') ?>" aria-label="Tag name for <?= esc($tag['name'] ?? '') ?>" <?= $attached ? 'readonly' : '' ?> required>
+                                            </td>
+                                            <td>
+                                                <input type="text" name="description" form="tag_update_<?= (int)$tag['id'] ?>" class="form-control form-control-sm" value="<?= esc($tag['description'] ?? '') ?>" aria-label="Description for <?= esc($tag['name'] ?? '') ?>" <?= $attached ? 'readonly' : '' ?>>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= $attached ? 'bg-secondary-subtle text-secondary' : 'bg-success-subtle text-success' ?>">
+                                                    <?= (int) ($tag['usage_count'] ?? 0) ?> attached
+                                                </span>
+                                            </td>
+                                            <td><?= esc($tag['updated_at'] ? date('Y-m-d', strtotime($tag['updated_at'])) : '') ?></td>
+                                            <td class="text-end">
+                                                <form id="tag_update_<?= (int)$tag['id'] ?>" method="post" action="<?= site_url('settings/updateTag/' . (int)$tag['id']) ?>" class="d-inline">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" <?= $attached ? 'disabled' : '' ?>>Save</button>
+                                                </form>
+                                                <form method="post" action="<?= site_url('settings/deleteTag/' . (int)$tag['id']) ?>" class="d-inline ms-1">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" <?= $attached ? 'disabled' : '' ?>>Delete</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($tags)): ?>
+                                        <tr><td colspan="5" class="text-center text-muted py-4">No tags created yet.</td></tr>
                                     <?php endif; ?>
                                 </tbody>
                             </table>
@@ -1575,6 +2039,7 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('js') ?>
+<?= $this->include('partials/_rich_editor') ?>
 <script>
 // ─── Settings Navigation ───
 (function(){
@@ -1741,6 +2206,75 @@ if (createBackupForm) {
     });
 }
 
+// Poll job status while any recent backup is queued/running, since the
+// zip work now happens in a background process instead of blocking the page.
+// Drives a live percentage progress bar from progress_percent/progress_stage.
+(function() {
+    var activeRows = document.querySelectorAll('#section-backups tr[data-status="queued"], #section-backups tr[data-status="running"]');
+    if (!activeRows.length) return;
+
+    var STAGE_LABELS = {
+        starting: 'Starting…',
+        dumping_database: 'Dumping database…',
+        collecting_files: 'Collecting application files…',
+        compressing: 'Compressing archive…',
+        verifying: 'Verifying integrity…',
+        completed: 'Backup finished — refreshing…',
+        failed: 'Backup failed — refreshing…',
+        cancelled: 'Backup cancelled — refreshing…'
+    };
+
+    var banner = document.getElementById('backupProgressBanner');
+    var bannerText = document.getElementById('backupProgressText');
+    var bannerPercent = document.getElementById('backupProgressPercent');
+    var bar = document.getElementById('backupProgressBar');
+    var track = banner ? banner.querySelector('.progress') : null;
+    var trackedPublicId = activeRows[0] ? activeRows[0].getAttribute('data-public-id') : null;
+    if (banner) banner.classList.remove('d-none');
+
+    var statusUrl = '<?= site_url('settings/backupJobsStatus') ?>';
+    var timer = setInterval(function() {
+        fetch(statusUrl).then(function(r) { return r.json(); }).then(function(jobs) {
+            var stillActive = false;
+            var focusJob = null;
+            var trackedJob = null;
+            jobs.forEach(function(job) {
+                var row = document.querySelector('#section-backups tr[data-public-id="' + job.public_id + '"]');
+                if (row) {
+                    var statusCell = row.querySelector('.js-backup-status');
+                    if (statusCell) statusCell.textContent = job.status.charAt(0).toUpperCase() + job.status.slice(1);
+                    row.setAttribute('data-status', job.status);
+                }
+                if (job.public_id === trackedPublicId) trackedJob = job;
+                if (job.status === 'queued' || job.status === 'running') {
+                    stillActive = true;
+                    if (!focusJob) focusJob = job;
+                }
+            });
+
+            if (focusJob) {
+                var pct = Math.max(0, Math.min(100, focusJob.progress_percent || 0));
+                if (bar) bar.style.width = pct + '%';
+                if (track) track.setAttribute('aria-valuenow', String(pct));
+                if (bannerPercent) bannerPercent.textContent = pct + '%';
+                if (bannerText) bannerText.textContent = STAGE_LABELS[focusJob.progress_stage] || 'Working…';
+                banner.classList.remove('is-error');
+            } else {
+                if (bar) bar.style.width = '100%';
+                if (bannerPercent) bannerPercent.textContent = '100%';
+                var finalStage = trackedJob ? (trackedJob.status === 'failed' ? 'failed' : (trackedJob.status === 'cancelled' ? 'cancelled' : 'completed')) : 'completed';
+                if (bannerText) bannerText.textContent = STAGE_LABELS[finalStage];
+                if (banner && finalStage !== 'completed') banner.classList.add('is-error');
+            }
+
+            if (!stillActive) {
+                clearInterval(timer);
+                window.location.reload();
+            }
+        }).catch(function() { /* keep polling; a transient network error shouldn't stop it */ });
+    }, 1200);
+})();
+
 document.querySelectorAll('.restore-backup-form').forEach(function(form) {
     form.addEventListener('submit', function(e) {
         var modeField = form.querySelector('select[name="restore_mode"]');
@@ -1754,8 +2288,106 @@ document.querySelectorAll('.restore-backup-form').forEach(function(form) {
         if (confirmationField) {
             confirmationField.value = typed;
         }
+        var btn = form.querySelector('button[type="submit"], button:not([type])');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Restoring...';
+        }
+        var notice = document.createElement('div');
+        notice.className = 'text-danger small w-100 mt-1';
+        notice.textContent = 'Restoring — this can take several minutes for large databases. Do not close or refresh this tab.';
+        form.appendChild(notice);
     });
 });
+
+document.querySelectorAll('.cancel-backup-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        if (!window.confirm('Cancel this backup? Any partial file will be discarded, nothing usable is kept.')) {
+            e.preventDefault();
+            return;
+        }
+        var btn = form.querySelector('button');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Cancelling...'; }
+    });
+});
+
+document.querySelectorAll('.cancel-data-job-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        if (!window.confirm('Cancel this job? Any partial file will be discarded, nothing usable is kept.')) {
+            e.preventDefault();
+            return;
+        }
+        var btn = form.querySelector('button');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Cancelling...'; }
+    });
+});
+
+// Poll data export/import job status while any job is queued/running.
+(function() {
+    var activeRows = document.querySelectorAll('#section-data tr[data-status="queued"], #section-data tr[data-status="running"]');
+    if (!activeRows.length) return;
+
+    var STAGE_LABELS = {
+        starting: 'Starting…',
+        exporting: 'Exporting data…',
+        importing: 'Importing data…',
+        compressing: 'Compressing archive…',
+        verifying: 'Verifying integrity…',
+        completed: 'Finished — refreshing…',
+        failed: 'Failed — refreshing…',
+        cancelled: 'Cancelled — refreshing…'
+    };
+
+    var banner = document.getElementById('dataProgressBanner');
+    var bannerText = document.getElementById('dataProgressText');
+    var bannerPercent = document.getElementById('dataProgressPercent');
+    var bar = document.getElementById('dataProgressBar');
+    var track = banner ? banner.querySelector('.progress') : null;
+    var trackedPublicId = activeRows[0] ? activeRows[0].getAttribute('data-public-id') : null;
+    if (banner) banner.classList.remove('d-none');
+
+    var statusUrl = '<?= site_url('settings/dataJobsStatus') ?>';
+    var timer = setInterval(function() {
+        fetch(statusUrl).then(function(r) { return r.json(); }).then(function(jobs) {
+            var stillActive = false;
+            var focusJob = null;
+            var trackedJob = null;
+            jobs.forEach(function(job) {
+                var row = document.querySelector('#section-data tr[data-public-id="' + job.public_id + '"]');
+                if (row) {
+                    var statusCell = row.querySelector('.js-data-status');
+                    if (statusCell) statusCell.textContent = job.status.charAt(0).toUpperCase() + job.status.slice(1);
+                    row.setAttribute('data-status', job.status);
+                }
+                if (job.public_id === trackedPublicId) trackedJob = job;
+                if (job.status === 'queued' || job.status === 'running') {
+                    stillActive = true;
+                    if (!focusJob) focusJob = job;
+                }
+            });
+
+            if (focusJob) {
+                var pct = Math.max(0, Math.min(100, focusJob.progress_percent || 0));
+                if (bar) bar.style.width = pct + '%';
+                if (track) track.setAttribute('aria-valuenow', String(pct));
+                if (bannerPercent) bannerPercent.textContent = pct + '%';
+                if (bannerText) bannerText.textContent = STAGE_LABELS[focusJob.progress_stage] || 'Working…';
+                banner.classList.remove('is-error');
+            } else {
+                if (bar) bar.style.width = '100%';
+                if (bannerPercent) bannerPercent.textContent = '100%';
+                var finalStage = trackedJob ? (trackedJob.status === 'failed' ? 'failed' : (trackedJob.status === 'cancelled' ? 'cancelled' : 'completed')) : 'completed';
+                if (bannerText) bannerText.textContent = STAGE_LABELS[finalStage];
+                if (banner && finalStage !== 'completed') banner.classList.add('is-error');
+            }
+
+            if (!stillActive) {
+                clearInterval(timer);
+                window.location.reload();
+            }
+        }).catch(function() { /* keep polling; a transient network error shouldn't stop it */ });
+    }, 1200);
+})();
 
 var syncScanForm = document.getElementById('syncScanForm');
 if (syncScanForm) {
@@ -1785,6 +2417,30 @@ document.querySelectorAll('.sync-apply-form').forEach(function(form){
     });
 });
 
+// ─── Export/Import Module List: Select All / Uncheck All / Collapse ───
+document.querySelectorAll('.module-select-all').forEach(function(btn){
+    btn.addEventListener('click', function(){
+        var target = document.querySelector(btn.getAttribute('data-target'));
+        if (target) target.querySelectorAll('input[type="checkbox"]').forEach(function(cb){ cb.checked = true; });
+    });
+});
+document.querySelectorAll('.module-uncheck-all').forEach(function(btn){
+    btn.addEventListener('click', function(){
+        var target = document.querySelector(btn.getAttribute('data-target'));
+        if (target) target.querySelectorAll('input[type="checkbox"]').forEach(function(cb){ cb.checked = false; });
+    });
+});
+document.querySelectorAll('.module-toggle-collapse').forEach(function(btn){
+    btn.addEventListener('click', function(){
+        var target = document.querySelector(btn.getAttribute('data-target'));
+        if (!target) return;
+        var collapsed = target.classList.toggle('d-none');
+        btn.innerHTML = collapsed
+            ? '<i class="bi bi-arrows-expand me-1"></i>Expand'
+            : '<i class="bi bi-arrows-collapse me-1"></i>Collapse';
+    });
+});
+
 // ─── Clean DB Select All ───
 var cleanAll = document.getElementById('cleanSelectAll');
 if(cleanAll){
@@ -1807,5 +2463,99 @@ document.querySelectorAll('.tpl-card').forEach(function(card) {
         if (input) input.value = card.getAttribute('data-tpl');
     });
 });
+
+// ─── Payment Term Milestones ───
+(function(){
+    var rows = document.getElementById('ptMilestoneRows');
+    if (!rows) return;
+
+    var form = document.getElementById('paymentTermForm');
+    var totalEl = document.getElementById('ptPctTotal');
+
+    function esc(v){ return String(v == null ? '' : v).replace(/"/g, '&quot;'); }
+
+    function refreshTotal(){
+        var sum = 0;
+        rows.querySelectorAll('input[name="milestone_percentage[]"]').forEach(function(i){
+            var v = parseFloat(i.value);
+            if (!isNaN(v)) sum += v;
+        });
+        if (!totalEl) return;
+        if (rows.children.length === 0) { totalEl.textContent = ''; return; }
+        var ok = Math.abs(sum - 100) < 0.01;
+        totalEl.textContent = 'Total: ' + sum.toFixed(2) + '% ' + (ok ? '✓' : '(must equal 100%)');
+        totalEl.className = 'fw-semibold ' + (ok ? 'text-success' : 'text-danger');
+    }
+
+    function addRow(m){
+        m = m || {};
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="text" class="form-control form-control-sm" name="milestone_label[]" value="' + esc(m.label) + '" placeholder="Advance Payment"></td>' +
+            '<td><div class="input-group input-group-sm"><input type="number" step="0.01" min="0" max="100" class="form-control" name="milestone_percentage[]" value="' + esc(m.percentage) + '"><span class="input-group-text">%</span></div></td>' +
+            '<td><select class="form-select form-select-sm" name="milestone_basis[]">' +
+                '<option value="invoice_date"' + (m.basis === 'delivery_date' ? '' : ' selected') + '>Invoice date</option>' +
+                '<option value="delivery_date"' + (m.basis === 'delivery_date' ? ' selected' : '') + '>Delivery date</option>' +
+            '</select></td>' +
+            '<td><input type="number" min="0" class="form-control form-control-sm" name="milestone_offset_days[]" value="' + esc(m.offset_days == null ? 0 : m.offset_days) + '"></td>' +
+            '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger js-pt-remove"><i class="bi bi-x"></i></button></td>';
+        rows.appendChild(tr);
+        refreshTotal();
+    }
+
+    rows.addEventListener('click', function(e){
+        var btn = e.target.closest('.js-pt-remove');
+        if (!btn) return;
+        btn.closest('tr').remove();
+        refreshTotal();
+    });
+    rows.addEventListener('input', refreshTotal);
+
+    var addBtn = document.getElementById('ptAddRow');
+    if (addBtn) addBtn.addEventListener('click', function(){ addRow(); });
+
+    function resetForm(){
+        form.reset();
+        document.getElementById('ptId').value = '';
+        document.getElementById('ptActive').checked = true;
+        rows.innerHTML = '';
+        refreshTotal();
+    }
+    var resetBtn = document.getElementById('ptReset');
+    if (resetBtn) resetBtn.addEventListener('click', resetForm);
+
+    document.querySelectorAll('.js-pt-edit').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            var term;
+            try { term = JSON.parse(btn.getAttribute('data-term')); } catch (err) { return; }
+            document.getElementById('ptId').value = term.id || '';
+            document.getElementById('ptName').value = term.name || '';
+            document.getElementById('ptCode').value = term.code || '';
+            document.getElementById('ptNetDays').value = term.net_days || 0;
+            document.getElementById('ptDescription').value = term.description || '';
+            document.getElementById('ptActive').checked = !!Number(term.is_active);
+            rows.innerHTML = '';
+            var ms = [];
+            try { ms = JSON.parse(term.milestones || '[]') || []; } catch (err) { ms = []; }
+            ms.forEach(addRow);
+            refreshTotal();
+            form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    });
+
+    // Catch a bad split before the round-trip; the server re-validates anyway.
+    form.addEventListener('submit', function(e){
+        if (rows.children.length === 0) return;
+        var sum = 0;
+        rows.querySelectorAll('input[name="milestone_percentage[]"]').forEach(function(i){
+            var v = parseFloat(i.value);
+            if (!isNaN(v)) sum += v;
+        });
+        if (Math.abs(sum - 100) > 0.01) {
+            e.preventDefault();
+            alert('Milestone percentages must add up to exactly 100%. Current total: ' + sum.toFixed(2) + '%');
+        }
+    });
+})();
 </script>
 <?= $this->endSection() ?>

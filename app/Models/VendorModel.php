@@ -375,9 +375,11 @@ class VendorModel extends Model
      */
     public function getVendorsWithFilters(string $searchTerm = null, string $typeFilter = null, string $statusFilter = null, int $perPage = 20)
     {
-        $builder = $this->select('vendors.*, COUNT(processes.id) as process_count')
-                        ->join('processes', 'processes.vendor_id = vendors.id', 'left')
-                        ->groupBy('vendors.id');
+        // Keep the vendor row ungrouped so this query works with ONLY_FULL_GROUP_BY.
+        $builder = $this->select(
+            'vendors.*, (SELECT COUNT(*) FROM processes WHERE processes.vendor_id = vendors.id) AS process_count',
+            false
+        );
 
         if ($searchTerm) {
             $builder->groupStart()

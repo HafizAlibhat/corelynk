@@ -22,53 +22,335 @@
             object-fit: cover;
             border-radius: 6px;
         }
+        /* Compact hero header: title | actions | image, image always pinned right */
+        .product-hero {
+            display: flex !important;
+            align-items: center;
+            gap: 16px;
+        }
+        .product-hero__main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .product-hero__main .section-title {
+            font-size: clamp(1.15rem, 1.6vw, 1.45rem);
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+        .product-hero__meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+            font-size: 0.82rem;
+        }
+        .product-hero__actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .product-hero-thumb {
+            width: 64px;
+            height: 64px;
+            object-fit: cover;
+            border-radius: 12px;
+            flex-shrink: 0;
+            border: 1px solid var(--cl-color-border, #e5e7eb);
+        }
+        img.product-hero-thumb { cursor: pointer; }
+        .product-hero-thumb--empty {
+            display: grid;
+            place-items: center;
+            font-size: 1.5rem;
+            color: var(--cl-color-text-muted, #8a8e99);
+            background: var(--cl-color-surface-2, rgba(127,127,127,.06));
+        }
+        @media (max-width: 767.98px) {
+            .product-hero {
+                display: grid !important;
+                grid-template-columns: 1fr auto;
+                align-items: start;
+            }
+            .product-hero__main { grid-column: 1; grid-row: 1; }
+            .product-hero-thumb  { grid-column: 2; grid-row: 1; }
+            .product-hero__actions { grid-column: 1 / -1; grid-row: 2; }
+        }
+
+        /* Flat Odoo/SAP-style field groups */
+        .field-panel {
+            background: var(--cl-color-surface-2, rgba(127,127,127,.05));
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .field-panel + .field-panel { margin-top: 14px; }
+        .field-panel__title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--cl-color-text-muted, #8a8e99);
+            margin-bottom: 12px;
+        }
+        .field-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            column-gap: 32px;
+            row-gap: 12px;
+        }
+        .field-item .field-label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--cl-color-text-muted, #8a8e99);
+            margin-bottom: 2px;
+        }
+        .field-item .field-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--cl-color-text-primary, inherit);
+        }
+        @media (max-width: 575.98px) {
+            .field-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Quick actions list (sidebar) */
+        .quick-action-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 9px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--cl-color-border, #e5e7eb);
+            background: var(--cl-color-surface-1, #fff);
+            color: var(--cl-color-text-primary, inherit);
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            margin-bottom: 8px;
+            transition: background-color .15s ease, border-color .15s ease;
+        }
+        .quick-action-btn:last-child { margin-bottom: 0; }
+        .quick-action-btn:hover {
+            background: var(--cl-color-brand-50, #edf8ff);
+            border-color: var(--cl-color-brand-200, #b9e2ff);
+            color: inherit;
+        }
+        .quick-action-btn .quick-action-icon {
+            display: grid;
+            place-items: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--cl-color-brand-50, #edf8ff);
+            color: var(--cl-color-brand-600, #168de3);
+            flex-shrink: 0;
+        }
+        .quick-action-btn.danger .quick-action-icon {
+            background: var(--cl-color-danger-soft, #ffe2e5);
+            color: var(--cl-color-danger, #ef5b6b);
+        }
+
+        /* ERP metric strip — hairline-divided KPI row */
+        .metric-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1px;
+            background: var(--cl-color-border, #e5e7eb);
+            border: 1px solid var(--cl-color-border, #e5e7eb);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .metric-strip__item {
+            background: var(--cl-color-surface-1, #fff);
+            padding: 14px 18px;
+        }
+        .metric-strip__label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--cl-color-text-muted, #8a8e99);
+            margin-bottom: 6px;
+        }
+        .metric-strip__value {
+            font-size: 1.35rem;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+            color: var(--cl-color-text-primary, inherit);
+        }
+        .metric-strip__value small {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--cl-color-text-muted, #8a8e99);
+        }
+
+        /* Modern underline tabs */
+        #productMainTabs {
+            border-bottom: 1px solid var(--cl-color-border, #e5e7eb);
+            gap: 2px;
+        }
+        #productMainTabs .nav-link {
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            padding: 10px 18px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--cl-color-text-muted, #8a8e99);
+            background: transparent;
+        }
+        #productMainTabs .nav-link:hover {
+            color: var(--cl-color-brand-600, #168de3);
+        }
+        #productMainTabs .nav-link.active {
+            color: var(--cl-color-brand-600, #168de3);
+            border-bottom-color: var(--cl-color-brand-600, #168de3);
+            background: transparent;
+        }
+
+        /* Stock table share bars */
+        .stock-bar {
+            height: 5px;
+            border-radius: 999px;
+            background: var(--cl-color-surface-3, #eee);
+            overflow: hidden;
+            margin-top: 5px;
+            min-width: 90px;
+        }
+        .stock-bar__fill {
+            display: block;
+            height: 100%;
+            border-radius: 999px;
+            background: var(--cl-color-success, #249e55);
+        }
+
+        .empty-state {
+            padding: 28px 16px;
+            text-align: center;
+            color: var(--cl-color-text-muted, #8a8e99);
+        }
+        .empty-state i {
+            display: block;
+            font-size: 1.75rem;
+            opacity: .45;
+            margin-bottom: 8px;
+        }
+
+        .spec-table th,
+        .spec-table td {
+            padding: 0.55rem 0.9rem;
+        }
+        .spec-table th {
+            width: 160px;
+            background: var(--cl-color-surface-2, rgba(127,127,127,.06));
+            color: var(--cl-color-text-secondary, inherit);
+            font-weight: 600;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+        .spec-table td {
+            font-weight: 500;
+        }
     </style>
     <div class="row">
         <div class="col-12">
             <!-- Header -->
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="h3 mb-1"><?= esc($product['name']) ?></h1>
-                    <?php $isVariable = isset($product['product_type']) && $product['product_type'] === 'variable'; ?>
-                    <p class="text-muted mb-0">
-                        Product Code:
-                        <strong>
-                            <?= $isVariable ? '— (Template product)' : esc($product['code'] ?? '—') ?>
-                        </strong>
-                    </p>
-                </div>
-                <div>
-                    <a href="<?= base_url('product-variants') ?>" class="btn btn-outline-dark">
-                        <i class="bi bi-grid-3x3-gap"></i> All Variants
-                    </a>
-                    <?php
-                        $pvCount = 0;
-                        try {
-                            $dbTmp = \Config\Database::connect();
-                            $pvCount = (int) $dbTmp->table('product_variants')->where('product_id', $product['id'])->countAllResults();
-                        } catch (\Throwable $e) { $pvCount = 0; }
-                    ?>
-                    <a href="<?= base_url('product-variants?product_id=' . $product['id']) ?>" class="btn btn-outline-primary">
-                        <i class="bi bi-list"></i> View Variants (<?= $pvCount ?>)
-                    </a>
-                    <a href="<?= base_url('products') ?>" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-left"></i> Back to Products
-                    </a>
-                    <a href="<?= base_url('products/' . $productIdentifier . '/processes') ?>" class="btn btn-outline-info">
-                        <i class="bi bi-gear-wide-connected"></i> Processes
-                    </a>
-                    <?php if ($can_edit): ?>
-                        <a href="<?= base_url('products/' . $productIdentifier . '/edit') ?>" class="btn btn-primary">
-                            <i class="bi bi-pencil"></i> Edit
+            <div class="card cl-detail-page mb-4">
+                <?php
+                    $isVariable   = isset($product['product_type']) && $product['product_type'] === 'variable';
+                    $images       = !empty($product['images']) ? json_decode($product['images'], true) : [];
+                    $primaryImage = !empty($images[0]) ? base_url('uploads/products/' . $images[0]) : null;
+
+                    $pvCount = 0;
+                    try {
+                        $dbTmp = \Config\Database::connect();
+                        $pvCount = (int) $dbTmp->table('product_variants')->where('product_id', $product['id'])->countAllResults();
+                    } catch (\Throwable $e) { $pvCount = 0; }
+                ?>
+                <div class="card-header section-header product-hero">
+                    <div class="product-hero__main">
+                        <h3 class="section-title mb-0"><?= esc($product['name']) ?></h3>
+                        <div class="product-hero__meta">
+                            <?php if ($product['is_active']): ?>
+                                <span class="badge bg-success">Active</span>
+                            <?php else: ?>
+                                <span class="badge bg-danger">Inactive</span>
+                            <?php endif; ?>
+                            <span class="text-muted">Code: <strong><?= $isVariable ? '— (Template)' : esc($product['code'] ?? '—') ?></strong></span>
+                        </div>
+                    </div>
+
+                    <div class="product-hero__actions">
+                        <?= view('partials/record_nav', [
+                            'table'   => 'products',
+                            'id'      => $productIdentifier,
+                            'pattern' => 'products/{id}',
+                            'list'    => 'products',
+                        ]) ?>
+                        <?php if ($can_edit): ?>
+                            <a href="<?= base_url('products/' . $productIdentifier . '/edit') ?>" class="btn btn-sm btn-primary">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                        <?php endif; ?>
+                        <a href="<?= base_url('products') ?>" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back
                         </a>
-                    <?php endif; ?>
-                    <?php if ($can_delete): ?>
-                        <button type="button" class="btn btn-danger" onclick="confirmDelete(<?= $product['id'] ?>)">
-                            <i class="bi bi-trash"></i> Delete
-                        </button>
+                    </div>
+
+                    <?php if ($primaryImage): ?>
+                        <img src="<?= esc($primaryImage) ?>" alt="<?= esc($product['name']) ?>"
+                             class="product-hero-thumb"
+                             onclick="openLightbox('<?= esc($primaryImage) ?>')">
+                    <?php else: ?>
+                        <div class="product-hero-thumb product-hero-thumb--empty">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
                     <?php endif; ?>
                 </div>
             </div>
+
+            <?php
+                $canViewSensitiveOverview = !empty($can_view_sensitive_overview);
+                $cost     = $product['cost_price'] ?? ($product['standard_cost'] ?? 0);
+                $costCurr = $product['cost_currency'] ?? ($default_currency ?? 'USD');
+                $sale     = $product['sale_price'] ?? ($product['selling_price'] ?? 0);
+                $saleCurr = $product['sale_currency'] ?? ($default_currency ?? 'USD');
+            ?>
+            <?php if ($canViewSensitiveOverview): ?>
+                <div class="metric-strip mb-4">
+                    <div class="metric-strip__item">
+                        <div class="metric-strip__label"><i class="bi bi-boxes"></i>Available Stock</div>
+                        <div class="metric-strip__value"><?= number_format((float)($stock_total_available ?? 0), 2) ?></div>
+                    </div>
+                    <div class="metric-strip__item">
+                        <div class="metric-strip__label"><i class="bi bi-graph-up-arrow"></i>Units Sold</div>
+                        <div class="metric-strip__value text-success"><?= number_format((float)($sales_units_total ?? 0), 2) ?></div>
+                    </div>
+                    <div class="metric-strip__item">
+                        <div class="metric-strip__label"><i class="bi bi-truck"></i>Units Purchased</div>
+                        <div class="metric-strip__value text-info"><?= number_format((float)($purchased_units_total ?? 0), 2) ?></div>
+                    </div>
+                    <div class="metric-strip__item">
+                        <div class="metric-strip__label"><i class="bi bi-tag"></i>Cost Price</div>
+                        <div class="metric-strip__value"><?= number_format((float)$cost, 2) ?> <small><?= esc($costCurr) ?></small></div>
+                    </div>
+                    <div class="metric-strip__item">
+                        <div class="metric-strip__label"><i class="bi bi-cash-coin"></i>Sale Price</div>
+                        <div class="metric-strip__value"><?= number_format((float)$sale, 2) ?> <small><?= esc($saleCurr) ?></small></div>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <?php $activeTab = $active_tab ?? 'overview'; ?>
             <ul class="nav nav-tabs mb-3" id="productMainTabs" role="tablist">
@@ -90,122 +372,92 @@
             <div class="row">
                 <!-- Product Information -->
                 <div class="col-lg-8">
-                    <?php $isVariable = isset($product['product_type']) && $product['product_type'] === 'variable'; ?>
-                    <?php $canViewSensitiveOverview = !empty($can_view_sensitive_overview); ?>
                     <div class="card mb-3">
                         <div class="card-header">
-                            <h5 class="card-title mb-0">Template Product</h5>
+                            <h6 class="mb-0"><i class="bi bi-info-circle me-1"></i>General Information</h6>
                         </div>
                         <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <dl class="row">
-                                        <dt class="col-sm-4">Name:</dt>
-                                        <dd class="col-sm-8"><?= esc($product['name']) ?></dd>
-                                        
-                                        <dt class="col-sm-4">Code:</dt>
-                                        <dd class="col-sm-8"><code><?= $isVariable ? '— (Template product)' : esc($product['code'] ?? '—') ?></code></dd>
-                                        
-                                        <dt class="col-sm-4">Category:</dt>
-                                        <dd class="col-sm-8">
-                                            <?= isset($product['category_name']) ? esc($product['category_name']) : 'Not specified' ?>
-                                        </dd>
-                                    </dl>
-                                </div>
-                                <div class="col-md-6">
-                                    <dl class="row">
-                                        <dt class="col-sm-4">Unit:</dt>
-                                        <dd class="col-sm-8"><?= esc($product['unit'] ?? 'Not specified') ?></dd>
+                                    <div class="field-grid">
+                                        <div class="field-item">
+                                            <span class="field-label">Unit</span>
+                                            <span class="field-value"><?= esc($product['unit'] ?? 'Not specified') ?></span>
+                                        </div>
+                                        <div class="field-item">
+                                            <span class="field-label">Category</span>
+                                            <span class="field-value"><?= isset($product['category_name']) ? esc($product['category_name']) : 'Not specified' ?></span>
+                                        </div>
+                                        <div class="field-item">
+                                            <span class="field-label">Type</span>
+                                            <span class="field-value">
+                                                <?php
+                                                    $dtype = $product['detailed_type'] ?? 'storable';
+                                                    $dtBadge = match($dtype) {
+                                                        'service' => '<span class="badge bg-info text-dark"><i class="bi bi-tools me-1"></i>Service</span>',
+                                                        'consumable' => '<span class="badge bg-warning text-dark"><i class="bi bi-box me-1"></i>Consumable</span>',
+                                                        default => '<span class="badge bg-primary"><i class="bi bi-box-seam me-1"></i>Storable</span>',
+                                                    };
+                                                    echo $dtBadge;
+                                                    if ($dtype === 'service' && !empty($product['service_policy'])) {
+                                                        $policyLabel = $product['service_policy'] === 'delivered_qty' ? 'Invoice on Delivery' : 'Invoice on Order';
+                                                        echo ' <small class="text-muted ms-1">' . $policyLabel . '</small>';
+                                                    }
+                                                ?>
+                                            </span>
+                                        </div>
+                                        <div class="field-item">
+                                            <span class="field-label">Created</span>
+                                            <span class="field-value"><?= date('M j, Y g:i A', strtotime($product['created_at'])) ?></span>
+                                        </div>
+                                    </div>
 
-                                        <dt class="col-sm-4">Status:</dt>
-                                        <dd class="col-sm-8">
-                                            <?php if ($product['is_active']): ?>
-                                                <span class="badge bg-success">Active</span>
-                                            <?php else: ?>
-                                                <span class="badge bg-danger">Inactive</span>
-                                            <?php endif; ?>
-                                        </dd>
-
-                                        <dt class="col-sm-4">Type:</dt>
-                                        <dd class="col-sm-8">
-                                            <?php
-                                                $dtype = $product['detailed_type'] ?? 'storable';
-                                                $dtBadge = match($dtype) {
-                                                    'service' => '<span class="badge bg-info text-dark"><i class="bi bi-tools me-1"></i>Service</span>',
-                                                    'consumable' => '<span class="badge bg-warning text-dark"><i class="bi bi-box me-1"></i>Consumable</span>',
-                                                    default => '<span class="badge bg-primary"><i class="bi bi-box-seam me-1"></i>Storable</span>',
-                                                };
-                                                echo $dtBadge;
-                                                if ($dtype === 'service' && !empty($product['service_policy'])) {
-                                                    $policyLabel = $product['service_policy'] === 'delivered_qty' ? 'Invoice on Delivery' : 'Invoice on Order';
-                                                    echo ' <small class="text-muted ms-1">' . $policyLabel . '</small>';
-                                                }
-                                            ?>
-                                        </dd>
-                                        
-                                        <dt class="col-sm-4">Created:</dt>
-                                        <dd class="col-sm-8"><?= date('M j, Y g:i A', strtotime($product['created_at'])) ?></dd>
-                                    </dl>
-                                </div>
-                            </div>
-                            
                             <?php if ($canViewSensitiveOverview && !empty($product['description'])): ?>
-                                <div class="mt-3">
-                                    <h6>Description:</h6>
-                                    <p class="text-muted"><?= nl2br(esc($product['description'])) ?></p>
+                                <div class="field-panel mt-3">
+                                    <div class="field-panel__title">Description</div>
+                                    <p class="mb-0"><?= nl2br(esc($product['description'])) ?></p>
                                 </div>
                             <?php endif; ?>
                         </div>
                     </div>
 
                     <!-- Overview and Variants sections (variants shown on separate page) -->
-                    <div id="productViewSections" class="border border-top-0 rounded-bottom bg-white shadow-sm p-2">
+                    <div id="productViewSections">
                         <div id="overviewSection">
-                            <!-- Weight & Pricing (compact) -->
+                            <!-- Logistics / margin details -->
                             <?php if ($canViewSensitiveOverview): ?>
-                            <div class="card mt-2">
-                                <div class="card-body py-2">
-                                    <div class="row g-2">
-                                        <div class="col-6">
-                                            <small class="text-muted">Weight</small>
-                                            <div>
-                                                <?php if (!empty($product['weight'])): ?>
-                                                    <strong><?= esc($product['weight']) ?></strong>
-                                                    <small class="text-muted"><?= esc($product['weight_unit'] ?? 'KG') ?></small>
-                                                    <?php if (!empty($product['unit'])): ?>
-                                                        <div class="text-muted small">Inventory unit: <?= esc($product['unit']) ?></div>
+                            <?php
+                                $margin = (float)$sale - (float)$cost;
+                                $marginPct = (float)$sale > 0 ? ($margin / (float)$sale) * 100 : null;
+                            ?>
+                            <div class="card mt-3">
+                                <div class="card-body">
+                                    <div class="field-panel">
+                                        <div class="field-panel__title"><i class="bi bi-clipboard-data me-1"></i>Logistics &amp; Margin</div>
+                                        <div class="field-grid">
+                                            <div class="field-item">
+                                                <span class="field-label">Weight</span>
+                                                <span class="field-value">
+                                                    <?php if (!empty($product['weight'])): ?>
+                                                        <?= esc($product['weight']) ?> <small class="text-muted fw-normal"><?= esc($product['weight_unit'] ?? 'KG') ?></small>
+                                                    <?php else: ?>
+                                                        <span class="text-muted fw-normal">Not specified</span>
                                                     <?php endif; ?>
-                                                <?php else: ?>
-                                                    <span class="text-muted">N/A</span>
-                                                <?php endif; ?>
+                                                </span>
                                             </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted">Cost</small>
-                                            <div>
-                                                <?php $cost = $product['cost_price'] ?? ($product['standard_cost'] ?? 0); $costCurr = $product['cost_currency'] ?? ($default_currency ?? 'USD'); ?>
-                                                <strong><?= esc(number_format((float)$cost, 2)) ?></strong>
-                                                <small class="text-muted"><?= esc($costCurr) ?></small>
+                                            <div class="field-item">
+                                                <span class="field-label">Inventory Unit</span>
+                                                <span class="field-value"><?= !empty($product['unit']) ? esc($product['unit']) : '<span class="text-muted fw-normal">Not specified</span>' ?></span>
                                             </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted">Sale</small>
-                                            <div>
-                                                <?php $sale = $product['sale_price'] ?? ($product['selling_price'] ?? 0); $saleCurr = $product['sale_currency'] ?? ($default_currency ?? 'USD'); ?>
-                                                <strong><?= esc(number_format((float)$sale, 2)) ?></strong>
-                                                <small class="text-muted"><?= esc($saleCurr) ?></small>
+                                            <div class="field-item">
+                                                <span class="field-label">Unit Margin</span>
+                                                <span class="field-value <?= $margin < 0 ? 'text-danger' : 'text-success' ?>">
+                                                    <?= number_format($margin, 2) ?> <small class="text-muted fw-normal"><?= esc($saleCurr) ?></small>
+                                                </span>
                                             </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted">Units Sold</small>
-                                            <div>
-                                                <strong class="text-success"><?= esc(number_format((float)($sales_units_total ?? 0), 2)) ?></strong>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted">Units Purchased</small>
-                                            <div>
-                                                <strong class="text-info"><?= esc(number_format((float)($purchased_units_total ?? 0), 2)) ?></strong>
+                                            <div class="field-item">
+                                                <span class="field-label">Margin %</span>
+                                                <span class="field-value <?= $margin < 0 ? 'text-danger' : 'text-success' ?>">
+                                                    <?= $marginPct === null ? '<span class="text-muted fw-normal">—</span>' : number_format($marginPct, 1) . '%' ?>
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
@@ -219,37 +471,95 @@
                                     <h6 class="mb-0"><i class="bi bi-geo-alt me-1"></i>Available Stock by Location</h6>
                                     <span class="badge bg-primary">Total: <?= number_format((float)($stock_total_available ?? 0), 2) ?></span>
                                 </div>
-                                <div class="card-body py-2">
-                                    <?php if (!empty($stock_by_location ?? [])): ?>
-                                        <div class="table-responsive">
-                                            <table class="table table-sm align-middle mb-0">
-                                                <thead class="table-light">
+                                <?php if (!empty($stock_by_location ?? [])): ?>
+                                    <?php
+                                        $stockPeak = 0.0;
+                                        foreach (($stock_by_location ?? []) as $s) {
+                                            $stockPeak = max($stockPeak, (float)($s['available_qty'] ?? 0));
+                                        }
+                                    ?>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Warehouse</th>
+                                                    <th>Location</th>
+                                                    <th class="text-end" style="width:170px">Available Qty</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach (($stock_by_location ?? []) as $s): ?>
+                                                    <?php
+                                                        $sq = (float)($s['available_qty'] ?? 0);
+                                                        $share = $stockPeak > 0 ? max(0, min(100, ($sq / $stockPeak) * 100)) : 0;
+                                                    ?>
                                                     <tr>
-                                                        <th>Warehouse</th>
-                                                        <th>Location</th>
-                                                        <th class="text-end">Available Qty</th>
+                                                        <td class="fw-semibold"><?= esc($s['warehouse_name'] ?? 'Unassigned Warehouse') ?></td>
+                                                        <td class="text-muted"><?= esc($s['location_name'] ?? 'Unassigned Location') ?></td>
+                                                        <td class="text-end">
+                                                            <span class="fw-semibold <?= $sq < 0 ? 'text-danger' : 'text-success' ?>"><?= number_format($sq, 2) ?></span>
+                                                            <span class="stock-bar d-block ms-auto">
+                                                                <span class="stock-bar__fill" style="width:<?= number_format($share, 2, '.', '') ?>%<?= $sq < 0 ? ';background:var(--cl-color-danger,#ef5b6b)' : '' ?>"></span>
+                                                            </span>
+                                                        </td>
                                                     </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach (($stock_by_location ?? []) as $s): ?>
-                                                        <?php $sq = (float)($s['available_qty'] ?? 0); ?>
-                                                        <tr>
-                                                            <td><?= esc($s['warehouse_name'] ?? 'Unassigned Warehouse') ?></td>
-                                                            <td><?= esc($s['location_name'] ?? 'Unassigned Location') ?></td>
-                                                            <td class="text-end <?= $sq < 0 ? 'text-danger' : 'text-success' ?> fw-semibold"><?= number_format($sq, 2) ?></td>
-                                                        </tr>
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    <?php else: ?>
-                                        <div class="text-muted small">No location-wise stock currently available for this product.</div>
-                                    <?php endif; ?>
-                                </div>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="empty-state">
+                                        <i class="bi bi-inboxes"></i>
+                                        No location-wise stock currently available for this product.
+                                    </div>
+                                <?php endif; ?>
                             </div>
                             <?php endif; ?>
                         </div>
 
+                            <?php if (!empty($canViewSensitiveOverview) && !empty($product_reservations)): ?>
+                            <div class="card mt-3">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="bi bi-lock me-1"></i>Active Stock Reservations</h6>
+                                    <span class="badge bg-info text-dark">Total: <?= number_format(array_sum(array_map(function($r) { return max(0.0, (float)$r["reserved_quantity"] - (float)$r["consumed_quantity"] - (float)$r["released_quantity"]); }, $product_reservations)), 2) ?></span>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Document</th>
+                                                <th>Location</th>
+                                                <th>Date</th>
+                                                <th class="text-end">Reserved Qty</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($product_reservations as $r): ?>
+                                                <?php $remaining = max(0.0, (float)$r["reserved_quantity"] - (float)$r["consumed_quantity"] - (float)$r["released_quantity"]); ?>
+                                                <?php if ($remaining > 0.0001): ?>
+                                                <tr>
+                                                    <td>
+                                                        <?php if ($r["document_type"] === "sales_order" && !empty($r["order_number"])): ?>
+                                                            <a href="<?= site_url("sales-orders/view/" . (int)$r["sales_order_id"]) ?>"><?= esc($r["order_number"]) ?></a>
+                                                        <?php else: ?>
+                                                            <span class="text-muted"><?= esc($r["document_type"] ?: "sales_order") ?> #<?= (int)$r["document_id"] ?: (int)$r["sales_order_id"] ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= esc($r["warehouse_name"] ?? "Unassigned") ?></div>
+                                                        <div class="small text-muted"><?= esc($r["location_name"] ?? "Unassigned") ?></div>
+                                                    </td>
+                                                    <td><span title="<?= esc($r["created_at"]) ?>"><?= date("M j, Y", strtotime($r["created_at"])) ?></span></td>
+                                                    <td class="text-end fw-semibold text-info"><?= number_format($remaining, 2) ?></td>
+                                                </tr>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
                         <div id="variantsSection" class="d-none">
                             <!-- Variants (Odoo-like summary) -->
                             <div class="card mt-2">
@@ -338,42 +648,41 @@
 
                     <!-- Category / vendor (read-only on view page) -->
                     <?php if ($canViewSensitiveOverview): ?>
-                    <div class="card border-0 shadow-sm mt-3">
-                        <div class="card-body py-3">
-                            <div class="row gy-3">
-                                <div class="col-md-6">
-                                    <div class="d-flex flex-column h-100">
-                                        <div>
-                                            <small class="text-muted d-block mb-2"><i class="bi bi-tag me-1"></i>Category</small>
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <div class="field-panel">
+                                <div class="field-panel__title"><i class="bi bi-diagram-3 me-1"></i>Classification &amp; Sourcing</div>
+                                <div class="field-grid">
+                                    <div class="field-item">
+                                        <span class="field-label">Category</span>
+                                        <span class="field-value">
                                             <?php if (!empty($product['category_name'])): ?>
-                                                <span class="badge bg-info text-dark px-3 py-2"><?= esc($product['category_name']) ?></span>
+                                                <span class="badge bg-info text-dark"><?= esc($product['category_name']) ?></span>
                                             <?php else: ?>
-                                                <span class="text-muted small">Not assigned</span>
+                                                <span class="text-muted fw-normal">Not assigned</span>
                                             <?php endif; ?>
-                                        </div>
-                                        <div class="small text-muted mt-3">To change category, click <strong>Edit</strong>.</div>
+                                        </span>
                                     </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="d-flex flex-column h-100">
-                                        <div>
-                                            <small class="text-muted d-block mb-2"><i class="bi bi-person-badge me-1"></i>Vendor Information</small>
+                                    <div class="field-item">
+                                        <span class="field-label">Vendor</span>
+                                        <span class="field-value">
                                             <?php $vendorName = $product['vendor_name'] ?? ($product['vendor']['name'] ?? null); ?>
                                             <?php if (!empty($vendorName)): ?>
-                                                <div class="mb-2">
-                                                    <span class="badge bg-success px-3 py-2"><?= esc($vendorName) ?></span>
-                                                    <?php if (!empty($product['vendor_price'])): ?>
-                                                        <div class="small text-muted mt-1">Price: <strong><?= esc(number_format((float)$product['vendor_price'], 2)) ?> <?= esc($product['vendor_currency'] ?? 'USD') ?></strong></div>
-                                                    <?php endif; ?>
-                                                </div>
+                                                <span class="badge bg-success"><?= esc($vendorName) ?></span>
                                             <?php else: ?>
-                                                <span class="text-muted small">Not assigned</span>
+                                                <span class="text-muted fw-normal">Not assigned</span>
                                             <?php endif; ?>
-                                        </div>
-                                        <div class="small text-muted mt-3">To change vendor details, click <strong>Edit</strong>.</div>
+                                        </span>
                                     </div>
+                                    <?php if (!empty($product['vendor_price'])): ?>
+                                        <div class="field-item">
+                                            <span class="field-label">Vendor Price</span>
+                                            <span class="field-value"><?= esc(number_format((float)$product['vendor_price'], 2)) ?> <small class="text-muted fw-normal"><?= esc($product['vendor_currency'] ?? 'USD') ?></small></span>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
+                            <div class="small text-muted mt-2">To change these values, click <strong>Edit</strong>.</div>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -381,11 +690,38 @@
 
                 <!-- Related Information -->
                 <div class="col-lg-4">
+                    <!-- Quick Actions -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Actions</h6>
+                        </div>
+                        <div class="card-body">
+                            <a href="<?= base_url('product-variants?product_id=' . $product['id']) ?>" class="quick-action-btn">
+                                <span class="quick-action-icon"><i class="bi bi-list"></i></span>
+                                View Variants (<?= $pvCount ?>)
+                            </a>
+                            <a href="<?= base_url('product-variants') ?>" class="quick-action-btn">
+                                <span class="quick-action-icon"><i class="bi bi-grid-3x3-gap"></i></span>
+                                All Variants
+                            </a>
+                            <a href="<?= base_url('products/' . $productIdentifier . '/processes') ?>" class="quick-action-btn">
+                                <span class="quick-action-icon"><i class="bi bi-gear-wide-connected"></i></span>
+                                Processes
+                            </a>
+                            <?php if ($can_delete): ?>
+                                <button type="button" class="quick-action-btn danger" onclick="confirmDelete(<?= $product['id'] ?>)">
+                                    <span class="quick-action-icon"><i class="bi bi-trash"></i></span>
+                                    Delete Product
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
                     <!-- Recent Work Orders -->
                     <?php if (!empty($work_orders)): ?>
                         <div class="card">
                             <div class="card-header">
-                                <h5 class="card-title mb-0">Recent Work Orders</h5>
+                                <h6 class="mb-0"><i class="bi bi-clipboard-check me-1"></i>Recent Work Orders</h6>
                             </div>
                             <div class="card-body">
                                 <?php foreach ($work_orders as $wo): ?>
@@ -416,9 +752,9 @@
                     <?php 
                     $images = !empty($product['images']) ? json_decode($product['images'], true) : [];
                     if (!empty($images)): ?>
-                        <div class="card mt-4">
+                        <div class="card mt-3">
                             <div class="card-header">
-                                <h5 class="card-title mb-0">Images</h5>
+                                <h6 class="mb-0"><i class="bi bi-images me-1"></i>Images</h6>
                             </div>
                             <div class="card-body py-2">
                                 <div class="row g-2">
@@ -441,12 +777,16 @@
                             </div>
                         </div>
                     <?php else: ?>
-                        <div class="card mt-4">
-                            <div class="card-body text-center py-3 text-muted">
-                                No images available
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="bi bi-images me-1"></i>Images</h6>
                             </div>
-                            <div class="card-body border-top pt-3">
-                                <div class="small text-muted">No image upload allowed on view page. Click <strong>Edit</strong> to add images.</div>
+                            <div class="card-body">
+                                <div class="empty-state">
+                                    <i class="bi bi-image"></i>
+                                    No images available
+                                </div>
+                                <div class="small text-muted">Click <strong>Edit</strong> to add images.</div>
                             </div>
                         </div>
                     <?php endif; ?>
@@ -540,3 +880,5 @@ document.querySelectorAll('[data-bs-target="#tab-variants-view"]').forEach(btn =
 </script>
 
 <?= $this->endSection() ?>
+
+

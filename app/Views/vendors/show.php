@@ -378,6 +378,78 @@ Vendor: <?= esc($vendor['name'] ?? 'Details') ?>
                     <?php endif; ?>
                 </div>
             </div>
+
+            <!-- Products & Services offered by this vendor -->
+            <div class="card border-0 shadow-sm mt-3" style="border-radius: 8px; overflow: hidden;">
+                <div class="card-header p-3" style="background: rgba(74, 158, 255, 0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h6 class="mb-0 fw-bold text-light small">
+                        <i class="bi bi-box-seam me-1"></i>Products &amp; Services Offered
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <?php $vp = $vendor_products ?? []; ?>
+                    <?php if (!empty($vp)): ?>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0" style="color: #e2e4e9;">
+                                <thead style="background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                    <tr>
+                                        <th class="fw-bold small">Item</th>
+                                        <th class="text-center fw-bold small">Type</th>
+                                        <th class="text-end fw-bold small">Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody style="border-color: rgba(255,255,255,0.05);">
+                                    <?php foreach ($vp as $item): ?>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td class="small text-light"><?= esc($item['label']) ?></td>
+                                        <td class="text-center small">
+                                            <span class="badge <?= $item['is_service'] ? 'bg-info' : 'bg-secondary' ?> rounded-pill" style="font-size: 0.7rem;">
+                                                <?= $item['is_service'] ? 'Service' : 'Product' ?>
+                                            </span>
+                                        </td>
+                                        <td class="text-end small text-light"><?= esc($item['currency']) ?> <?= number_format($item['price'], 2) ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="p-4 text-center text-muted small">Nothing is attached to this vendor yet</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Purchase Trend -->
+            <div class="card border-0 shadow-sm mt-3" style="border-radius: 8px; overflow: hidden;">
+                <div class="card-header p-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style="background: rgba(74, 158, 255, 0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h6 class="mb-0 fw-bold text-light small">
+                        <i class="bi bi-graph-up me-1"></i>Purchase Trend
+                    </h6>
+                    <form method="get" class="d-flex align-items-center gap-2">
+                        <input type="date" name="trend_from" class="form-control form-control-sm" value="<?= esc($trend_from) ?>" style="width: 150px;">
+                        <span class="text-muted small">to</span>
+                        <input type="date" name="trend_to" class="form-control form-control-sm" value="<?= esc($trend_to) ?>" style="width: 150px;">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+                    </form>
+                </div>
+                <div class="card-body p-3">
+                    <div class="row g-3 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="text-uppercase fw-bold small text-muted" style="font-size: 0.7rem;">Qty Bought</div>
+                            <div class="fs-5 fw-bold text-light"><?= number_format($purchase_totals['qty'] ?? 0, 2) ?></div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-uppercase fw-bold small text-muted" style="font-size: 0.7rem;">Total Value</div>
+                            <div class="fs-5 fw-bold text-light"><?= number_format($purchase_totals['value'] ?? 0, 2) ?></div>
+                        </div>
+                    </div>
+                    <?php if (!empty($purchase_trend)): ?>
+                        <canvas id="vendorPurchaseTrendChart" height="90"></canvas>
+                    <?php else: ?>
+                        <div class="p-4 text-center text-muted small">No purchase orders in this date range</div>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -404,4 +476,31 @@ Vendor: <?= esc($vendor['name'] ?? 'Details') ?>
     const csrfTokenValue = <?= json_encode(csrf_hash()) ?>;
 </script>
 <script src="<?= base_url('assets/js/vendor_contacts.js') ?>"></script>
+<?php if (!empty($purchase_trend)): ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const trend = <?= json_encode($purchase_trend) ?>;
+    const ctx = document.getElementById('vendorPurchaseTrendChart');
+    if (ctx && window.Chart) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: trend.map(t => t.month),
+                datasets: [
+                    { label: 'Qty', data: trend.map(t => t.qty), borderColor: '#4a9eff', backgroundColor: 'rgba(74,158,255,0.15)', tension: 0.3, yAxisID: 'y' },
+                    { label: 'Value', data: trend.map(t => t.value), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.15)', tension: 0.3, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { type: 'linear', position: 'left', title: { display: true, text: 'Qty' } },
+                    y1: { type: 'linear', position: 'right', title: { display: true, text: 'Value' }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    }
+</script>
+<?php endif; ?>
 <?= $this->endSection() ?>

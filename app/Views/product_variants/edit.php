@@ -533,6 +533,15 @@
                         </div>
                     </div>
                     <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label">Supply Route</label>
+                            <?php $variantRoute = $variant['manufacturing_route'] ?? ($product['manufacturing_route'] ?? 'buy'); ?>
+                            <select name="manufacturing_route" class="form-select form-select-sm">
+                                <option value="buy" <?= $variantRoute === 'buy' ? 'selected' : '' ?>>Buy - purchased from a vendor</option>
+                                <option value="manufacture" <?= $variantRoute === 'manufacture' ? 'selected' : '' ?>>Manufacture - produced in-house</option>
+                            </select>
+                            <div class="variant-helper">Copied from the template product unless this variant needs a different route.</div>
+                        </div>
                         <div class="col-md-6">
                             <?php if (!empty($has_variant_vendor)): ?>
                                 <label class="form-label">Variant Vendor</label>

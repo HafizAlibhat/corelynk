@@ -15,7 +15,7 @@ class QuotationModel extends Model
     protected $returnType = 'array';
     protected $allowedFields = [
         'quote_number','company_id','customer_id','price_list_id','issue_date','expires_at','status','currency','quote_currency','base_currency',
-        'subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax','tax_total','shipping_amount','total_weight','total','notes','created_by','public_id','created_at','updated_at','deleted_at'
+        'subtotal','discount','document_discount_type','document_discount_value','discount_exclude_shipping','tax','tax_total','shipping_amount','total_weight','total','payment_term_id','notes','customer_snapshot','created_by','public_id','created_at','updated_at','deleted_at'
     ];
 
     protected $useTimestamps = true;
@@ -192,6 +192,18 @@ class QuotationModel extends Model
     $totalWeight = 0.0;
 
         foreach ($lines as $ln) {
+            if (strtolower((string)($ln['display_type'] ?? 'line')) === 'section') {
+                $ln['quantity'] = 0;
+                $ln['unit_price'] = 0;
+                $ln['base_amount'] = 0;
+                $ln['discount_amount'] = 0;
+                $ln['net_amount'] = 0;
+                $ln['tax_amount'] = 0;
+                $ln['line_total'] = 0;
+                $calculatedLines[] = $ln;
+                continue;
+            }
+
             // Enrich line with product metadata if available
             $prod = null;
             if (!empty($ln['product_id'])) {
@@ -284,7 +296,9 @@ class QuotationModel extends Model
                 : (isset($ln['weight']) && (float)$ln['weight'] > 0
                     ? (float)$ln['weight']
                     : ($variantWeight > 0 ? $variantWeight : 0.0));
-            $weightUnit = $ln['weight_unit'] ?? ($prod['weight_unit'] ?? 'kg');
+            // The product record owns the weight unit: a stale unit stored on the
+            // line (older quotations defaulted to KG) must never inflate the total.
+            $weightUnit = $prod['weight_unit'] ?? ($ln['weight_unit'] ?? 'kg');
             $unitWeightKg = WeightHelper::toKilograms($unitWeight, $weightUnit);
             $totalWeight += $unitWeightKg * ((float)$ln['quantity']);
         }
@@ -408,6 +422,22 @@ class QuotationModel extends Model
     $lines = $data['lines'] ?? [];
     unset($data['lines']);
 
+    // Reject lines referencing a product_id that doesn't exist (product_id is optional for free-text lines).
+    $lineProductIds = array_values(array_unique(array_filter(array_map(
+        static fn($ln) => is_array($ln) && !empty($ln['product_id']) ? (int)$ln['product_id'] : 0,
+        $lines
+    ))));
+    if (!empty($lineProductIds)) {
+        $existingIds = array_map('intval', array_column(
+            (new \App\Models\ProductModel())->select('id')->whereIn('id', $lineProductIds)->findAll(),
+            'id'
+        ));
+        $missingIds = array_diff($lineProductIds, $existingIds);
+        if (!empty($missingIds)) {
+            throw new \RuntimeException('Line item references a non-existent product (ID: ' . implode(', ', $missingIds) . ').');
+        }
+    }
+
     // Preserve user-provided shipping_amount from payload (do NOT rely on calculators here)
     $payloadShipping = isset($data['shipping_amount']) ? (float)$data['shipping_amount'] : 0.0;
     $documentDiscountType = strtolower((string)($data['document_discount_type'] ?? 'fixed'));
@@ -515,6 +545,7 @@ class QuotationModel extends Model
             if (in_array('quote_number', $tableCols) && !empty($data['quote_number'])) $insertRow['quote_number'] = $data['quote_number'];
             if (in_array('status', $tableCols)) $insertRow['status'] = $data['status'] ?? 'draft';
             if (in_array('price_list_id', $tableCols) && isset($data['price_list_id'])) $insertRow['price_list_id'] = $data['price_list_id'];
+            if (in_array('payment_term_id', $tableCols) && isset($data['payment_term_id'])) $insertRow['payment_term_id'] = $data['payment_term_id'];
             if (in_array('subtotal', $tableCols)) $insertRow['subtotal'] = $data['subtotal'] ?? 0;
             if (in_array('discount', $tableCols)) $insertRow['discount'] = $data['discount'] ?? ($data['document_discount_value'] ?? 0);
             if (in_array('tax', $tableCols)) $insertRow['tax'] = $data['tax'] ?? ($data['tax_total'] ?? 0);
@@ -529,6 +560,12 @@ class QuotationModel extends Model
             if (in_array('currency', $tableCols) && isset($data['currency'])) $insertRow['currency'] = $data['currency'];
             if (in_array('quote_currency', $tableCols) && isset($data['quote_currency'])) $insertRow['quote_currency'] = $data['quote_currency'];
             if (in_array('base_currency', $tableCols) && isset($data['base_currency'])) $insertRow['base_currency'] = $data['base_currency'];
+            // Freeze the customer address/contact this quotation is issued with,
+            // so later edits to the customer profile cannot rewrite it.
+            if (in_array('customer_snapshot', $tableCols, true) && !empty($insertRow['customer_id'])) {
+                helper('customer_snapshot');
+                $insertRow['customer_snapshot'] = $data['customer_snapshot'] ?? customer_snapshot_json((int)$insertRow['customer_id']);
+            }
             $insertRow['created_at'] = date('Y-m-d H:i:s');
 
                 try {
@@ -590,8 +627,8 @@ class QuotationModel extends Model
             }
         }
 
-        $db->transComplete();
-        if ($db->transStatus() === false) {
+        $committed = $db->transComplete();
+        if ($committed === false || $db->transStatus() === false) {
             return false;
         }
 
@@ -634,7 +671,7 @@ class QuotationModel extends Model
                 $productWeights[$pid] = isset($r['unit_weight']) && (float)$r['unit_weight'] > 0
                     ? (float)$r['unit_weight']
                     : (isset($r['weight']) ? (float)$r['weight'] : 0.0);
-                $productWeightUnits[$pid] = $r['weight_unit'] ?? 'kg';
+                $productWeightUnits[$pid] = ($r['weight_unit'] ?? '') ?: 'kg';
             }
         }
 
@@ -684,14 +721,18 @@ class QuotationModel extends Model
             $qty = isset($line['quantity']) ? (float)$line['quantity'] : 0.0;
             $unit = isset($line['unit_price']) ? (float)$line['unit_price'] : 0.0;
 
+            $raw = $qty * $unit;
+
             // Discount: prefer explicit discount_type + discount_value coming from the form
             $discountType = $line['discount_type'] ?? ($line['document_discount_type'] ?? 'percent');
             $discountValue = isset($line['discount_value']) ? (float)$line['discount_value'] : (isset($line['document_discount_value']) ? (float)$line['document_discount_value'] : 0.0);
             if ($discountType === 'percent') {
-                $discountAmount = ($qty * $unit) * ($discountValue / 100.0);
+                $discountAmount = $raw * ($discountValue / 100.0);
             } else {
                 $discountAmount = $discountValue;
             }
+            // Clamp to raw line value, matching the frontend preview (quotation_page_inline.js:23-24).
+            $discountAmount = min($raw, max(0.0, $discountAmount));
 
             // Tax can be entered as either percent or fixed value.
             $taxType = strtolower((string)($line['tax_type'] ?? 'percent'));
@@ -701,7 +742,6 @@ class QuotationModel extends Model
             $taxValue = isset($line['tax_value'])
                 ? (float)$line['tax_value']
                 : (isset($line['tax_rate']) ? (float)$line['tax_rate'] : (isset($line['tax']) ? (float)$line['tax'] : 0.0));
-            $raw = $qty * $unit;
             $taxable = max(0, $raw - $discountAmount);
             $taxAmount = $taxType === 'fixed' ? $taxValue : ($taxable * ($taxValue / 100.0));
             $lineTotal = $taxable + $taxAmount;
@@ -724,7 +764,10 @@ class QuotationModel extends Model
             $productWeight = $pid > 0 ? (float)($productWeights[$pid] ?? 0.0) : 0.0;
             $unitWeightRaw = $lineWeight > 0 ? $lineWeight : ($variantWeight > 0 ? $variantWeight : $productWeight);
 
-            $weightUnit = $line['weight_unit'] ?? ($pid > 0 ? ($productWeightUnits[$pid] ?? 'kg') : 'kg');
+            // Product-owned unit wins over whatever the form posted, so a stale
+            // 'KG' on a line cannot turn 30 g into 30 kg.
+            $weightUnit = ($pid > 0 ? ($productWeightUnits[$pid] ?? null) : null)
+                ?? ($line['weight_unit'] ?? 'kg');
             $unitWeightKg = WeightHelper::toKilograms((float)$unitWeightRaw, (string)$weightUnit);
             $totalWeight += $unitWeightKg * $qty;
 
@@ -787,4 +830,3 @@ class QuotationModel extends Model
         ];
     }
 }
-

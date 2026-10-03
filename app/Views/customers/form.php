@@ -25,6 +25,17 @@ if (empty($formAddresses)) {
         'is_default' => 1,
     ];
 }
+// Contacts a parcel can be consigned to: one customer, many people.
+$formContacts = ($isEdit && !empty($customer['__contacts']) && is_array($customer['__contacts']))
+    ? $customer['__contacts']
+    : [];
+$primaryContactIdx = 0;
+foreach ($formContacts as $i => $c) {
+    if (!empty($c['is_primary_contact'])) {
+        $primaryContactIdx = (int)$i;
+        break;
+    }
+}
 $defaultAddrIdx = 0;
 foreach ($formAddresses as $i => $a) {
     if (!empty($a['is_default'])) {
@@ -59,7 +70,7 @@ if ($websiteFieldValue === null) {
 }
 ?>
 
-<div class="container py-3">
+<div class="container py-3 cl-form-page">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1><?= $isEdit ? 'Edit Customer' : 'Add Customer' ?></h1>
     <a href="<?= site_url('customers') ?>" class="btn btn-secondary">Back to List</a>
@@ -213,6 +224,54 @@ if ($websiteFieldValue === null) {
       </div>
     </div>
 
+    <div class="card mt-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Contact Persons</h5>
+        <button type="button" id="btnAddContact" class="btn btn-sm btn-outline-primary">+ Add Contact</button>
+      </div>
+      <div class="card-body p-2">
+        <p class="text-muted small mb-2">People to ship or bill to &mdash; consignees, buyers, agents. Mark one as primary.</p>
+        <div id="contactContainer">
+          <?php foreach ($formContacts as $cIdx => $con): ?>
+            <div class="contact-card border rounded p-3 mb-2" data-idx="<?= (int)$cIdx ?>">
+              <input type="hidden" name="contacts[<?= (int)$cIdx ?>][id]" value="<?= esc($con['id'] ?? '') ?>">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label small">Name <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control form-control-sm" name="contacts[<?= (int)$cIdx ?>][name]" value="<?= esc($con['name'] ?? '') ?>">
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small">Title / Role</label>
+                  <input type="text" class="form-control form-control-sm" name="contacts[<?= (int)$cIdx ?>][title]" placeholder="Consignee, Buyer" value="<?= esc($con['title'] ?? '') ?>">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Email</label>
+                  <input type="email" class="form-control form-control-sm" name="contacts[<?= (int)$cIdx ?>][email]" value="<?= esc($con['email'] ?? '') ?>">
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small">Phone</label>
+                  <input type="text" class="form-control form-control-sm" name="contacts[<?= (int)$cIdx ?>][phone]" value="<?= esc($con['phone'] ?? '') ?>">
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small">Mobile</label>
+                  <input type="text" class="form-control form-control-sm" name="contacts[<?= (int)$cIdx ?>][mobile]" value="<?= esc($con['mobile'] ?? '') ?>">
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <div class="form-check mb-0">
+                  <input type="radio" class="form-check-input" name="primary_contact_idx" value="<?= (int)$cIdx ?>" id="con_primary_<?= (int)$cIdx ?>" <?= ((int)$cIdx === $primaryContactIdx) ? 'checked' : '' ?>>
+                  <label class="form-check-label small" for="con_primary_<?= (int)$cIdx ?>">Primary contact</label>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-auto contact-remove-btn">Remove</button>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+        <p class="text-muted small mb-0<?= $formContacts ? ' d-none' : '' ?>" id="contactEmpty">No contact persons yet.</p>
+      </div>
+    </div>
+
+    <div id="deletedContactIds"></div>
     <div id="deletedAddressIds"></div>
 
     <div class="card mt-3">
@@ -415,6 +474,65 @@ if ($websiteFieldValue === null) {
   });
 
   container.querySelectorAll('.address-card').forEach(bindCard);
+  // ---- contact persons -------------------------------------------------
+  const conWrap = document.getElementById('contactContainer');
+  const conEmpty = document.getElementById('contactEmpty');
+  const conDeleted = document.getElementById('deletedContactIds');
+  let nextConIdx = <?= (int)count($formContacts) ?>;
+
+  function conField(idx, name, label, type, placeholder) {
+    const span = (name === 'name' || name === 'email') ? '3' : '2';
+    return '<div class="col-md-' + span + '">' +
+      '<label class="form-label small">' + label + '</label>' +
+      '<input type="' + type + '" class="form-control form-control-sm" name="contacts[' + idx + '][' + name + ']"' +
+      (placeholder ? ' placeholder="' + placeholder + '"' : '') + '></div>';
+  }
+
+  function buildContactHtml(idx) {
+    return '<div class="contact-card border rounded p-3 mb-2" data-idx="' + idx + '">' +
+      '<input type="hidden" name="contacts[' + idx + '][id]" value="">' +
+      '<div class="row g-2 align-items-end">' +
+        conField(idx, 'name', 'Name <span class="text-danger">*</span>', 'text', '') +
+        conField(idx, 'title', 'Title / Role', 'text', 'Consignee, Buyer') +
+        conField(idx, 'email', 'Email', 'email', '') +
+        conField(idx, 'phone', 'Phone', 'text', '') +
+        conField(idx, 'mobile', 'Mobile', 'text', '') +
+      '</div>' +
+      '<div class="d-flex align-items-center gap-2 mt-2">' +
+        '<div class="form-check mb-0">' +
+          '<input type="radio" class="form-check-input" name="primary_contact_idx" value="' + idx + '" id="con_primary_' + idx + '">' +
+          '<label class="form-check-label small" for="con_primary_' + idx + '">Primary contact</label>' +
+        '</div>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger ms-auto contact-remove-btn">Remove</button>' +
+      '</div></div>';
+  }
+
+  // Losing the primary row must not leave the customer without one.
+  function ensurePrimaryContact() {
+    const radios = conWrap.querySelectorAll('input[name="primary_contact_idx"]');
+    conEmpty.classList.toggle('d-none', radios.length > 0);
+    if (radios.length && ![...radios].some(function (r) { return r.checked; })) radios[0].checked = true;
+  }
+
+  document.getElementById('btnAddContact').addEventListener('click', function () {
+    conWrap.insertAdjacentHTML('beforeend', buildContactHtml(nextConIdx++));
+    ensurePrimaryContact();
+  });
+
+  conWrap.addEventListener('click', function (e) {
+    const btn = e.target.closest('.contact-remove-btn');
+    if (!btn) return;
+    const card = btn.closest('.contact-card');
+    const id = card.querySelector('input[name^="contacts"][name$="[id]"]').value;
+    if (id) {
+      conDeleted.insertAdjacentHTML('beforeend',
+        '<input type="hidden" name="deleted_contact_ids[]" value="' + id + '">');
+    }
+    card.remove();
+    ensurePrimaryContact();
+  });
+
+  ensurePrimaryContact();
 })();
 </script>
 

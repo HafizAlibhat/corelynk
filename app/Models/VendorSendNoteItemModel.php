@@ -14,6 +14,7 @@ class VendorSendNoteItemModel extends Model
     protected $allowedFields    = [
         'send_note_id',
         'product_id',
+        'variant_id',
         'qty',
         'unit_price',
     ];

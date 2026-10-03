@@ -51,7 +51,7 @@
     <div class="card border-0 shadow-sm">
         <div class="card-body p-2">
             <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0 align-middle" style="font-size:0.82rem;">
+                <table class="cl-table table table-sm table-hover mb-0 align-middle" style="font-size:0.82rem;">
                     <thead class="table-dark">
                         <tr>
                             <th style="width:12%">Date</th>
